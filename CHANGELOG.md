@@ -2,6 +2,16 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- **fix(factsheet):** protect multi-hump camelCase/PascalCase identifiers
+  (`tokenLedgerShard`, `extractFactSheetTokens`) — the residual OCR miss class
+  from the legibility audit. They land in tier 1, strictly below the byte-critical
+  tier-0 shapes (SHAs, UUIDs, CONST_IDS, tickets, flags, numbers), so they can
+  never evict a byte-critical token from the 64-token budget. (thanks @rldyourmnd)
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.
