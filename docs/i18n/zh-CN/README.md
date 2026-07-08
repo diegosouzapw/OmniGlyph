@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` 会将区块固定为文本;`options.emitRecoverable` 会返回被转成图像的区块的原始内容。精确的计费数学同样在包的根路径导出(`anthropicImageTokens`、`resolveAnthropicVisionTier`、`openAIVisionTokens`)——这正是 [OmniRoute](https://github.com/diegosouzapw/OmniRoute) 所依赖的。纯 JS 运行时(Node 与 edge/Workers 皆可)。完整接口见:`src/core/index.ts`。
 
+# 📤 离线导出 — 无需代理,无需 Claude Code
+
+不使用 Claude Code?在**本地**把上下文渲染为 PNG 页面,然后粘贴到 Cursor、ChatGPT,或任何接受图像上传的聊天工具中。无需代理、无需 API key、无需接入任何账户:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+你会得到一个文件夹,里面装着丢进聊天工具所需的一切:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` 渲染你尚未提交的改动,`--diff <ref>` 渲染某个提交范围,`--open` 显示该文件夹(macOS)。这一切都在你的机器上运行——导出流程从不启动代理,也从不调用任何模型。运行 `omniglyph export --help` 查看全部参数。
+
 # 🧭 The honest part
 
 - **这是有损的。** 从图像中做到字节精确的还原,本质上是不可靠的。已采取的缓解措施:精确标识符以文本形式随图像一起传输,并且测得的生产配置产生了**零静默虚构**——读取失败时会主动弃权。
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **DeepSeek-OCR 不是已经证明这条路可行了吗?**
 它证明的是这条*通道*可行——使用的是专门为此训练的编码器/解码器组合。当初的质疑,是基于"没有任何一个现成的生产模型能读取高密度渲染图"这一事实;而这一点已经改变,上文的[模型评分卡](../../../README.md#-the-numbers--measured-not-estimated)清楚展示了如今究竟是哪些模型能读取它们,并附有实证。[基准测试套件](../../../benchmarks/README.md)可以用一条命令重新测试任何新模型——门控只跟随数据,不跟随炒作。
+
+**不用 Claude Code 也能用吗——Cursor、ChatGPT,或者一条普通的管道?**
+可以,有两种方式。作为**代理**,它适用于任何允许你设置 API 基础 URL 的客户端(`ANTHROPIC_BASE_URL`,或 OpenAI 的基础 URL)——Claude Code、你自己的脚本,任何基于 HTTP 的客户端都行。而对于无法走代理的工具,上面的**离线导出**会把上下文渲染为 PNG 页面,由你手动粘贴——`omniglyph export --stdin` 甚至能直接从 Unix 管道读取。
+
+**它究竟是怎么把文本变成图像的?**
+它会重排文本,并用一套 1-bit 5×8 像素字形图集把文本绘制到高密度的 1568×728 PNG 页面上——每个像素 1 比特,不做抗锯齿,因此模型是按页面的尺寸计费,而不是按里面装了多少字符。上面的 **How it works** 介绍了整条流水线;基准测试文档则给出了几何细节,以及为什么密度更高并不总是更便宜。
 
 # 🔬 Reproduce every number
 

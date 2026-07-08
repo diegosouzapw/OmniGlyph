@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` mengekalkan blok sebagai teks; `options.emitRecoverable` memulangkan versi asal blok yang telah diimejkan. Matematik pengebilan tepat turut dihantar pada akar pakej (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — itulah yang digunakan oleh [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Runtime Pure-JS (Node dan edge/Workers). Permukaan penuh: `src/core/index.ts`.
 
+# 📤 Eksport luar talian — tanpa proksi, tanpa Claude Code
+
+Tidak menggunakan Claude Code? Render konteks kepada halaman PNG **secara tempatan** dan tampalkannya ke dalam Cursor, ChatGPT, atau mana-mana sembang yang menerima muat naik imej. Tiada proksi, tiada kunci API, tiada akaun yang disambungkan:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Anda mendapat satu folder yang mengandungi segala-galanya untuk dimasukkan ke dalam sembang:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` merender diff anda yang belum dikomit, `--diff <ref>` julat komit, `--open` mendedahkan folder tersebut (macOS). Kesemuanya berjalan pada mesin anda — laluan eksport tidak pernah memulakan proksi dan tidak pernah memanggil model. Jalankan `omniglyph export --help` untuk setiap bendera.
+
 # 🧭 Bahagian jujur
 
 - **Ia lossy.** Ingatan tepat-bait daripada imej memang tidak boleh dipercayai sepenuhnya. Mitigasi yang telah dilaksanakan: pengecam tepat bergerak sebagai teks di sebelah imej, dan konfigurasi pengeluaran yang diukur menghasilkan **sifar konfabulasi senyap** — bacaan yang gagal menahan diri.
@@ -147,6 +168,12 @@ Pusingan terkini dan pengecam tepat kekal sebagai teks mengikut reka bentuk. Bag
 
 **Bukankah DeepSeek-OCR sudah membuktikan sama ada ini berfungsi?**
 Ia membuktikan *saluran* itu berfungsi — dengan sepasang enkoder/dekoder yang dilatih khusus untuk tugas itu. Keraguan itu bermula sejak tiada model pengeluaran sedia ada yang dapat membaca render padat; keadaan itu telah berubah, dan [kad skor model](../../../README.md#-the-numbers--measured-not-estimated) di atas menunjukkan dengan tepat siapa yang dapat membacanya hari ini, berserta bukti. [Harness penanda aras](../../../benchmarks/README.md) menguji semula sebarang model baharu dengan satu arahan — get ini mengikut data, bukan hype.
+
+**Bolehkah saya menggunakannya tanpa Claude Code — Cursor, ChatGPT, paip biasa?**
+Ya, dua cara. Sebagai **proksi** ia berfungsi dengan mana-mana klien yang membolehkan anda menetapkan URL asas API (`ANTHROPIC_BASE_URL`, atau URL asas OpenAI) — Claude Code, skrip anda sendiri, apa-apa sahaja HTTP. Dan bagi alat yang tidak dapat menggunakan proksi, **Eksport luar talian** di atas merender konteks kepada halaman PNG yang anda tampal secara manual — `omniglyph export --stdin` malah membaca terus daripada paip Unix.
+
+**Bagaimana sebenarnya ia menukar teks menjadi imej?**
+Ia mengalir semula teks dan melukisnya dengan atlas glif 1-bit 5×8 piksel ke atas halaman PNG 1568×728 yang padat — satu bit setiap piksel, tanpa anti-aliasing, jadi model mengenakan bil halaman mengikut dimensinya, bukan mengikut berapa banyak aksara di dalamnya. **Bagaimana ia berfungsi** di atas mempunyai saluran paip itu; dokumen penanda aras mempunyai geometri dan sebab mengapa lebih padat tidak semestinya lebih murah.
 
 # 🔬 Hasilkan semula setiap angka
 

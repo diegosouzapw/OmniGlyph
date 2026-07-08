@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` przypina bloki jako tekst; `options.emitRecoverable` zwraca oryginały bloków zamienionych na obrazy. Dokładna matematyka rozliczeń jest też dostarczana w rdzeniu pakietu (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — to właśnie z niej korzysta [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Środowisko uruchomieniowe czyste w JS (Node i edge/Workers). Pełny interfejs: `src/core/index.ts`.
 
+# 📤 Eksport offline — bez proxy, bez Claude Code
+
+Nie korzystasz z Claude Code? Wyrenderuj kontekst do stron PNG **lokalnie** i wklej je do Cursor, ChatGPT lub dowolnego czatu, który przyjmuje przesyłanie obrazów. Bez proxy, bez klucza API, bez podpiętego konta:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Otrzymujesz jeden folder ze wszystkim, co wystarczy wrzucić do czatu:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` renderuje Twój niezacommitowany diff, `--diff <ref>` zakres commitów, `--open` pokazuje folder (macOS). Wszystko działa na Twojej maszynie — ścieżka eksportu nigdy nie uruchamia proxy i nigdy nie wywołuje modelu. Uruchom `omniglyph export --help`, aby zobaczyć wszystkie flagi.
+
 # 🧭 Uczciwa część
 
 - **To jest stratne.** Dokładny co do bajtu zapis z obrazów jest z natury zawodny. Wdrożone środki zaradcze: dokładne identyfikatory podróżują jako tekst obok obrazu, a zmierzona konfiguracja produkcyjna dała **zero cichych konfabulacji** — nieudane odczyty się wstrzymują.
@@ -147,6 +168,12 @@ Ostatnie tury i dokładne identyfikatory z założenia pozostają tekstem. Dla o
 
 **Czy DeepSeek-OCR nie rozstrzygnął już, czy to działa?**
 Udowodnił, że *kanał* działa — przy użyciu pary enkoder/dekoder wytrenowanej do tego zadania. Sceptycyzm pochodzi z czasów, gdy żaden standardowy model produkcyjny nie potrafił odczytać gęstych renderingów; to się zmieniło, a [karta wyników modeli](../../../README.md#-the-numbers--measured-not-estimated) powyżej pokazuje dokładnie, kto potrafi je dziś odczytać, z dowodami. [Zestaw benchmarków](../../../benchmarks/README.md) ponownie testuje każdy nowy model w jednej komendzie — bramka podąża za danymi, nie za hype'em.
+
+**Czy mogę używać tego bez Claude Code — Cursor, ChatGPT, zwykły potok?**
+Tak, na dwa sposoby. Jako **proxy** działa z dowolnym klientem, który pozwala ustawić bazowy adres URL API (`ANTHROPIC_BASE_URL` lub bazowy adres URL OpenAI) — Claude Code, Twoje własne skrypty, cokolwiek po HTTP. A dla narzędzi, które nie potrafią korzystać z proxy, **Eksport offline** powyżej renderuje kontekst do stron PNG, które wklejasz ręcznie — `omniglyph export --stdin` czyta nawet bezpośrednio z potoku Unix.
+
+**Jak to właściwie zamienia tekst w obraz?**
+Ponownie rozkłada tekst i maluje go 1-bitowym atlasem glifów 5×8 pikseli na gęstych stronach PNG 1568×728 — jeden bit na piksel, bez antyaliasingu, więc model rozlicza stronę według jej wymiarów, a nie według tego, ile znaków się w niej znajduje. **Jak to działa** powyżej opisuje potok; dokument z benchmarkami zawiera geometrię oraz to, dlaczego gęściej nie zawsze znaczy taniej.
 
 # 🔬 Odtwórz każdą liczbę
 
