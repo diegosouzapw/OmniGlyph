@@ -2,6 +2,15 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- **fix(prompting):** the imaged session-configuration banner and the
+  history-transcript framing now instruct the model to defer exact identifiers,
+  hashes, version strings, and numbers to the exact-value factsheet or the
+  source text, instead of guessing a value seen only in an image. (thanks @rldyourmnd)
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.
