@@ -2,7 +2,10 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
-## [Unreleased]
+## [1.2.0] — 2026-07-08
+
+Documentation and a test-only hardening pass. No change to the compression
+path, billing math or dashboard behavior.
 
 ### Security
 
