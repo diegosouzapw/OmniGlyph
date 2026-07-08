@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **Mikä muunnetaan**: staattinen system prompt + työkaludokumentaatio, vanha koottu historia, suuret työkalutulosteet.
 - **Mikä ei koskaan muunnu**: viestisi, viimeisimmät vuorot, mallin tuloste, harva proosa, tavan tarkat arvot (hashit/id:t kulkevat mukana tekstinä), sekä mikä tahansa malli, joka epäonnistui lukubenchmarkissa.
 
+# 📚 Kirjastokäyttö (ilman proxya)
+
+Kaikki, mitä proxy tekee jokaiselle pyynnölle, on myös dokumentoitu, tuotava API:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` kiinnittää lohkot tekstiksi; `options.emitRecoverable` palauttaa kuvitettujen lohkojen alkuperäiset versiot. Tarkka laskutusmatematiikka toimitetaan myös paketin juuressa (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — juuri sitä [OmniRoute](https://github.com/diegosouzapw/OmniRoute) käyttää. Puhdas JS-ajoympäristö (Node ja edge/Workers). Koko rajapinta: `src/core/index.ts`.
+
 # 🧭 Rehellinen osuus
 
 - **Se on häviöllistä.** Tavan tarkka muistaminen kuvista on luonteeltaan epäluotettavaa. Toteutetut lieventimet: tarkat tunnisteet kulkevat tekstinä kuvan vieressä, ja mitattu tuotantokonfiguraatio tuotti **nolla hiljaista konfabulaatiota** — epäonnistuneet lukukokeet pidättäytyvät vastaamasta.
 - **Vain Fable 5 on hyväksytty tänään**, kuitteineen. GPT-5.5 ja Gemini 2.5-flash eivät mitattavasti pysty lukemaan tiheitä renderöintejä; Opus 4.8 tarvitsee 4× suuremmat glyfit. Portti valvoo tätä.
 - **Löysimme ja vältimme laskutusansan**: korkearesoluutioinen kuvataso laskuttaa 3,3× enemmän per sivu, mutta näkömalli ei saa ylimääräistä resoluutiota — suuremmat sivut lukevat *huonommin*. Mitattu, dokumentoitu tiedostossa [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), ei käytössä.
 - Hinnat muuttuvat; pysyvä mittari on tokenileikkaus, jonka proxy kirjaa jokaista pyyntöä kohti ilmaista `count_tokens`-vastalukua vasten.
+
+# 🧠 UKK
+
+**Onko 59–70 % koko putken läpi, vai vain niissä pyynnöissä, joihin se kosketti?**
+Koko putken läpi — koko lasku. Useimmat pakkaustyökalut raportoivat säästöt vain siitä siivusta, johon ne koskivat, mikä kaunistelee lukua. Meidän nimittäjämme on *jokainen* pyyntö: pienet, jotka portti oikein jätti koskematta, kaikki välimuistikirjoitukset ja -luvut, sekä kaikki tulostetokenit (joita proxy ei koskaan pakkaa). Pelkästään pakattujen pyyntöjen luku on korkeampi ja se ilmoitetaan erikseen, ei koskaan otsikossa.
+
+**Miten säästö mitataan?**
+Saman pyynnön molemmat puolet, samalla hetkellä. Jokaiselle `/v1/messages`-POST-pyynnölle proxy ampuu ilmaisen `count_tokens`-koettimen alkuperäiseen pakkaamattomaan runkoon (vastafaktuaali) rinnakkain todellisen välityksen kanssa, ja lukee palveluntarjoajan todella laskuttaman käyttölohkon vastauksesta — molemmat päätyvät samaan tapahtumariviin. Välimuistihinnoittelua sovelletaan identtisesti molempiin puoliin, joten välimuistialennus kumoutuu eikä sitä voida laskea kahteen kertaan "säästöksi". Kaava löytyy tiedostosta `src/core/baseline.ts`; johda se uudelleen omasta tapahtumalokistasi.
+
+**Miksi virhelyönti olisi konfabulaatio eikä lukuvirhe?**
+Koska mallin näkökyky ei ole OCR: sivusta tulee palasupotuksia (patch embeddings), ei koskaan erillisiä merkkejä, joten yksittäisen glyfin luotettavuutta ei ole, jolle voisi epäonnistua äänekkäästi — kun pikselit eivät riitä määrittämään glyfiä, kielimalli täyttää aukon jollain uskottavalla. Juuri tämän mekanismin takia OmniGlyph on fail-closed sen suhteen: tavan tarkat arvot kulkevat aina tekstinä kuvan vieressä, mallit jotka lukevat väärin estetään portilla, ja mitattu tuotantokonfiguraatio tuotti **nolla** hiljaista konfabulaatiota noin 300 lukukokeessa — epäonnistuneet lukukokeet pidättäytyvät vastaamasta.
+
+**Entä tavan tarkka työ (hashit, id:t, salaisuudet)?**
+Viimeisimmät vuorot ja tarkat tunnisteet pysyvät tekstinä suunnittelun mukaan. Työkuormille, jotka ovat *kokonaan* tavan tarkkoja, ohjaa ne mallille, joka ei ole sallittujen listalla (esim. toinen Claude-malli alaagentissa) — kaikki sallitun listan ulkopuolella kulkee läpi tavan tarkasti, koskemattomana.
+
+**Eikö DeepSeek-OCR jo ratkaissut, toimiiko tämä?**
+Se todisti, että *kanava* toimii — koodaaja/dekoodaaja-parilla, joka on koulutettu juuri siihen tehtävään. Epäily on peräisin ajalta, jolloin mikään valmis tuotantomalli ei osannut lukea tiheitä renderöintejä; se on muuttunut, ja yllä oleva [mallien tulostaulu](../../../README.md#-the-numbers--measured-not-estimated) näyttää tarkalleen, ketkä osaavat lukea niitä tänään, kuitteineen. [Benchmark-työkalu](../../../benchmarks/README.md) testaa minkä tahansa uuden mallin uudelleen yhdellä komennolla — portti seuraa dataa, ei hypeä.
 
 # 🔬 Toista jokainen luku
 
@@ -134,6 +171,20 @@ OmniGlyph toimii myös **natiivina pakkausmoottorina [OmniRoute](https://github.
 - 🔒 [SECURITY.md](SECURITY.md) — haavoittuvuusraportit
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — tiukka TDD + mittaus ennen väitteitä
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Kiitokset
+
+OmniGlyph seisoo erityisesti yhden projektin harteilla — tämä osio on pysyvä kiitoksemme.
+
+| Projekti | Miten se muovasi OmniGlyphia |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Löytö, jolle koko tämä projekti on rakennettu.** pxpipe todisti, kuitteineen, että tuotantokäytössä olevan LLM:n näkökanava voi kuljettaa tiheää tekstuaalista kontekstia murto-osalla tokenikustannuksesta — ja että muunnos on päätettävä pyyntökohtaisesti tarkalla laskutusmatematiikalla, ei fiiliksellä. Tiheä 1-bittinen renderöinti, kannattavuusportti, `count_tokens`-vastafaktuaali, fail-closed-mallien sallittu lista ja "mittaa ennen kuin väität" -dokumentaatiokulttuuri kaikki syntyivät siellä. OmniGlyph polveutuu suoraan siitä koodikannasta (MIT — alkuperäinen tekijänoikeusrivi säilyy [LICENSE](../../../LICENSE)-tiedostossamme). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | 5×8-bittikarttafonttiperhe, josta tiheä 1-bittinen glyfiatlaamme on johdettu (lisenssi kansiossa `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Kattavuus glyfeille Spleenin alueen ulkopuolella samassa atlaassa (lisenssi kansiossa `assets/`). |
+
+Jos OmniGlyph on sinulle hyödyllinen, käy tähdittämässä myös alkuperäinen projekti — löytö oli heidän. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Lisenssi
 

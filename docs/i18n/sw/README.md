@@ -86,12 +86,49 @@ kizuizi kizito cha ombi ──► lango la faida ──► upangaji upya + uchor
 - **Kinachobadilishwa**: maelekezo tuli ya mfumo + hati za zana, historia ya zamani iliyokunjwa, matokeo makubwa ya zana.
 - **Kisichobadilishwa kamwe**: ujumbe wako, zamu za hivi karibuni, matokeo ya muundo, maandishi machache, thamani sahihi kabisa (hashi/vitambulisho husafiri pamoja kama maandishi), na muundo wowote uliofeli kigezo cha usomaji.
 
+# 📚 Matumizi ya Maktaba (bila proxy)
+
+Kila kitu ambacho proxy hufanya kwa kila ombi pia ni API iliyoandikwa waziwazi, inayoweza kuagizwa:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Chora maandishi yoyote kuwa kurasa mnene za PNG za bit-1
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Au endesha ubadilishaji kamili wa ombi mwenyewe — lango, hesabu ya bili, na yote
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // mwili ghafi wa JSON wa /v1/messages
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` hubandika vizuizi kama maandishi; `options.emitRecoverable` hurejesha nakala asili za vizuizi vilivyogeuzwa kuwa picha. Hesabu sahihi ya bili pia hutolewa kwenye mzizi wa kifurushi (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — hilo ndilo linalotumiwa na [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Muda wa uendeshaji wa Pure-JS (Node na edge/Workers). Uso kamili: `src/core/index.ts`.
+
 # 🧭 Sehemu ya uwazi
 
 - **Ni hasara kwa kiasi fulani (lossy).** Ukumbukaji sahihi kabisa kutoka kwa picha si wa kutegemewa kwa asili. Hatua zilizochukuliwa: vitambulisho sahihi husafiri kama maandishi karibu na picha, na mpangilio wa uzalishaji uliopimwa haukutoa **uvumbuzi wowote wa kimya** — usomaji uliofeli hujiepusha.
 - **Fable 5 pekee ndiyo imeidhinishwa leo**, ikiwa na risiti. GPT-5.5 na Gemini 2.5-flash hazina uwezo uliopimwa wa kusoma taswira mnene; Opus 4.8 inahitaji herufi kubwa mara 4. Lango hutekeleza hili.
 - **Tuligundua na kuepuka mtego wa bili**: ngazi ya picha ya ubora wa juu hutoza mara 3.3 zaidi kwa kila ukurasa, lakini kichakataji cha maono hakipati ubora wa ziada — kurasa kubwa husomeka *vibaya zaidi*. Imepimwa, imeandikwa katika [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), haijawashwa.
 - Bei hubadilika; kipimo cha kudumu ni upunguzaji wa token, ambao proxy hurekodi kwa kila ombi dhidi ya hesabu-linganishi bure ya `count_tokens`.
+
+# 🧠 Maswali Yanayoulizwa Mara kwa Mara
+
+**Je, 59–70% ni mwanzo hadi mwisho, au ni kwa maombi yaliyoguswa tu?**
+Mwanzo hadi mwisho — bili nzima. Zana nyingi za ubanaji huripoti akiba kwa sehemu iliyoguswa tu, jambo linalopamba nambari. Kigawanyo chetu ni *kila* ombi: yale madogo ambayo lango liliyaacha bila kuguswa kwa usahihi, uandishi na usomaji wote wa kache, na token zote za matokeo (ambazo proxy haziziibani kamwe). Akiba ya sehemu iliyobanwa pekee huwa kubwa zaidi na hutajwa kando, kamwe si kama kichwa cha habari.
+
+**Akiba hupimwaje?**
+Pande zote mbili za ombi lilelile, wakati uleule. Kwa kila POST ya `/v1/messages`, proxy hupiga jaribio huru la `count_tokens` kwenye mwili asilia usiobanwa (hesabu-linganishi) sambamba na utumaji halisi, kisha husoma kizuizi cha matumizi kilichotozwa kweli na mtoa huduma kutoka kwenye jibu — vyote viwili huingia kwenye safu moja ya tukio. Bei ya kache hutumika sawa kwa pande zote mbili, hivyo punguzo la kache hujitolea lenyewe na haliwezi kuhesabiwa mara mbili kama "akiba". Fomula hiyo iko katika `src/core/baseline.ts`; ipate tena kutoka kwenye kumbukumbu yako ya matukio.
+
+**Kwa nini kukosa kunaweza kuwa ni ubunifu badala ya hitilafu ya kusoma?**
+Kwa sababu maono ya muundo si OCR: ukurasa hugeuka kuwa uwakilishi wa vipande (patch embeddings), kamwe si herufi tofauti tofauti, hivyo hakuna uhakika wa kila herufi wa kushindwa kwa sauti kubwa — pale pikseli zinaposhindwa kubainisha herufi kikamilifu, mvuto wa lugha hujaza pengo hilo kwa kitu kinachoonekana sahihi. Utaratibu huo ndio hasa sababu OmniGlyph ni fail-closed kuhusu hilo: thamani sahihi kabisa daima husafiri kama maandishi karibu na picha, miundo inayosoma vibaya huzuiwa na lango, na mpangilio wa uzalishaji uliopimwa ulitoa uvumbuzi wa kimya **sifuri** katika majaribio ~300 ya usomaji — usomaji uliofeli hujiepusha.
+
+**Vipi kuhusu kazi sahihi kabisa (hashi, vitambulisho, siri)?**
+Zamu za hivi karibuni na vitambulisho sahihi hubaki kama maandishi kwa makusudi. Kwa kazi ambazo ni sahihi kabisa *kwa ujumla*, zielekeze kwenye muundo usio kwenye orodha-ruhusa (mfano, wakala mdogo kwenye muundo mwingine wa Claude) — chochote kilicho nje ya orodha-ruhusa hupita bila kubadilishwa, sawasawa kabisa.
+
+**Je, DeepSeek-OCR haikuthibitisha kama hii inafanya kazi?**
+Ilithibitisha kuwa *kijia* (channel) hicho kinafanya kazi — kwa jozi ya encoder/decoder iliyofunzwa kwa kazi hiyo. Mashaka hayo yalianzia wakati hakuna muundo wa kawaida wa uzalishaji uliokuwa na uwezo wa kusoma taswira mnene; hilo limebadilika, na [kadi ya alama za miundo](../../../README.md#-the-numbers--measured-not-estimated) hapo juu inaonyesha kwa usahihi ni nani anayeweza kuzisoma leo, ikiwa na risiti. [Mfumo wa vipimo](../../../benchmarks/README.md) hujaribu upya muundo wowote mpya kwa amri moja — lango hufuata data, si msisimko.
 
 # 🔬 Rudia kila nambari
 
@@ -134,6 +171,20 @@ OmniGlyph pia hutolewa kama **injini asilia ya ubanaji ndani ya [OmniRoute](http
 - 🔒 [SECURITY.md](SECURITY.md) — ripoti za udhaifu
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — TDD kali + upimaji-kabla-ya-madai
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Shukrani
+
+OmniGlyph imesimama juu ya mabega ya mradi mmoja hususan — sehemu hii ni shukrani yetu ya kudumu.
+
+| Mradi | Jinsi ulivyoathiri OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Ugunduzi ambao mradi huu mzima umejengwa juu yake.** pxpipe ilithibitisha, ikiwa na risiti, kwamba kijia cha maono cha muundo wa LLM wa uzalishaji kinaweza kubeba muktadha mzito wa maandishi kwa sehemu ndogo ya gharama ya token — na kwamba ubadilishaji lazima uamuliwe kwa kila ombi kwa hesabu sahihi ya bili, kamwe si kwa hisia. Uchoraji mnene wa bit-1, lango la faida, hesabu-linganishi ya `count_tokens`, orodha-ruhusa ya miundo ya fail-closed, na utamaduni wa uandishi wa hati wa "pima kabla ya kudai" — vyote vilianzishwa huko. OmniGlyph inatokana moja kwa moja na msingi huo wa msimbo (MIT — mstari asili wa hakimiliki unabaki katika [LICENSE](../../../LICENSE) yetu). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Familia ya fonti za bitmapu za 5×8 ambazo atlasi yetu mnene ya herufi za bit-1 inatokana nazo (leseni katika `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Ufunikaji wa herufi zilizo nje ya wigo wa Spleen katika atlasi ileile (leseni katika `assets/`). |
+
+Ikiwa unaona OmniGlyph ina manufaa, nenda ukatoe nyota kwa mradi asili pia — ugunduzi ulikuwa wao. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Leseni
 

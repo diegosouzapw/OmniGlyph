@@ -135,12 +135,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **What converts**: the static system prompt + tool docs, old collapsed history, large tool outputs.
 - **What never converts**: your messages, recent turns, the model's output, sparse prose, byte-exact values (hashes/IDs ride alongside as text), and any model that failed the reading benchmark.
 
+# 📚 Library use (no proxy)
+
+Everything the proxy does per request is also a documented, importable API:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` pins blocks as text; `options.emitRecoverable` returns the originals of imaged blocks. The exact billing math ships at the package root too (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — that is what [OmniRoute](https://github.com/diegosouzapw/OmniRoute) consumes. Pure-JS runtime (Node and edge/Workers). Full surface: `src/core/index.ts`.
+
 # 🧭 The honest part
 
 - **It is lossy.** Byte-exact recall from images is unreliable by nature. Mitigations shipped: exact identifiers travel as text next to the image, and the measured production config produced **zero silent confabulations** — failed reads abstain.
 - **Only Fable 5 is approved today**, with receipts. GPT-5.5 and Gemini 2.5-flash measurably cannot read dense renders; Opus 4.8 needs 4× bigger glyphs. The gate enforces this.
 - **We found and avoided a billing trap**: the high-resolution image tier bills 3.3× more per page, but the vision encoder doesn't receive the extra resolution — bigger pages read *worse*. Measured, documented in [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), not enabled.
 - Prices change; the durable metric is the token cut, which the proxy logs per request against a free `count_tokens` counterfactual.
+
+# 🧠 FAQ
+
+**Is the 59–70% end-to-end, or only on the requests it touched?**
+End-to-end — the whole bill. Most compression tools report savings only on the slice they touched, which flatters the number. Our denominator is *every* request: the small ones the gate correctly left untouched, all cache writes and reads, and all output tokens (which the proxy never compresses). Compressed-only runs higher and is quoted separately, never as the headline.
+
+**How is the saving measured?**
+Both sides of the same request, at the same moment. For every `/v1/messages` POST the proxy fires a free `count_tokens` probe on the original uncompressed body (the counterfactual) in parallel with the real forward, and reads the provider's actually-billed usage block off the response — both land in the same event row. Cache pricing is applied identically to both sides, so the caching discount cancels and can't be double-counted as "savings". The formula lives in `src/core/baseline.ts`; re-derive it from your own events log.
+
+**Why would a miss be a confabulation instead of a read error?**
+Because model vision is not OCR: the page becomes patch embeddings, never discrete characters, so there is no per-glyph confidence to fail loudly on — when pixels underdetermine a glyph, the language prior fills the gap with something plausible. That mechanism is exactly why OmniGlyph is fail-closed about it: byte-exact values always ride as text next to the image, models that misread are blocked by the gate, and the measured production config produced **zero** silent confabulations in ~300 read probes — failed reads abstain.
+
+**What about byte-exact work (hashes, IDs, secrets)?**
+Recent turns and exact identifiers stay text by design. For workloads that are *all* byte-exact, route them to a non-allowlisted model (e.g. a subagent on another Claude model) — anything outside the allowlist passes through byte-identical, untouched.
+
+**Didn't DeepSeek-OCR settle whether this works?**
+It proved the *channel* works — with an encoder/decoder pair trained for the job. The skepticism dates from when no stock production model could read dense renders; that changed, and the [model scorecard](#-the-numbers--measured-not-estimated) above shows exactly who reads them today, with receipts. The [benchmark harness](benchmarks/README.md) re-tests any new model in one command — the gate follows the data, not the hype.
 
 # 🔬 Reproduce every number
 
@@ -183,6 +220,20 @@ OmniGlyph also ships as a **native compression engine inside [OmniRoute](https:/
 - 🔒 [SECURITY.md](SECURITY.md) — vulnerability reports
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — strict TDD + measurement-before-claims
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Acknowledgments
+
+OmniGlyph stands on the shoulders of one project in particular — this section is our permanent thank-you.
+
+| Project | How it shaped OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **The discovery this whole project is built on.** pxpipe proved, with receipts, that a production LLM's vision channel can carry dense textual context at a fraction of the token cost — and that the conversion must be decided per-request by exact billing math, never by vibes. The dense 1-bit rendering, the profitability gate, the `count_tokens` counterfactual, the fail-closed model allowlist, and the "measure before you claim" documentation culture were all pioneered there. OmniGlyph descends directly from that codebase (MIT — the original copyright line stays in our [LICENSE](LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | The 5×8 bitmap font family our dense 1-bit glyph atlas derives from (license in `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Coverage for the glyphs beyond Spleen's range in the same atlas (license in `assets/`). |
+
+If you find OmniGlyph useful, go star the upstream too — the discovery was theirs. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 License
 

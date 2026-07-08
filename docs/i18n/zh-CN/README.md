@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **会被转换的内容**:静态系统提示词 + 工具文档、已折叠的旧历史记录、大型工具输出。
 - **绝不会被转换的内容**:你的消息、最近几轮对话、模型的输出、稀疏的散文文本、字节精确的值(哈希/ID 会以文本形式随图像一起传输),以及任何未通过阅读基准测试的模型。
 
+# 📚 Library use (no proxy)
+
+代理对每个请求所做的一切,同样是一套有文档说明、可导入的 API:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` 会将区块固定为文本;`options.emitRecoverable` 会返回被转成图像的区块的原始内容。精确的计费数学同样在包的根路径导出(`anthropicImageTokens`、`resolveAnthropicVisionTier`、`openAIVisionTokens`)——这正是 [OmniRoute](https://github.com/diegosouzapw/OmniRoute) 所依赖的。纯 JS 运行时(Node 与 edge/Workers 皆可)。完整接口见:`src/core/index.ts`。
+
 # 🧭 The honest part
 
 - **这是有损的。** 从图像中做到字节精确的还原,本质上是不可靠的。已采取的缓解措施:精确标识符以文本形式随图像一起传输,并且测得的生产配置产生了**零静默虚构**——读取失败时会主动弃权。
 - **目前只有 Fable 5 获得批准**,且有实证。GPT-5.5 和 Gemini 2.5-flash 经测量确实无法读取高密度渲染图;Opus 4.8 需要 4 倍大小的字形。门控机制强制执行这一点。
 - **我们发现并规避了一个计费陷阱**:高分辨率图像档位每页计费高出 3.3 倍,但视觉编码器并未获得额外的分辨率——更大的页面反而读取*更差*。已测量,记录于 [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md),未启用。
 - 价格会变动;持久有效的指标是 token 削减比例,代理会针对每次请求,相对于免费的 `count_tokens` 反事实基准记录该比例。
+
+# 🧠 FAQ
+
+**59–70% 是端到端的,还是只统计被处理过的请求?**
+是端到端的——整份账单。多数压缩工具只统计自己处理过的那一部分请求的节省量,这样数字会显得更好看。我们的分母是*每一个*请求:那些被门控正确地保持原样的小请求、全部的缓存写入与读取,以及全部的输出 token(代理从不压缩输出)。仅统计被压缩部分的节省比例会更高,会单独列出,但绝不作为主要数字。
+
+**节省量是怎么测量的?**
+同一个请求的两侧,在同一时刻测量。每次 `/v1/messages` POST 请求,代理都会对原始未压缩的请求体发起一次免费的 `count_tokens` 探测(作为反事实基准),与真实的转发请求并行进行,并从响应中读取服务商实际计费的 usage 区块——两者落在同一条事件记录里。缓存计费对两侧采用完全相同的规则,因此缓存折扣会相互抵消,不会被重复计入"节省量"。计算公式在 `src/core/baseline.ts` 中;你可以从自己的事件日志中重新推导。
+
+**为什么读取失误会是"虚构",而不是普通的读取错误?**
+因为模型视觉并非 OCR:页面会变成分块(patch)嵌入向量,而非离散字符,所以不存在可以"大声报错"的逐字形置信度——当像素不足以确定某个字形时,语言模型的先验知识会用看似合理的内容去填补空白。正是这个机制,让 OmniGlyph 对此采取失败即关闭的策略:字节精确的值始终以文本形式随图像一起传输,读取有误的模型会被门控拦截,而测得的生产配置在约 300 次读取探测中产生了**零**次静默虚构——读取失败时会主动弃权。
+
+**字节精确的内容(哈希、ID、密钥)怎么处理?**
+最近几轮对话和精确标识符按设计始终保持为文本。对于*全部*都要求字节精确的工作负载,可以把它们路由到不在允许列表内的模型(例如另一个 Claude 模型上的子智能体)——任何不在允许列表内的模型都会原样透传,字节级不变。
+
+**DeepSeek-OCR 不是已经证明这条路可行了吗?**
+它证明的是这条*通道*可行——使用的是专门为此训练的编码器/解码器组合。当初的质疑,是基于"没有任何一个现成的生产模型能读取高密度渲染图"这一事实;而这一点已经改变,上文的[模型评分卡](../../../README.md#-the-numbers--measured-not-estimated)清楚展示了如今究竟是哪些模型能读取它们,并附有实证。[基准测试套件](../../../benchmarks/README.md)可以用一条命令重新测试任何新模型——门控只跟随数据,不跟随炒作。
 
 # 🔬 Reproduce every number
 
@@ -134,6 +171,20 @@ OmniGlyph 同时也作为**原生压缩引擎内置于 [OmniRoute](https://githu
 - 🔒 [SECURITY.md](SECURITY.md) —— 漏洞报告
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) —— 严格 TDD + 先测量后声明
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Acknowledgments
+
+OmniGlyph 站在了一个项目的肩膀之上——本节是我们永久的致谢。
+
+| 项目 | 对 OmniGlyph 的影响 |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **整个项目所依赖的那个发现。** pxpipe 用实证证明了:生产环境 LLM 的视觉通道能够以远低于常规的 token 成本承载高密度的文本上下文——而且是否转换必须基于精确的计费数学,逐请求判断,绝不能凭感觉。高密度 1-bit 渲染、盈利性门控、`count_tokens` 反事实基准、失败即关闭的模型允许列表,以及"先测量、后声明"的文档文化,全都源自那里率先探索。OmniGlyph 直接衍生自那个代码库(MIT 协议——原始版权声明保留在我们的 [LICENSE](../../../LICENSE) 中)。 |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | 我们高密度 1-bit 字形图集所派生自的 5×8 位图字体家族(授权信息见 `assets/`)。 |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | 在同一图集中,为超出 Spleen 覆盖范围的字形提供补充(授权信息见 `assets/`)。 |
+
+如果你觉得 OmniGlyph 有用,也请给上游项目点一个 star——这个发现是他们的。🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 License
 

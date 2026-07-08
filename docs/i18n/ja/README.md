@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **変換されるもの**: 静的なsystem prompt + ツールのドキュメント、折りたたまれた古い履歴、大きなツール出力。
 - **変換されないもの**: あなたのメッセージ、直近のターン、モデルの出力、疎なプロース、バイト単位で正確な値（ハッシュ/IDはテキストとして併走）、そして読み取りベンチマークに失敗したモデル。
 
+# 📚 ライブラリとして使う（プロキシなし）
+
+プロキシがリクエストごとに行うすべての処理は、ドキュメント化されたインポート可能なAPIとしても利用できます:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)`はブロックをテキストとして固定し、`options.emitRecoverable`は画像化されたブロックの元データを返します。厳密な課金計算式（`anthropicImageTokens`、`resolveAnthropicVisionTier`、`openAIVisionTokens`）もパッケージのルートから提供されており、これは[OmniRoute](https://github.com/diegosouzapw/OmniRoute)が利用しているものです。純粋なJavaScriptランタイム（Nodeとedge/Workersの両方で動作）。全体のAPI一覧は`src/core/index.ts`を参照してください。
+
 # 🧭 The honest part
 
 - **これは非可逆です。** 画像からのバイト単位の正確な復元は本質的に信頼できません。実施済みの緩和策: 正確な識別子は画像の隣にテキストとして流れ、実測された本番構成では**無自覚な作話ゼロ**を達成しています — 読み取り失敗は棄権します。
 - **現時点で承認されているのはFable 5のみ**で、根拠付きです。GPT-5.5とGemini 2.5-flashは高密度レンダーを実測上読めません。Opus 4.8は4倍のグリフサイズが必要です。ゲートがこれを強制します。
 - **課金の罠を発見し、回避しました**: 高解像度画像ティアは1ページあたり3.3倍多く課金されますが、ビジョンエンコーダは追加の解像度を受け取っていません — ページを大きくすると読み取りは*むしろ悪化*します。実測結果は[docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md)に記載されており、有効化されていません。
 - 価格は変動しますが、恒久的な指標はトークン削減率であり、プロキシは無料の`count_tokens`による反実仮想と照らしてリクエストごとにログを記録します。
+
+# 🧠 よくある質問（FAQ）
+
+**59〜70%はエンドツーエンドの数値ですか、それとも変換対象になったリクエストだけの数値ですか？**
+エンドツーエンドです — 請求額全体を指します。多くの圧縮ツールは変換した部分だけの削減率を報告するため、数値が実態より良く見えます。私たちの分母は*すべての*リクエストです: ゲートが正しく変換対象外とした小さなリクエスト、すべてのキャッシュの書き込みと読み取り、そして（プロキシが決して圧縮しない）すべての出力トークンを含みます。圧縮対象だけに絞った数値はより高くなりますが、それは別枠で示すのみで、見出しの数値としては使いません。
+
+**節約率はどうやって測定していますか？**
+同一リクエストの両面を、同じ瞬間に測定します。すべての`/v1/messages`のPOSTに対して、プロキシは元の未圧縮ボディに対する無料の`count_tokens`プローブ（反実仮想）を実際の転送と並行して発行し、レスポンスからプロバイダが実際に課金した使用量ブロックを読み取ります — 両方とも同じイベント行に記録されます。キャッシュ料金は両サイドに同一に適用されるため、キャッシュの割引は相殺され、「節約」として二重計上されることはありません。計算式は`src/core/baseline.ts`にあり、自分のイベントログから再導出できます。
+
+**読み取りミスが「読み取りエラー」ではなく「作話」になるのはなぜですか？**
+モデルのビジョンはOCRではないからです: ページはパッチ埋め込みになるだけで、離散的な文字にはなりません。そのため、1文字ごとの確信度に基づいて大きく失敗するという仕組みが存在しません — ピクセルがグリフを一意に決定できない場合、言語モデルの事前分布がもっともらしい何かでその隙間を埋めてしまいます。この仕組みこそが、OmniGlyphがフェイルクローズである理由です: バイト単位で正確な値は常に画像の隣にテキストとして流れ、誤読するモデルはゲートで遮断され、実測された本番構成では約300件の読み取りプローブ中**ゼロ**件の無自覚な作話でした — 読み取り失敗は棄権します。
+
+**バイト単位で正確な作業（ハッシュ、ID、秘密情報）はどうなりますか？**
+直近のターンと正確な識別子は、設計上つねにテキストのままです。ワークロードが*すべて*バイト単位で正確である必要がある場合は、許可リストに含まれないモデル（例えば別のClaudeモデル上のサブエージェント）に振り分けてください — 許可リスト外のものはすべて、バイト単位で完全に同一のまま素通りします。
+
+**DeepSeek-OCRによって、この手法が有効かどうかはすでに決着していたのでは？**
+DeepSeek-OCRが証明したのは*経路*が機能することです — そのために専用に訓練されたエンコーダ/デコーダのペアを使っています。懐疑論は、市販の本番モデルが高密度レンダーを読めなかった時代のものです。状況は変わり、上記の[モデル別スコアカード](../../../README.md#-the-numbers--measured-not-estimated)が、今日どのモデルが読めるかを根拠付きで正確に示しています。[ベンチマークハーネス](../../../benchmarks/README.md)を使えば、新しいモデルを1コマンドで再テストできます — ゲートは誇張ではなくデータに従います。
 
 # 🔬 すべての数値を再現する
 
@@ -134,6 +171,20 @@ OmniGlyphは無料のAIゲートウェイである**[OmniRoute](https://github.c
 - 🔒 [SECURITY.md](SECURITY.md) — 脆弱性の報告
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — 厳格なTDD + 主張の前に実測
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 謝辞
+
+OmniGlyphは、とりわけ1つのプロジェクトの肩の上に立っています — このセクションは、私たちの恒久的な感謝の言葉です。
+
+| プロジェクト | OmniGlyphへの貢献 |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **このプロジェクト全体の土台となった発見。** pxpipeは、本番運用のLLMのビジョン経路が高密度なテキストコンテキストをトークンコストのごく一部で運べること、そしてその変換は雰囲気ではなく厳密な課金計算によってリクエストごとに判断されなければならないことを、根拠とともに証明しました。高密度な1ビットレンダリング、収益性ゲート、`count_tokens`による反実仮想、フェイルクローズなモデル許可リスト、そして「主張する前に実測する」というドキュメント文化は、すべてそこで最初に確立されたものです。OmniGlyphはそのコードベースから直接派生しています（MIT — オリジナルの著作権表記は私たちの[LICENSE](../../../LICENSE)に残されています）。 |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | 私たちの高密度1ビットグリフアトラスが由来する5×8ビットマップフォントファミリー（ライセンスは`assets/`に記載）。 |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | 同じアトラスにおいて、Spleenの範囲を超えるグリフをカバー（ライセンスは`assets/`に記載）。 |
+
+OmniGlyphが役に立ったと感じたら、ぜひアップストリームにもスターを付けてください — この発見は彼らのものです。🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 ライセンス
 

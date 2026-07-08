@@ -86,12 +86,49 @@ bloc de request voluminos ──► gate de profitabilitate ──► reflow + r
 - **Ce se convertește**: system prompt-ul static + docs de unelte, istoricul vechi colapsat, ieșirile mari de unelte.
 - **Ce nu se convertește niciodată**: mesajele dumneavoastră, turele recente, ieșirea modelului, proza rară, valorile exacte pe bit (hash-uri/ID-uri călătoresc alături ca text), și orice model care a eșuat la benchmark-ul de citire.
 
+# 📚 Utilizare ca bibliotecă (fără proxy)
+
+Tot ce face proxy-ul per request este de asemenea un API documentat, importabil:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Randați orice text în pagini PNG dense de 1-bit
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Sau rulați singur transformarea completă a request-ului — gate, matematică de facturare, tot
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // corpul JSON brut /v1/messages
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` fixează blocuri ca text; `options.emitRecoverable` returnează originalele blocurilor transformate în imagine. Matematica exactă de facturare este livrată și la rădăcina pachetului (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — asta este ce consumă [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Runtime Pure-JS (Node și edge/Workers). Suprafață completă: `src/core/index.ts`.
+
 # 🧭 Partea onestă
 
 - **Este lossy.** Recall-ul byte-exact din imagini este nesigur prin natura sa. Atenuări deja implementate: identificatorii exacți călătoresc ca text lângă imagine, iar config-ul de producție măsurat a produs **zero confabulații silențioase** — citirile eșuate se abțin.
 - **Doar Fable 5 este aprobat astăzi**, cu dovezi. GPT-5.5 și Gemini 2.5-flash măsurabil nu pot citi render-uri dense; Opus 4.8 are nevoie de glife 4× mai mari. Gate-ul impune acest lucru.
 - **Am găsit și am evitat o capcană de facturare**: nivelul de imagine de înaltă rezoluție facturează de 3.3× mai mult per pagină, dar encoderul de viziune nu primește rezoluția suplimentară — paginile mai mari se citesc *mai prost*. Măsurat, documentat în [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), neactivat.
 - Prețurile se schimbă; metrica durabilă este tăierea de tokeni, pe care proxy-ul o înregistrează per request față de un contrafactual gratuit `count_tokens`.
+
+# 🧠 Întrebări frecvente
+
+**Este 59–70% de la un capăt la altul, sau doar pe request-urile atinse?**
+De la un capăt la altul — întreaga factură. Majoritatea uneltelor de compresie raportează economii doar pe felia pe care au atins-o, ceea ce înfrumusețează cifra. Numitorul nostru este *fiecare* request: cele mici pe care gate-ul le-a lăsat corect neatinse, toate scrierile și citirile de cache, și toți tokenii de ieșire (pe care proxy-ul nu îi comprimă niciodată). Cifra doar-pe-comprimate iese mai mare și este citată separat, niciodată ca titlu.
+
+**Cum este măsurată economia?**
+Ambele părți ale aceluiași request, în același moment. Pentru fiecare POST către `/v1/messages`, proxy-ul lansează o sondă gratuită `count_tokens` pe corpul original necomprimat (contrafactualul) în paralel cu redirecționarea reală, și citește blocul de utilizare efectiv facturat de furnizor din răspuns — ambele ajung în aceeași linie de eveniment. Prețul de cache este aplicat identic pe ambele părți, astfel încât discountul de caching se anulează și nu poate fi contabilizat de două ori ca „economie”. Formula se află în `src/core/baseline.ts`; re-derivați-o din propriul jurnal de evenimente.
+
+**De ce ar fi o ratare o confabulație în loc de o eroare de citire?**
+Pentru că viziunea modelului nu este OCR: pagina devine embeddings de patch-uri, niciodată caractere discrete, deci nu există o încredere per-glif care să eșueze zgomotos — când pixelii subdetermina un glif, prior-ul lingvistic umple golul cu ceva plauzibil. Acest mecanism este exact motivul pentru care OmniGlyph este fail-closed în privința asta: valorile exacte pe bit călătoresc mereu ca text lângă imagine, modelele care citesc greșit sunt blocate de gate, iar config-ul de producție măsurat a produs **zero** confabulații silențioase în ~300 de sonde de citire — citirile eșuate se abțin.
+
+**Ce se întâmplă cu lucrul exact pe bit (hash-uri, ID-uri, secrete)?**
+Turele recente și identificatorii exacți rămân text prin design. Pentru sarcinile care sunt *în întregime* exacte pe bit, direcționați-le către un model care nu este pe allowlist (de ex. un subagent pe un alt model Claude) — orice este în afara allowlist-ului trece byte-identic, neatins.
+
+**Nu a tranșat deja DeepSeek-OCR dacă asta funcționează?**
+A dovedit că *canalul* funcționează — cu o pereche encoder/decoder antrenată special pentru asta. Scepticismul datează de când niciun model de producție standard nu putea citi render-uri dense; asta s-a schimbat, iar [clasamentul modelelor](../../../README.md#-the-numbers--measured-not-estimated) de mai sus arată exact cine le citește astăzi, cu dovezi. [Harness-ul de benchmark](../../../benchmarks/README.md) retestează orice model nou într-o singură comandă — gate-ul urmează datele, nu hype-ul.
 
 # 🔬 Reproduceți fiecare cifră
 
@@ -134,6 +171,20 @@ OmniGlyph este de asemenea livrat ca un **motor de compresie nativ în interioru
 - 🔒 [SECURITY.md](SECURITY.md) — raportări de vulnerabilități
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — TDD strict + măsurare înainte de afirmații
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Mulțumiri
+
+OmniGlyph stă pe umerii unui proiect în special — această secțiune este mulțumirea noastră permanentă.
+
+| Proiect | Cum a modelat OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Descoperirea pe care este construit întregul proiect.** pxpipe a demonstrat, cu dovezi, că un canal de viziune al unui LLM de producție poate transporta context textual dens la o fracțiune din costul de tokeni — și că această conversie trebuie decisă per-request prin matematică exactă de facturare, niciodată prin vibe. Randarea densă de 1-bit, gate-ul de profitabilitate, contrafactualul `count_tokens`, allowlist-ul fail-closed de modele, și cultura de documentare „măsurați înainte să afirmați” au fost toate pionierate acolo. OmniGlyph descinde direct din acel codebase (MIT — linia originală de copyright rămâne în fișierul nostru [LICENSE](../../../LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Familia de fonturi bitmap 5×8 din care derivă atlasul nostru dens de glife 1-bit (licență în `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Acoperire pentru glifele dincolo de gama Spleen, în același atlas (licență în `assets/`). |
+
+Dacă găsiți OmniGlyph util, dați star și proiectului original — descoperirea a fost a lor. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Licență
 

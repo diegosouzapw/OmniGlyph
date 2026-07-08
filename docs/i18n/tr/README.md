@@ -86,12 +86,49 @@ hacimli istek bloğu ──► kârlılık kapısı ──► yeniden akış + r
 - **Neler dönüştürülür**: statik system prompt + araç dokümanları, eski daraltılmış geçmiş, büyük araç çıktıları.
 - **Neler asla dönüştürülmez**: mesajlarınız, son turlar, modelin çıktısı, seyrek nesir, byte-tam değerler (hash'ler/ID'ler metin olarak görüntünün yanında gider) ve okuma benchmark'ını geçemeyen herhangi bir model.
 
+# 📚 Kütüphane kullanımı (proxy olmadan)
+
+Proxy'nin istek başına yaptığı her şey, aynı zamanda belgelenmiş, içe aktarılabilir bir API olarak da mevcuttur:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Herhangi bir metni yoğun 1-bit PNG sayfalara render edin
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Ya da tüm istek dönüşümünü kendiniz çalıştırın — kapı, faturalama matematiği, hepsi
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // ham /v1/messages JSON gövdesi
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` blokları metin olarak sabitler; `options.emitRecoverable` görüntülenmiş blokların orijinallerini döndürür. Tam faturalama matematiği paket kökünde de gönderilir (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — [OmniRoute](https://github.com/diegosouzapw/OmniRoute)'un tükettiği de budur. Saf JS runtime (Node ve edge/Workers). Tam yüzey: `src/core/index.ts`.
+
 # 🧭 Dürüst kısım
 
 - **Kayıplıdır.** Görüntülerden byte-tam geri çağırma doğası gereği güvenilmezdir. Sevk edilen önlemler: tam kimlikler görüntünün yanında metin olarak taşınır ve ölçülen üretim yapılandırması **sıfır sessiz uydurma** üretti — başarısız okumalar çekimser kalır.
 - **Bugün yalnızca Fable 5 onaylı**, kanıtlarla. GPT-5.5 ve Gemini 2.5-flash ölçülebilir şekilde yoğun render'ları okuyamıyor; Opus 4.8, 4× daha büyük gliflere ihtiyaç duyuyor. Kapı bunu zorunlu kılar.
 - **Bir faturalama tuzağı bulduk ve kaçındık**: yüksek çözünürlüklü görüntü katmanı sayfa başına 3,3× daha fazla faturalandırır, ancak görüntü kodlayıcı ekstra çözünürlüğü almaz — daha büyük sayfalar *daha kötü* okunur. Ölçüldü, [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md) içinde belgelendi, etkinleştirilmedi.
 - Fiyatlar değişir; kalıcı metrik, proxy'nin her istek için ücretsiz bir `count_tokens` karşı olgusuna karşı kaydettiği token kesintisidir.
+
+# 🧠 SSS
+
+**%59–70 uçtan uca mı, yoksa yalnızca dokunduğu isteklerde mi?**
+Uçtan uca — faturanın tamamı. Çoğu sıkıştırma aracı, yalnızca dokunduğu dilimdeki tasarrufu raporlar; bu da rakamı olduğundan iyi gösterir. Bizim paydamız *her* istek: kapının doğru şekilde dokunmadan bıraktığı küçük istekler, tüm cache yazma ve okumaları ve tüm çıktı tokenları (proxy bunları asla sıkıştırmaz). Yalnızca-sıkıştırılan rakamı daha yüksek çıkar ve ayrı olarak belirtilir, asla manşet olarak değil.
+
+**Tasarruf nasıl ölçülüyor?**
+Aynı isteğin iki tarafı, aynı anda. Her `/v1/messages` POST için proxy, gerçek yönlendirmeyle paralel olarak orijinal sıkıştırılmamış gövde (karşı olgu) üzerinde ücretsiz bir `count_tokens` probu ateşler ve sağlayıcının yanıtta gerçekten faturalandırdığı kullanım bloğunu okur — ikisi de aynı olay satırına düşer. Cache fiyatlandırması her iki tarafa da aynı şekilde uygulanır, böylece cache indirimi birbirini götürür ve "tasarruf" olarak iki kez sayılamaz. Formül `src/core/baseline.ts` içinde yaşar; kendi olay kaydınızdan yeniden türetin.
+
+**Neden bir kaçırma, okuma hatası yerine bir uydurma olsun?**
+Çünkü model görüşü OCR değildir: sayfa hiçbir zaman ayrık karakterlere değil, parça (patch) gömmelerine dönüşür — bu yüzden yüksek sesle başarısız olacak glif başına bir güven skoru yoktur. Pikseller bir glifi yeterince belirlemediğinde, dil önseli boşluğu makul bir şeyle doldurur. OmniGlyph'in bu konuda fail-closed olmasının tam nedeni de bu mekanizmadır: byte-tam değerler her zaman görüntünün yanında metin olarak taşınır, yanlış okuyan modeller kapı tarafından engellenir ve ölçülen üretim yapılandırması ~300 okuma probunda **sıfır** sessiz uydurma üretti — başarısız okumalar çekimser kalır.
+
+**Ya byte-tam işler (hash'ler, ID'ler, sırlar)?**
+Son turlar ve tam kimlikler tasarım gereği metin olarak kalır. Tamamen byte-tam olan iş yükleri için, bunları allowlist dışı bir modele yönlendirin (örneğin başka bir Claude modelinde bir subagent) — allowlist dışındaki her şey byte-özdeş şekilde, dokunulmadan geçer.
+
+**DeepSeek-OCR bunun işe yarayıp yaramadığını çözmedi mi?**
+*Kanalın* işe yaradığını kanıtladı — iş için eğitilmiş bir kodlayıcı/kod çözücü çiftiyle. Şüphecilik, hiçbir stok üretim modelinin yoğun render'ları okuyamadığı dönemden kalma; bu değişti ve yukarıdaki [model karnesi](../../../README.md#-the-numbers--measured-not-estimated) bugün bunları tam olarak kimin okuduğunu, kanıtlarla gösteriyor. [Benchmark harness](../../../benchmarks/README.md) yeni herhangi bir modeli tek komutla yeniden test eder — kapı hype'ı değil veriyi izler.
 
 # 🔬 Her rakamı yeniden üretin
 
@@ -134,6 +171,20 @@ OmniGlyph ayrıca [**OmniRoute**](https://github.com/diegosouzapw/OmniRoute) —
 - 🔒 [SECURITY.md](SECURITY.md) — güvenlik açığı bildirimleri
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — sıkı TDD + iddiadan önce ölçüm
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Teşekkürler
+
+OmniGlyph özellikle bir projenin omuzları üzerinde duruyor — bu bölüm bizim kalıcı teşekkürümüz.
+
+| Proje | OmniGlyph'i nasıl şekillendirdi |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Bu projenin tamamen üzerine kurulduğu keşif.** pxpipe, kanıtlarla, üretimdeki bir LLM'in görüntü kanalının yoğun metinsel bağlamı token maliyetinin çok küçük bir kısmında taşıyabileceğini ve dönüşümün asla hisle değil, istek başına tam faturalama matematiğiyle karar verilmesi gerektiğini kanıtladı. Yoğun 1-bit render, kârlılık kapısı, `count_tokens` karşı olgusu, fail-closed model allowlist'i ve "iddia etmeden önce ölç" belgeleme kültürü — hepsi orada öncülük edildi. OmniGlyph doğrudan o kod tabanından türer (MIT — orijinal telif hakkı satırı [LICENSE](../../../LICENSE) dosyamızda kalır). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Yoğun 1-bit glif atlasımızın türediği 5×8 bitmap font ailesi (lisans `assets/` içinde). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Aynı atlasta Spleen'in kapsamının ötesindeki glifler için kapsama (lisans `assets/` içinde). |
+
+OmniGlyph'i faydalı buluyorsanız, upstream'e de yıldız verin — keşif onlarındı. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Lisans
 

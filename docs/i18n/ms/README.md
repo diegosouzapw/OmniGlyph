@@ -86,12 +86,49 @@ blok permintaan besar ──► get keuntungan ──► reflow + render (atlas 
 - **Apa yang ditukar**: system prompt statik + dokumentasi alat, sejarah lama yang telah dikuncupkan, output alat yang besar.
 - **Apa yang tidak pernah ditukar**: mesej anda, pusingan terkini, output model, prosa jarang, nilai tepat-bait (hash/ID mengiringi sebagai teks), dan mana-mana model yang gagal penanda aras bacaan.
 
+# 📚 Penggunaan pustaka (tanpa proksi)
+
+Semua yang dilakukan oleh proksi bagi setiap permintaan turut tersedia sebagai API yang didokumentasikan dan boleh diimport:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render mana-mana teks kepada halaman PNG 1-bit padat
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Atau jalankan transformasi permintaan penuh sendiri — get, matematik pengebilan dan semuanya
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // badan JSON /v1/messages mentah
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` mengekalkan blok sebagai teks; `options.emitRecoverable` memulangkan versi asal blok yang telah diimejkan. Matematik pengebilan tepat turut dihantar pada akar pakej (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — itulah yang digunakan oleh [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Runtime Pure-JS (Node dan edge/Workers). Permukaan penuh: `src/core/index.ts`.
+
 # 🧭 Bahagian jujur
 
 - **Ia lossy.** Ingatan tepat-bait daripada imej memang tidak boleh dipercayai sepenuhnya. Mitigasi yang telah dilaksanakan: pengecam tepat bergerak sebagai teks di sebelah imej, dan konfigurasi pengeluaran yang diukur menghasilkan **sifar konfabulasi senyap** — bacaan yang gagal menahan diri.
 - **Hanya Fable 5 diluluskan buat masa ini**, dengan resit. GPT-5.5 dan Gemini 2.5-flash secara terukur tidak dapat membaca render padat; Opus 4.8 memerlukan glif 4× lebih besar. Get ini menguatkuasakan perkara ini.
 - **Kami menemui dan mengelakkan perangkap pengebilan**: tingkat imej resolusi tinggi mengenakan bil 3.3× lebih banyak setiap halaman, tetapi pengekod visi tidak menerima resolusi tambahan itu — halaman yang lebih besar dibaca *lebih teruk*. Diukur, didokumenkan dalam [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), tidak diaktifkan.
 - Harga berubah; metrik yang kekal ialah pengurangan token, yang direkodkan oleh proksi bagi setiap permintaan berbanding kaunterfaktual `count_tokens` percuma.
+
+# 🧠 Soalan Lazim
+
+**Adakah 59–70% itu hujung ke hujung, atau hanya pada permintaan yang disentuhnya?**
+Hujung ke hujung — keseluruhan bil. Kebanyakan alat pemampatan melaporkan penjimatan hanya pada bahagian yang disentuhnya, yang menggemukkan angka tersebut. Penyebut kami ialah *setiap* permintaan: yang kecil yang get betul-betul tidak sentuh, semua penulisan dan bacaan cache, dan semua token output (yang proksi tidak pernah mampatkan). Nisbah mampatan-sahaja lebih tinggi dan dipetik secara berasingan, tidak pernah sebagai tajuk utama.
+
+**Bagaimana penjimatan ini diukur?**
+Kedua-dua belah permintaan yang sama, pada saat yang sama. Bagi setiap POST `/v1/messages`, proksi menembak satu uji kaji `count_tokens` percuma ke atas badan asal yang tidak dimampatkan (kaunterfaktual) secara selari dengan penghantaran sebenar, dan membaca blok penggunaan yang benar-benar dikenakan bil oleh penyedia daripada respons — kedua-duanya mendarat pada baris peristiwa yang sama. Harga cache dikenakan secara sama rata pada kedua-dua belah, jadi diskaun caching saling membatalkan dan tidak boleh dikira dua kali sebagai "penjimatan". Formula tersebut terletak dalam `src/core/baseline.ts`; anda boleh menurunkannya semula daripada log peristiwa anda sendiri.
+
+**Kenapa kegagalan bacaan dianggap konfabulasi dan bukan ralat bacaan?**
+Kerana visi model bukan OCR: halaman itu menjadi embedan patch, bukan aksara diskret, jadi tiada keyakinan per-glif untuk gagal secara jelas — apabila piksel tidak cukup menentukan sesuatu glif, prior bahasa mengisi jurang itu dengan sesuatu yang munasabah. Mekanisme itulah sebabnya OmniGlyph gagal-tertutup tentang perkara ini: nilai tepat-bait sentiasa mengiringi sebagai teks di sebelah imej, model yang tersalah baca disekat oleh get, dan konfigurasi pengeluaran yang diukur menghasilkan **sifar** konfabulasi senyap dalam ~300 uji kaji bacaan — bacaan yang gagal menahan diri.
+
+**Bagaimana pula dengan kerja tepat-bait (hash, ID, rahsia)?**
+Pusingan terkini dan pengecam tepat kekal sebagai teks mengikut reka bentuk. Bagi beban kerja yang *semuanya* tepat-bait, laluankan ke model yang tidak berada dalam senarai dibenarkan (contohnya subejen pada model Claude lain) — apa-apa di luar senarai dibenarkan melalui tanpa diubah, sama bait demi bait.
+
+**Bukankah DeepSeek-OCR sudah membuktikan sama ada ini berfungsi?**
+Ia membuktikan *saluran* itu berfungsi — dengan sepasang enkoder/dekoder yang dilatih khusus untuk tugas itu. Keraguan itu bermula sejak tiada model pengeluaran sedia ada yang dapat membaca render padat; keadaan itu telah berubah, dan [kad skor model](../../../README.md#-the-numbers--measured-not-estimated) di atas menunjukkan dengan tepat siapa yang dapat membacanya hari ini, berserta bukti. [Harness penanda aras](../../../benchmarks/README.md) menguji semula sebarang model baharu dengan satu arahan — get ini mengikut data, bukan hype.
 
 # 🔬 Hasilkan semula setiap angka
 
@@ -134,6 +171,20 @@ OmniGlyph juga dihantar sebagai **enjin pemampatan asli di dalam [OmniRoute](htt
 - 🔒 [SECURITY.md](SECURITY.md) — laporan kerentanan
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — TDD ketat + pengukuran-sebelum-dakwaan
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Penghargaan
+
+OmniGlyph berdiri di atas bahu satu projek khususnya — bahagian ini ialah ucapan terima kasih kekal kami.
+
+| Projek | Bagaimana ia membentuk OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Penemuan asas seluruh projek ini dibina.** pxpipe membuktikan, dengan bukti, bahawa saluran visi LLM pengeluaran boleh membawa konteks teks yang padat pada sebahagian kecil kos token — dan bahawa penukaran mesti diputuskan bagi setiap permintaan menggunakan matematik pengebilan tepat, bukan mengikut agakan. Render 1-bit padat, get keuntungan, kaunterfaktual `count_tokens`, senarai dibenarkan model gagal-tertutup, dan budaya dokumentasi "ukur sebelum mendakwa" semuanya dirintis di sana. OmniGlyph berasal terus daripada pangkalan kod tersebut (MIT — baris hak cipta asal kekal dalam [LICENSE](../../../LICENSE) kami). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Keluarga fon bitmap 5×8 yang menjadi asal atlas glif 1-bit padat kami (lesen dalam `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Liputan bagi glif di luar julat Spleen dalam atlas yang sama (lesen dalam `assets/`). |
+
+Jika anda dapati OmniGlyph berguna, sila beri bintang kepada projek huluan itu juga — penemuan itu milik mereka. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Lesen
 

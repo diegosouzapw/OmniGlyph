@@ -86,12 +86,49 @@ objemný blok požiadavky ──► brána ziskovosti ──► reflow + render 
 - **Čo sa konvertuje**: statický systémový prompt + dokumentácia nástrojov, stará zbalená história, veľké výstupy nástrojov.
 - **Čo sa nikdy nekonvertuje**: vaše správy, nedávne kolá, výstup modelu, riedka próza, hodnoty na úrovni bajtov (hashe/ID cestujú popri texte), a akýkoľvek model, ktorý neprešiel benchmarkom čítania.
 
+# 📚 Použitie ako knižnica (bez proxy)
+
+Všetko, čo proxy robí pri každej požiadavke, je zároveň zdokumentované, importovateľné API:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Vykreslite ľubovoľný text do hustých 1-bitových PNG stránok
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Alebo si sami spustite celú transformáciu požiadavky — brána, presná účtovacia matematika a všetko
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // surové telo JSON /v1/messages
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` pripne bloky ako text; `options.emitRecoverable` vráti originály obrázkových blokov. Presná účtovacia matematika sa dodáva aj v koreni balíka (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — presne to používa [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Čistý JS runtime (Node aj edge/Workers). Celé rozhranie: `src/core/index.ts`.
+
 # 🧭 The honest part
 
 - **Je to stratové.** Presné čítanie na úrovni bajtov z obrázkov je zo svojej podstaty nespoľahlivé. Nasadené zmierňovania: presné identifikátory cestujú ako text vedľa obrázka a meraná produkčná konfigurácia priniesla **nulové tiché konfabulácie** — neúspešné čítania sa zdržia.
 - **Dnes je schválený iba Fable 5**, s dôkazmi. GPT-5.5 a Gemini 2.5-flash merateľne nedokážu čítať husté rendery; Opus 4.8 potrebuje 4× väčšie glyfy. Brána toto vynucuje.
 - **Našli a vyhli sme sa účtovacej pasci**: vysokorozlišovacia úroveň obrázka účtuje 3,3× viac za stránku, ale vizuálny enkodér nedostáva navyše rozlíšenie — väčšie stránky sa čítajú *horšie*. Merané, zdokumentované v [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), nenasadené.
 - Ceny sa menia; trvalá metrika je zníženie tokenov, ktoré proxy loguje na požiadavku oproti bezplatnému kontrafaktuálu `count_tokens`.
+
+# 🧠 FAQ
+
+**Je tých 59 – 70 % end-to-end, alebo len na požiadavkách, ktorých sa to dotklo?**
+End-to-end — celý účet. Väčšina kompresných nástrojov vykazuje úspory iba na časti, ktorej sa dotkli, čo číslo skresľuje v ich prospech. Náš menovateľ je *každá* požiadavka: tie malé, ktoré brána správne nechala nedotknuté, všetky zápisy a čítania z cache a všetky výstupné tokeny (ktoré proxy nikdy nekomprimuje). Číslo počítané iba z komprimovanej časti vychádza vyššie a uvádza sa samostatne, nikdy ako hlavné číslo.
+
+**Ako sa meria úspora?**
+Obe strany tej istej požiadavky, v tom istom okamihu. Pri každom POST na `/v1/messages` proxy vypáli bezplatnú sondu `count_tokens` na pôvodné nekomprimované telo (kontrafaktuál) paralelne so skutočným presmerovaním a načíta zo skutočnej odpovede blok použitia, ktorý účtoval poskytovateľ — oboje pristane v tom istom riadku udalosti. Cenotvorba cache sa uplatňuje identicky na oboch stranách, takže zľava za cache sa vyruší a nedá sa dvojito započítať ako „úspora“. Vzorec je v `src/core/baseline.ts`; odvoďte si ho znova z vlastného logu udalostí.
+
+**Prečo by mal byť neúspech konfabuláciou namiesto chyby čítania?**
+Pretože vizuálny modul modelu nie je OCR: stránka sa zmení na embeddingy záplat, nikdy na diskrétne znaky, takže neexistuje miera istoty na úrovni glyfu, na ktorej by mohlo čítanie nahlas zlyhať — keď pixely nedostatočne určujú glyf, jazykový prior doplní medzeru niečím pravdepodobným. Presne kvôli tomuto mechanizmu je OmniGlyph v tomto ohľade fail-closed: hodnoty na úrovni bajtov vždy cestujú ako text vedľa obrázka, modely, ktoré čítajú nesprávne, blokuje brána, a meraná produkčná konfigurácia priniesla **nulové** tiché konfabulácie v ~300 sondách čítania — neúspešné čítania sa zdržia.
+
+**Čo s prácou na úrovni bajtov (hashe, ID, tajomstvá)?**
+Nedávne kolá a presné identifikátory ostávajú textom podľa dizajnu. Pre záťaže, ktoré sú *celé* na úrovni bajtov, ich smerujte na model mimo zoznamu povolených (napr. subagenta na inom modeli Claude) — čokoľvek mimo zoznamu povolených prechádza bajtovo identické, nedotknuté.
+
+**Nevyriešil DeepSeek-OCR už otázku, či to funguje?**
+Dokázal, že *kanál* funguje — s párom enkodér/dekodér natrénovaným presne na túto úlohu. Skepticizmus pochádza z obdobia, keď žiadny bežný produkčný model nevedel čítať husté rendery; to sa zmenilo a [skóre modelov](../../../README.md#-the-numbers--measured-not-estimated) vyššie presne ukazuje, kto ich dnes dokáže čítať, s dôkazmi. [Benchmarkový harness](../../../benchmarks/README.md) otestuje akýkoľvek nový model jedným príkazom — brána sa riadi dátami, nie hype.
 
 # 🔬 Zreprodukujte každé číslo
 
@@ -134,6 +171,20 @@ OmniGlyph sa tiež dodáva ako **natívny kompresný engine vnútri [OmniRoute](
 - 🔒 [SECURITY.md](SECURITY.md) — hlásenia zraniteľností
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — striktné TDD + meranie pred tvrdeniami
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Poďakovania
+
+OmniGlyph stojí na pleciach jedného projektu obzvlášť — táto sekcia je naše trvalé poďakovanie.
+
+| Projekt | Ako ovplyvnil OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Objav, na ktorom je postavený celý tento projekt.** pxpipe s dôkazmi preukázal, že vizuálny kanál produkčného LLM dokáže niesť hustý textový kontext za zlomok nákladov na tokeny — a že o konverzii sa musí rozhodovať pri každej požiadavke presnou účtovacou matematikou, nikdy podľa pocitu. Husté 1-bitové vykresľovanie, brána ziskovosti, kontrafaktuál `count_tokens`, fail-closed zoznam povolených modelov a kultúra dokumentácie „najprv zmerať, potom tvrdiť“ — to všetko tam vzniklo ako prvé. OmniGlyph priamo vychádza z tohto kódu (MIT — pôvodný riadok copyrightu ostáva v našej [LICENSE](../../../LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Rodina bitmapových fontov 5×8, z ktorej vychádza náš hustý 1-bitový atlas glyfov (licencia v `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Pokrytie glyfov nad rámec rozsahu Spleen v tom istom atlase (licencia v `assets/`). |
+
+Ak vám OmniGlyph príde užitočný, dajte hviezdičku aj pôvodnému projektu — objav bol ich. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Licencia
 

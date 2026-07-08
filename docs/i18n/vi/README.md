@@ -86,12 +86,49 @@ khối request cồng kềnh ──► gate lợi nhuận ──► reflow + ren
 - **Những gì được chuyển đổi**: system prompt tĩnh + tài liệu công cụ, lịch sử cũ đã thu gọn, kết quả công cụ lớn.
 - **Những gì không bao giờ được chuyển đổi**: tin nhắn của bạn, các lượt gần đây, đầu ra của mô hình, văn xuôi thưa thớt, giá trị chính xác từng byte (hash/ID đi kèm dưới dạng văn bản), và bất kỳ mô hình nào không vượt qua benchmark đọc.
 
+# 📚 Sử dụng dưới dạng thư viện (không cần proxy)
+
+Mọi thứ mà proxy làm cho mỗi request cũng là một API đã được tài liệu hóa, có thể import:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render bất kỳ văn bản nào thành các trang PNG dày đặc 1-bit
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Hoặc tự chạy toàn bộ transform cho request — gate, công thức tính phí và mọi thứ
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // JSON body /v1/messages gốc
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` ghim các khối lại dưới dạng văn bản; `options.emitRecoverable` trả về bản gốc của các khối đã bị chuyển thành hình ảnh. Công thức tính phí chính xác cũng được xuất ở gốc package (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — đó là những gì [OmniRoute](https://github.com/diegosouzapw/OmniRoute) sử dụng. Runtime thuần JS (Node và edge/Workers). Toàn bộ bề mặt API: `src/core/index.ts`.
+
 # 🧭 Phần trung thực
 
 - **Đây là kỹ thuật lossy.** Khả năng nhớ chính xác từng byte từ hình ảnh vốn không đáng tin cậy. Các biện pháp giảm thiểu đã triển khai: các định danh chính xác đi kèm dưới dạng văn bản bên cạnh hình ảnh, và cấu hình sản xuất đã đo lường cho ra **không có bịa đặt âm thầm nào** — các lần đọc thất bại đều tự nhận là không đọc được.
 - **Chỉ Fable 5 được phê duyệt hiện nay**, có bằng chứng. GPT-5.5 và Gemini 2.5-flash được đo lường là không đọc được render dày đặc; Opus 4.8 cần glyph lớn hơn 4×. Gate thực thi điều này.
 - **Chúng tôi đã phát hiện và tránh một cái bẫy tính phí**: tier hình ảnh độ phân giải cao tính phí gấp 3,3× mỗi trang, nhưng bộ mã hóa thị giác không nhận được độ phân giải bổ sung đó — trang lớn hơn lại đọc *tệ hơn*. Đã đo lường, ghi lại trong [docs/benchmarks/BENCHMARKS.md](../../../docs/benchmarks/BENCHMARKS.md), không được kích hoạt.
 - Giá cả thay đổi; chỉ số bền vững là mức cắt giảm token, được proxy ghi lại cho mỗi request so với một phép đối chứng `count_tokens` miễn phí.
+
+# 🧠 Câu hỏi thường gặp (FAQ)
+
+**Con số 59–70% là đầu-cuối, hay chỉ tính trên các request đã được xử lý?**
+Đầu-cuối — toàn bộ hóa đơn. Hầu hết các công cụ nén khác chỉ báo cáo mức tiết kiệm trên phần mà chúng đã xử lý, điều này làm con số trông đẹp hơn thực tế. Mẫu số của chúng tôi là *mọi* request: cả những request nhỏ mà gate đã đúng đắn để nguyên không đụng tới, mọi lần ghi và đọc cache, và mọi token đầu ra (mà proxy không bao giờ nén). Con số chỉ tính trên phần đã nén thì cao hơn và được nêu riêng, không bao giờ dùng làm con số chính.
+
+**Mức tiết kiệm được đo như thế nào?**
+Cả hai phía của cùng một request, tại cùng một thời điểm. Với mỗi POST `/v1/messages`, proxy gửi một phép thử `count_tokens` miễn phí trên body gốc chưa nén (kịch bản đối chứng) song song với lượt chuyển tiếp thật, rồi đọc khối usage thực tế đã được nhà cung cấp tính phí từ phản hồi — cả hai đều nằm trong cùng một dòng sự kiện. Giá cache được áp dụng như nhau cho cả hai phía, nên mức chiết khấu cache tự triệt tiêu và không thể bị tính trùng như "tiết kiệm". Công thức nằm trong `src/core/baseline.ts`; bạn có thể tự suy ra lại từ nhật ký sự kiện của mình.
+
+**Tại sao một lần đọc trượt lại là bịa đặt thay vì lỗi đọc?**
+Vì thị giác của mô hình không phải OCR: trang hình ảnh trở thành các patch embedding, không bao giờ là các ký tự rời rạc, nên không có độ tin cậy theo từng glyph để báo lỗi rõ ràng — khi các pixel không đủ để xác định một glyph, ưu tiên ngôn ngữ (language prior) sẽ lấp đầy khoảng trống bằng thứ gì đó nghe có vẻ hợp lý. Chính cơ chế đó là lý do OmniGlyph áp dụng fail-closed: các giá trị chính xác từng byte luôn đi kèm dưới dạng văn bản bên cạnh hình ảnh, các mô hình đọc sai bị gate chặn lại, và cấu hình sản xuất đã đo lường cho ra **không** có bịa đặt âm thầm nào trong ~300 phép thử đọc — các lần đọc thất bại đều tự nhận là không đọc được.
+
+**Còn công việc cần chính xác từng byte (hash, ID, secret) thì sao?**
+Theo thiết kế, các lượt gần đây và định danh chính xác luôn ở dạng văn bản. Với các workload mà *toàn bộ* đều cần chính xác từng byte, hãy định tuyến chúng đến một mô hình không nằm trong allowlist (ví dụ một subagent chạy trên một mô hình Claude khác) — bất cứ thứ gì ngoài allowlist đều đi qua nguyên vẹn, giống hệt byte gốc, không bị đụng tới.
+
+**Chẳng phải DeepSeek-OCR đã chứng minh điều này hoạt động rồi sao?**
+Nó chứng minh *kênh truyền* hoạt động — với một cặp encoder/decoder được huấn luyện riêng cho việc đó. Sự hoài nghi bắt nguồn từ thời điểm chưa có mô hình sản xuất tiêu chuẩn nào đọc được render dày đặc; điều đó đã thay đổi, và [bảng xếp hạng mô hình](../../../README.md#-the-numbers--measured-not-estimated) ở trên cho thấy chính xác ai đọc được chúng ngày nay, có bằng chứng đi kèm. [Bộ khung benchmark](../../../benchmarks/README.md) kiểm tra lại bất kỳ mô hình mới nào chỉ bằng một lệnh — gate đi theo dữ liệu, không theo lời đồn.
 
 # 🔬 Tái tạo mọi con số
 
@@ -134,6 +171,20 @@ OmniGlyph cũng được phân phối như một **engine nén gốc bên trong 
 - 🔒 [SECURITY.md](SECURITY.md) — báo cáo lỗ hổng bảo mật
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — TDD nghiêm ngặt + đo lường trước khi khẳng định
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Lời cảm ơn
+
+OmniGlyph được xây dựng dựa trên nền tảng của một dự án đặc biệt — đây là lời cảm ơn thường trực của chúng tôi.
+
+| Dự án | Đã định hình OmniGlyph như thế nào |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Khám phá mà toàn bộ dự án này được xây dựng dựa trên.** pxpipe đã chứng minh, có bằng chứng, rằng kênh thị giác của một LLM sản xuất có thể mang ngữ cảnh văn bản dày đặc chỉ với một phần nhỏ chi phí token — và việc chuyển đổi phải được quyết định theo từng request bằng công thức tính phí chính xác, không bao giờ theo cảm tính. Việc render 1-bit dày đặc, gate lợi nhuận, phép đối chứng `count_tokens`, allowlist mô hình fail-closed, và văn hóa tài liệu "đo lường trước khi khẳng định" đều được tiên phong tại đó. OmniGlyph kế thừa trực tiếp từ codebase đó (MIT — dòng bản quyền gốc vẫn được giữ nguyên trong [LICENSE](../../../LICENSE) của chúng tôi). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Họ font bitmap 5×8 mà atlas glyph 1-bit dày đặc của chúng tôi bắt nguồn từ đó (giấy phép trong `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Phủ sóng cho các glyph nằm ngoài phạm vi của Spleen trong cùng atlas đó (giấy phép trong `assets/`). |
+
+Nếu bạn thấy OmniGlyph hữu ích, hãy star cả dự án gốc — khám phá đó là của họ. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Giấy phép
 

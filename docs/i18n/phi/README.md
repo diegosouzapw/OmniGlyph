@@ -86,12 +86,49 @@ malaking request block ──► profitability gate ──► reflow + render (1
 - **Ano ang nako-convert**: ang static na system prompt + dokumentasyon ng tool, lumang naka-collapse na history, malalaking output ng tool.
 - **Ano ang hindi kailanman nako-convert**: ang iyong mga mensahe, kamakailang turns, ang output ng modelo, kalat-kalat na prosa, byte-exact na mga value (ang mga hash/ID ay sumasakay bilang text sa tabi), at anumang modelong bumagsak sa reading benchmark.
 
+# 📚 Paggamit bilang Library (walang proxy)
+
+Lahat ng ginagawa ng proxy kada request ay isa ring dokumentado at angkop na i-import na API:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// I-render ang anumang text sa siksik na 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// O patakbuhin mismo ang buong pagbabago ng request — gate, matematika ng billing, at lahat
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // ang hilaw na JSON body ng /v1/messages
+  model: "claude-fable-5",
+});
+```
+
+Ang `options.keepSharp(block)` ay nagpipin ng mga block bilang text; ibinabalik ng `options.emitRecoverable` ang mga orihinal ng mga naka-imaheng block. Ang eksaktong matematika ng billing ay ipinapadala rin sa package root (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — ito ang ginagamit ng [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Pure-JS runtime (Node at edge/Workers). Buong surface: `src/core/index.ts`.
+
 # 🧭 Ang tapat na bahagi
 
 - **Lossy ito.** Hindi maaasahan sa likas na katangian ang byte-exact na recall mula sa mga imahe. Mga mitigasyong ipinatupad: ang eksaktong mga identifier ay sumasakay bilang text sa tabi ng imahe, at ang sinukat na production config ay walang naging **tahimik na confabulations** — ang mga nabigong pagbasa ay umaatras.
 - **Fable 5 lamang ang aprubado sa ngayon**, na may mga resibo. Sinukat na hindi makabasa ng siksik na render ang GPT-5.5 at Gemini 2.5-flash; kailangan ng Opus 4.8 ng 4× mas malaking glyph. Pinapatupad ito ng gate.
 - **Natuklasan at naiwasan namin ang isang bitag sa billing**: ang high-resolution na image tier ay sumisingil ng 3.3× pa kada pahina, ngunit hindi natatanggap ng vision encoder ang karagdagang resolution — mas *masama* ang pagbasa sa mas malalaking pahina. Sinukat, dokumentado sa [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), hindi pinagana.
 - Nagbabago ang mga presyo; ang matibay na sukatan ay ang pagbawas ng token, na itinatala ng proxy kada request laban sa isang libreng `count_tokens` na counterfactual.
+
+# 🧠 FAQ
+
+**End-to-end ba ang 59–70%, o sa mga request lamang na nagalaw?**
+End-to-end — ang buong bayarin. Karamihan sa mga compression tool ay nag-uulat ng savings sa hiwa lamang na nagalaw nila, na nagpapaganda sa numero. Ang aming denominator ay *bawat* request: ang mga maliit na tama namang hindi ginalaw ng gate, lahat ng cache writes at reads, at lahat ng output token (na hindi kailanman kino-compress ng proxy). Mas mataas ang compressed-only runs at binabanggit ito nang hiwalay, hindi bilang headline.
+
+**Paano sinusukat ang savings?**
+Parehong panig ng iisang request, sa iisang sandali. Para sa bawat `/v1/messages` POST, pinapatakbo ng proxy ang isang libreng `count_tokens` probe sa orihinal, hindi naka-compress na body (ang counterfactual) kasabay ng aktwal na forward, at binabasa ang aktwal na billed usage block ng provider mula sa response — parehong nasa iisang event row. Inaaplay ang cache pricing nang pantay sa magkabilang panig, kaya nagkakansela ang caching discount at hindi ito ma-do-double-count bilang "savings". Nasa `src/core/baseline.ts` ang formula; i-derive ulit ito mula sa sarili mong events log.
+
+**Bakit magiging confabulation ang isang miss sa halip na read error?**
+Dahil hindi OCR ang vision ng modelo: nagiging patch embeddings ang pahina, hindi kailanman discrete na mga karakter, kaya walang per-glyph na confidence na pwedeng bumagsak nang malakas — kapag hindi tiyak ang isang glyph dahil sa pixels, pinupunan ng language prior ang puwang ng isang bagay na kapani-paniwala. Iyan mismo ang dahilan kung bakit fail-closed ang OmniGlyph dito: laging sumasakay bilang text ang byte-exact na mga value sa tabi ng imahe, hinaharangan ng gate ang mga modelong mali ang pagbasa, at walang naging **tahimik** na confabulations ang sinukat na production config sa ~300 read probes — ang mga nabigong pagbasa ay umaatras.
+
+**Paano ang byte-exact na trabaho (hashes, IDs, secrets)?**
+Nananatiling text sa disenyo ang kamakailang turns at eksaktong mga identifier. Para sa mga workload na *lahat* byte-exact, iruta ang mga ito sa isang modelong wala sa allowlist (hal., isang subagent sa ibang modelo ng Claude) — anumang wala sa allowlist ay dumadaan nang byte-identical, hindi hinihipo.
+
+**Hindi ba nasagot na ng DeepSeek-OCR kung gumagana ito?**
+Pinatunayan nito na gumagana ang *channel* — na may encoder/decoder pair na sinanay para sa trabaho. Ang pag-aalinlangan ay mula pa sa panahong walang stock production model na makabasa ng siksik na render; nagbago na iyon, at ipinapakita ng [model scorecard](../../../README.md#-the-numbers--measured-not-estimated) sa itaas kung sino talaga ang makakabasa nito ngayon, na may mga resibo. Muling sinusubok ng [benchmark harness](../../../benchmarks/README.md) ang anumang bagong modelo sa isang command — sinusunod ng gate ang datos, hindi ang hype.
 
 # 🔬 Ulitin ang bawat numero
 
@@ -134,6 +171,20 @@ Ang OmniGlyph ay ipinapadala rin bilang isang **native na compression engine sa 
 - 🔒 [SECURITY.md](SECURITY.md) — mga ulat ng vulnerability
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — mahigpit na TDD + pagsukat bago mag-claim
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Pasasalamat
+
+Nakatayo ang OmniGlyph sa balikat ng isang proyekto sa partikular — permanenteng pasasalamat namin ang seksyong ito.
+
+| Proyekto | Paano hinubog nito ang OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Ang natuklasan na kinatatayuan ng buong proyektong ito.** Pinatunayan ng pxpipe, na may mga resibo, na kayang dalhin ng vision channel ng isang production LLM ang siksik na textual context sa isang maliit na bahagi lamang ng gastos sa token — at na dapat pasyahan ang conversion kada request gamit ang eksaktong matematika ng billing, hindi ng vibes. Ang siksik na 1-bit rendering, ang profitability gate, ang `count_tokens` na counterfactual, ang fail-closed na model allowlist, at ang kulturang "sukatin bago mag-claim" sa dokumentasyon — lahat ng ito ay unang pinasimulan doon. Direktang nagmula ang OmniGlyph sa codebase na iyon (MIT — nananatili ang orihinal na copyright line sa aming [LICENSE](../../../LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Ang 5×8 bitmap font family na pinagmulan ng aming siksik na 1-bit glyph atlas (lisensya sa `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Saklaw para sa mga glyph na lampas sa hanay ng Spleen sa parehong atlas (lisensya sa `assets/`). |
+
+Kung nakikita mong kapaki-pakinabang ang OmniGlyph, bigyan mo rin ng star ang upstream — sa kanila nagmula ang natuklasan. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Lisensya
 

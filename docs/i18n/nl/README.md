@@ -86,12 +86,49 @@ omvangrijk verzoekblok ──► winstgevendheidspoort ──► reflow + render
 - **Wat wordt geconverteerd**: de statische systeemprompt + tool-documentatie, oude ingeklapte geschiedenis, grote tool-uitvoer.
 - **Wat nooit wordt geconverteerd**: uw berichten, recente beurten, de uitvoer van het model, schaarse proza, byte-exacte waarden (hashes/ID's reizen als tekst mee), en elk model dat de leesbenchmark niet haalde.
 
+# 📚 Bibliotheekgebruik (zonder proxy)
+
+Alles wat de proxy per verzoek doet, is ook beschikbaar als gedocumenteerde, importeerbare API:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render tekst naar dichte 1-bit PNG-pagina's
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Of voer de volledige verzoektransformatie zelf uit — poort, billing-wiskunde en alles
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // de ruwe /v1/messages JSON-body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` zet blokken vast als tekst; `options.emitRecoverable` geeft de originelen van als afbeelding weergegeven blokken terug. De exacte billing-wiskunde wordt ook op het package-root niveau geleverd (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — dat is wat [OmniRoute](https://github.com/diegosouzapw/OmniRoute) gebruikt. Pure-JS runtime (Node en edge/Workers). Volledige oppervlakte: `src/core/index.ts`.
+
 # 🧭 Het eerlijke verhaal
 
 - **Het is lossy.** Byte-exacte herinnering vanuit afbeeldingen is van nature onbetrouwbaar. Verzachtende maatregelen: exacte identifiers reizen als tekst naast de afbeelding, en de gemeten productieconfiguratie leverde **nul stille confabulaties** op — mislukte lezingen onthouden zich.
 - **Alleen Fable 5 is vandaag goedgekeurd**, met bewijzen. GPT-5.5 en Gemini 2.5-flash kunnen aantoonbaar geen dichte renders lezen; Opus 4.8 heeft 4× grotere glyfen nodig. De poort dwingt dit af.
 - **We hebben een billing-valkuil ontdekt en vermeden**: de hoge-resolutie-afbeeldingstier factureert 3,3× meer per pagina, maar de vision-encoder ontvangt de extra resolutie niet — grotere pagina's lezen *slechter*. Gemeten, gedocumenteerd in [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), niet ingeschakeld.
 - Prijzen veranderen; de blijvende metriek is de tokenreductie, die de proxy per verzoek logt tegenover een gratis `count_tokens`-tegenfeitelijke.
+
+# 🧠 FAQ
+
+**Is de 59–70% end-to-end, of alleen op de verzoeken die zijn aangepast?**
+End-to-end — de volledige rekening. De meeste compressietools rapporteren besparingen alleen over het deel dat ze hebben aangepast, wat het cijfer vleit. Onze noemer is *elk* verzoek: de kleine verzoeken die de poort terecht ongemoeid liet, alle cache-writes en -reads, en alle outputtokens (die de proxy nooit comprimeert). Alleen-gecomprimeerd scoort hoger en wordt apart vermeld, nooit als hoofdcijfer.
+
+**Hoe wordt de besparing gemeten?**
+Beide kanten van hetzelfde verzoek, op hetzelfde moment. Voor elke `/v1/messages`-POST vuurt de proxy parallel aan de echte doorstuur een gratis `count_tokens`-probe af op de originele ongecomprimeerde body (de tegenfeitelijke), en leest het daadwerkelijk gefactureerde usage-blok van de provider uit het antwoord — beide belanden in dezelfde eventregel. Cacheprijzen worden op beide kanten identiek toegepast, zodat de cachekorting wegvalt en niet dubbel als "besparing" kan worden meegeteld. De formule staat in `src/core/baseline.ts`; leid hem zelf opnieuw af uit uw eigen eventenlog.
+
+**Waarom zou een misser een confabulatie zijn in plaats van een leesfout?**
+Omdat modelvisie geen OCR is: de pagina wordt patch-embeddings, nooit discrete tekens, dus er is geen betrouwbaarheid per glyph om luid op te falen — wanneer pixels een glyph onvoldoende bepalen, vult de taalprior het gat met iets aannemelijks. Precies dat mechanisme is waarom OmniGlyph hier fail-closed op is: byte-exacte waarden reizen altijd als tekst naast de afbeelding, modellen die verkeerd lezen worden geblokkeerd door de poort, en de gemeten productieconfiguratie leverde **nul** stille confabulaties op in ~300 leesprobes — mislukte lezingen onthouden zich.
+
+**Hoe zit het met byte-exact werk (hashes, ID's, geheimen)?**
+Recente beurten en exacte identifiers blijven by design tekst. Voor workloads die *volledig* byte-exact zijn, routeer ze naar een model dat niet op de allowlist staat (bijv. een subagent op een ander Claude-model) — alles buiten de allowlist gaat byte-identiek en ongemoeid door.
+
+**Heeft DeepSeek-OCR niet al bewezen dat dit werkt?**
+Dat bewees dat het *kanaal* werkt — met een encoder/decoder-paar dat voor die taak is getraind. Het scepticisme dateert van toen geen enkel standaard productiemodel dichte renders kon lezen; dat is veranderd, en de [modelscorekaart](../../../README.md#-the-numbers--measured-not-estimated) hierboven laat precies zien wie ze vandaag kan lezen, met bewijzen. De [benchmark-harness](../../../benchmarks/README.md) test elk nieuw model opnieuw met één commando — de poort volgt de data, niet de hype.
 
 # 🔬 Reproduceer elk cijfer
 
@@ -134,6 +171,20 @@ OmniGlyph wordt ook geleverd als een **native compressie-engine binnen [OmniRout
 - 🔒 [SECURITY.md](SECURITY.md) — meldingen van kwetsbaarheden
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — strikte TDD + meting-vóór-beweringen
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Dankbetuigingen
+
+OmniGlyph staat op de schouders van één project in het bijzonder — deze sectie is ons blijvende dankwoord.
+
+| Project | Hoe het OmniGlyph heeft gevormd |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **De ontdekking waarop dit hele project is gebouwd.** pxpipe bewees, met bewijzen, dat het vision-kanaal van een productie-LLM dichte tekstuele context kan dragen tegen een fractie van de tokenkosten — en dat de conversie per verzoek moet worden beslist door exacte billing-wiskunde, nooit op gevoel. De dichte 1-bit-rendering, de winstgevendheidspoort, de `count_tokens`-tegenfeitelijke, de fail-closed model-allowlist en de cultuur van "meet voordat u beweert" werden daar allemaal als eerste ontwikkeld. OmniGlyph stamt rechtstreeks af van die codebase (MIT — de originele copyrightregel blijft staan in onze [LICENSE](../../../LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | De 5×8-bitmapfontfamilie waarvan onze dichte 1-bit-glyfatlas is afgeleid (licentie in `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Dekking voor de glyfen buiten het bereik van Spleen, in dezelfde atlas (licentie in `assets/`). |
+
+Als u OmniGlyph nuttig vindt, geef dan ook een ster aan het bovenstroomse project — de ontdekking was van hen. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Licentie
 

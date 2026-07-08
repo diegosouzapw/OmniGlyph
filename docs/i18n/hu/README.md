@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **Mi konvertálódik**: a statikus rendszerprompt + eszközdokumentáció, régi összecsukott előzmények, nagy eszközkimenetek.
 - **Mi soha nem konvertálódik**: az Ön üzenetei, a legutóbbi fordulók, a modell kimenete, ritkás prózaszöveg, byte-pontos értékek (hash-ek/azonosítók szövegként utaznak mellette), és bármely modell, amely megbukott az olvasási benchmarkon.
 
+# 📚 Könyvtárhasználat (proxy nélkül)
+
+Mindent, amit a proxy kérésenként elvégez, dokumentált, importálható API-ként is elérhető:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+Az `options.keepSharp(block)` szövegként rögzíti a blokkokat; az `options.emitRecoverable` visszaadja a képpé alakított blokkok eredetijét. A pontos számlázási matematika a csomag gyökerén is elérhető (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — ezt használja fel az [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Tiszta JS futtatókörnyezet (Node és edge/Workers). Teljes felület: `src/core/index.ts`.
+
 # 🧭 The honest part
 
 - **Veszteséges.** A byte-pontos visszakeresés képekből természeténél fogva megbízhatatlan. Bevetett mérséklések: a pontos azonosítók szövegként utaznak a kép mellett, és a mért éles konfiguráció **nulla néma konfabulációt** produkált — a sikertelen olvasások tartózkodnak.
 - **Ma csak a Fable 5 jóváhagyott**, bizonyítékokkal. A GPT-5.5 és a Gemini 2.5-flash mérhetően nem képes olvasni a sűrű renderelést; az Opus 4.8-nak 4×-esen nagyobb glifekre van szüksége. A kapu ezt kikényszeríti.
 - **Találtunk és elkerültünk egy számlázási csapdát**: a nagyfelbontású képszint oldalanként 3,3×-szer többet számláz, de a vizuális enkóder nem kapja meg a plusz felbontást — a nagyobb oldalak *rosszabbul* olvashatók. Mérve, dokumentálva a [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md)-ban, nincs bekapcsolva.
 - Az árak változnak; a tartós mutató a token-csökkentés, amit a proxy kérésenként naplóz egy ingyenes `count_tokens` ellentényezővel szemben.
+
+# 🧠 GYIK
+
+**Az 59–70% végponttól végpontig értendő, vagy csak azokra a kérésekre, amelyeket érintett?**
+Végponttól végpontig — a teljes számla. A legtöbb tömörítő eszköz csak azon a szeleten mért megtakarítást jelenti, amelyet ténylegesen érintett, ami hízelgőbbé teszi a számot. A mi nevezőnk *minden* kérés: a kicsik, amelyeket a kapu helyesen érintetlenül hagyott, minden cache-írás és -olvasás, és minden kimeneti token (amit a proxy soha nem tömörít). A csak-tömörített arány magasabb, és külön van feltüntetve, sosem főcímként.
+
+**Hogyan mérjük a megtakarítást?**
+Ugyanannak a kérésnek mindkét oldalát, ugyanabban a pillanatban. Minden `/v1/messages` POST esetén a proxy egy ingyenes `count_tokens` próbát indít az eredeti, tömörítetlen törzsön (az ellentényezőn) párhuzamosan a valódi továbbítással, és kiolvassa a szolgáltató által ténylegesen számlázott usage-blokkot a válaszból — mindkettő ugyanabba az eseménysorba kerül. A cache-árazást mindkét oldalra azonosan alkalmazzuk, így a cache-kedvezmény kiesik, és nem számolható duplán „megtakarításként”. A képlet a `src/core/baseline.ts`-ben található; saját eseménynaplójából újra levezetheti.
+
+**Miért lenne egy hibás olvasás konfabuláció, nem pedig olvasási hiba?**
+Mert a modell látása nem OCR: az oldal patch-embeddingekké válik, sosem diszkrét karakterekké, így nincs glifenkénti megbízhatósági érték, amin hangosan el lehetne bukni — amikor a pixelek alulhatározzák a glifét, a nyelvi prior valami valószínűvel tölti ki a rést. Pontosan ez a mechanizmus az oka annak, hogy az OmniGlyph fail-closed ezzel kapcsolatban: a byte-pontos értékek mindig szövegként utaznak a kép mellett, a rosszul olvasó modelleket a kapu blokkolja, és a mért éles konfiguráció **nulla** néma konfabulációt produkált ~300 olvasási próba során — a sikertelen olvasások tartózkodnak.
+
+**Mi a helyzet a byte-pontos munkával (hash-ek, azonosítók, titkok)?**
+A legutóbbi fordulók és a pontos azonosítók tervezésnél fogva szövegként maradnak. Azoknál a munkaterheléseknél, amelyek *teljes egészében* byte-pontosak, irányítsa őket egy nem engedélyezési listán szereplő modellhez (pl. egy szubágenshez egy másik Claude-modellen) — minden, ami az engedélyezési listán kívül esik, byte-azonosan, érintetlenül halad át.
+
+**A DeepSeek-OCR nem döntötte már el, hogy ez működik-e?**
+Az bebizonyította, hogy a *csatorna* működik — egy erre a feladatra betanított enkóder/dekóder párral. A szkepticizmus abból az időből származik, amikor egyetlen gyári éles modell sem tudta olvasni a sűrű rendereléseket; ez megváltozott, és a fenti [modell-eredménytábla](../../../README.md#-the-numbers--measured-not-estimated) pontosan megmutatja, ki olvassa ezeket ma, bizonyítékokkal. A [benchmark harness](../../../benchmarks/README.md) egyetlen paranccsal újratesztel minden új modellt — a kapu az adatokat követi, nem a hype-ot.
 
 # 🔬 Minden szám reprodukálása
 
@@ -134,6 +171,20 @@ Az OmniGlyph emellett **natív tömörítési motorként is szállítva van az [
 - 🔒 [SECURITY.md](SECURITY.md) — sebezhetőségi bejelentések
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — szigorú TDD + mérés-a-állítás-előtt
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Köszönetnyilvánítás
+
+Az OmniGlyph különösen egyetlen projekt vállán áll — ez a szakasz a maradandó köszönetünk.
+
+| Projekt | Hogyan formálta az OmniGlyph-et |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **A felfedezés, amelyre ez az egész projekt épül.** A pxpipe bizonyítékokkal igazolta, hogy egy éles LLM vizuális csatornája a token-költség töredékéért képes sűrű szöveges kontextust szállítani — és hogy a konverziót kérésenként, pontos számlázási matematikával kell eldönteni, sosem megérzés alapján. A sűrű 1-bites renderelés, a profitabilitási kapu, a `count_tokens` ellentényező, a fail-closed modell-engedélyezési lista, és a „mérj, mielőtt állítasz” dokumentációs kultúra mind ott született. Az OmniGlyph közvetlenül ebből a kódbázisból származik (MIT — az eredeti copyright sor megmarad a [LICENSE](../../../LICENSE)-ünkben). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Az 5×8-as bitmap betűtípus-család, amelyből a sűrű 1-bites glifatlaszunk származik (licenc az `assets/`-ban). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Lefedettség a Spleen tartományán túli glifekhez ugyanabban az atlaszban (licenc az `assets/`-ban). |
+
+Ha hasznosnak találja az OmniGlyph-et, adjon csillagot az upstream projektnek is — a felfedezés az övék volt. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Licenc
 

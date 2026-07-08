@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **Ce qui est converti** : le prompt système statique + la documentation des outils, l'ancien historique réduit, les sorties d'outils volumineuses.
 - **Ce qui n'est jamais converti** : vos messages, les tours récents, la sortie du modèle, le texte peu dense, les valeurs exactes en octets (hashes/identifiants voyagent en texte à côté), et tout modèle ayant échoué au benchmark de lecture.
 
+# 📚 Utilisation en tant que bibliothèque (sans proxy)
+
+Tout ce que le proxy fait par requête est aussi disponible sous forme d'API documentée et importable :
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` épingle des blocs en tant que texte ; `options.emitRecoverable` renvoie les originaux des blocs transformés en image. Les mathématiques de facturation exactes sont aussi exportées à la racine du paquet (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — c'est ce que consomme [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Runtime pur JS (Node et edge/Workers). Surface complète : `src/core/index.ts`.
+
 # 🧭 The honest part
 
 - **C'est avec perte.** Le rappel exact en octets à partir d'images est intrinsèquement peu fiable. Mesures d'atténuation mises en place : les identifiants exacts voyagent en texte à côté de l'image, et la configuration de production mesurée n'a produit **zéro confabulation silencieuse** — les lectures échouées s'abstiennent.
 - **Seul Fable 5 est approuvé aujourd'hui**, avec preuves. GPT-5.5 et Gemini 2.5-flash ne peuvent mesurablement pas lire les rendus denses ; Opus 4.8 a besoin de glyphes 4× plus grands. Le portail applique cela.
 - **Nous avons trouvé et évité un piège de facturation** : le palier d'image haute résolution facture 3,3× plus par page, mais l'encodeur de vision ne reçoit pas la résolution supplémentaire — les pages plus grandes se lisent *moins bien*. Mesuré, documenté dans [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), non activé.
 - Les prix changent ; la métrique durable est la réduction de tokens, que le proxy consigne par requête face à un contrefactuel `count_tokens` gratuit.
+
+# 🧠 FAQ
+
+**Le 59–70 % est-il de bout en bout, ou seulement sur les requêtes touchées ?**
+De bout en bout — la facture entière. La plupart des outils de compression ne rapportent des économies que sur la tranche qu'ils ont touchée, ce qui enjolive le chiffre. Notre dénominateur est *chaque* requête : les petites que le portail a correctement laissées intactes, toutes les écritures et lectures de cache, et tous les tokens de sortie (que le proxy ne compresse jamais). Le chiffre « compressé uniquement » est plus élevé et cité séparément, jamais comme titre.
+
+**Comment l'économie est-elle mesurée ?**
+Les deux côtés de la même requête, au même moment. Pour chaque POST `/v1/messages`, le proxy déclenche un sondage `count_tokens` gratuit sur le corps original non compressé (le contrefactuel) en parallèle de l'envoi réel, et lit le bloc d'utilisation réellement facturé par le fournisseur dans la réponse — les deux atterrissent dans la même ligne d'événement. La tarification du cache est appliquée identiquement des deux côtés, si bien que la remise de cache s'annule et ne peut pas être comptée deux fois comme « économie ». La formule se trouve dans `src/core/baseline.ts` ; redérivez-la depuis votre propre journal d'événements.
+
+**Pourquoi une erreur de lecture serait-elle une confabulation plutôt qu'une simple erreur ?**
+Parce que la vision des modèles n'est pas de l'OCR : la page devient des plongements de patchs, jamais des caractères discrets, donc il n'existe pas de confiance par glyphe pouvant échouer bruyamment — quand les pixels sous-déterminent un glyphe, l'a priori linguistique comble le vide avec quelque chose de plausible. C'est exactement ce mécanisme qui rend OmniGlyph fail-closed à ce sujet : les valeurs exactes en octets voyagent toujours en texte à côté de l'image, les modèles qui lisent mal sont bloqués par le portail, et la configuration de production mesurée n'a produit **zéro** confabulation silencieuse sur ~300 sondages de lecture — les lectures échouées s'abstiennent.
+
+**Qu'en est-il du travail exact en octets (hashes, identifiants, secrets) ?**
+Les tours récents et les identifiants exacts restent en texte par conception. Pour les charges de travail *entièrement* exactes en octets, dirigez-les vers un modèle hors liste blanche (par exemple un sous-agent sur un autre modèle Claude) — tout ce qui est hors liste blanche passe intact, octet pour octet.
+
+**DeepSeek-OCR n'a-t-il pas réglé la question de savoir si cela fonctionne ?**
+Il a prouvé que le *canal* fonctionne — avec une paire encodeur/décodeur entraînée pour cette tâche. Le scepticisme date d'une époque où aucun modèle de production standard ne pouvait lire des rendus denses ; ce n'est plus le cas, et le [tableau de bord des modèles](../../../README.md#-the-numbers--measured-not-estimated) ci-dessus montre précisément qui les lit aujourd'hui, preuves à l'appui. Le [harnais de benchmark](../../../benchmarks/README.md) reteste n'importe quel nouveau modèle en une seule commande — le portail suit les données, pas le battage médiatique.
 
 # 🔬 Reproduire chaque chiffre
 
@@ -134,6 +171,20 @@ OmniGlyph est aussi livré comme **moteur de compression natif au sein d'[OmniRo
 - 🔒 [SECURITY.md](SECURITY.md) — signalements de vulnérabilités
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — TDD strict + mesure avant affirmation
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Remerciements
+
+OmniGlyph repose sur les épaules d'un projet en particulier — cette section est notre remerciement permanent.
+
+| Projet | Comment il a façonné OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **La découverte sur laquelle repose tout ce projet.** pxpipe a prouvé, preuves à l'appui, que le canal de vision d'un LLM de production peut transporter un contexte textuel dense pour une fraction du coût en tokens — et que la conversion doit être décidée requête par requête par un calcul de facturation exact, jamais au feeling. Le rendu 1-bit dense, le portail de rentabilité, le contrefactuel `count_tokens`, la liste blanche de modèles fail-closed, et la culture documentaire « mesurer avant d'affirmer » ont tous été inaugurés là-bas. OmniGlyph descend directement de cette base de code (MIT — la ligne de copyright d'origine reste dans notre [LICENSE](../../../LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | La famille de police bitmap 5×8 dont dérive notre atlas de glyphes 1-bit dense (licence dans `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Couverture des glyphes au-delà de la portée de Spleen dans le même atlas (licence dans `assets/`). |
+
+Si vous trouvez OmniGlyph utile, allez aussi mettre une étoile au projet d'origine — la découverte était la leur. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Licence
 

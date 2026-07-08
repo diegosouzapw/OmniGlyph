@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **எது மாற்றப்படுகிறது**: static system prompt + tool docs, பழைய collapsed history, பெரிய tool outputs.
 - **எது ஒருபோதும் மாற்றப்படாது**: உங்கள் messages, சமீபத்திய turns, மாடலின் output, sparse prose, byte-exact values (hashes/IDs உரையாக படத்துடன் பயணிக்கின்றன), மற்றும் reading benchmark-இல் தோல்வியடைந்த எந்த மாடலும்.
 
+# 📚 Library பயன்பாடு (proxy இல்லாமல்)
+
+proxy ஒவ்வொரு requestக்கும் செய்யும் அனைத்தும் ஒரு documented, importable API ஆகவும் கிடைக்கிறது:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` blocks-ஐ உரையாகப் பின் செய்கிறது; `options.emitRecoverable` படமாக்கப்பட்ட blocks-இன் originals-ஐ திருப்பித் தருகிறது. சரியான பில்லிங் கணிதமும் package root-இல் shipped ஆகிறது (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — இதைத்தான் [OmniRoute](https://github.com/diegosouzapw/OmniRoute) உபயோகிக்கிறது. Pure-JS runtime (Node மற்றும் edge/Workers). முழு surface: `src/core/index.ts`.
+
 # 🧭 The honest part
 
 - **இது lossy.** படங்களிலிருந்து Byte-exact recall இயற்கையாகவே நம்பகமற்றது. அனுப்பப்பட்ட தணிப்புகள்: exact identifiers படத்தின் அருகில் உரையாகப் பயணிக்கின்றன, மற்றும் அளவிடப்பட்ட production config **பூஜ்ஜிய silent confabulations** ஐ உருவாக்கியது — தோல்வியுற்ற reads தவிர்க்கின்றன.
 - **இன்று Fable 5 மட்டுமே அங்கீகரிக்கப்பட்டுள்ளது**, ஆதாரங்களுடன். GPT-5.5 மற்றும் Gemini 2.5-flash அளவிடத்தக்க வகையில் அடர்த்தியான renders-ஐ படிக்க முடியாது; Opus 4.8-க்கு 4× பெரிய glyphs தேவை. gate இதை அமல்படுத்துகிறது.
 - **ஒரு பில்லிங் trap-ஐ கண்டுபிடித்து தவிர்த்தோம்**: high-resolution image tier ஒரு பக்கத்திற்கு 3.3× அதிகமாக பில் செய்கிறது, ஆனால் vision encoder கூடுதல் resolution-ஐப் பெறுவதில்லை — பெரிய பக்கங்கள் *மோசமாக* படிக்கப்படுகின்றன. அளவிடப்பட்டது, [docs/benchmarks/BENCHMARKS.md](../../../docs/benchmarks/BENCHMARKS.md)-இல் documented, இயக்கப்படவில்லை.
 - விலைகள் மாறுகின்றன; நீடித்த metric token குறைப்பாகும், இதை proxy ஒவ்வொரு requestக்கும் ஒரு இலவச `count_tokens` counterfactual-க்கு எதிராக log செய்கிறது.
+
+# 🧠 FAQ
+
+**59–70% என்பது end-to-end ஆ, அல்லது அது தொட்ட requests-இல் மட்டும் ஆ?**
+End-to-end — முழு பில். பெரும்பாலான compression tools தாங்கள் தொட்ட பகுதியில் மட்டும் சேமிப்பை report செய்கின்றன, இது எண்ணை மிகைப்படுத்திக் காட்டுகிறது. எங்கள் denominator *ஒவ்வொரு* requestமாகும்: gate சரியாக தொடாமல் விட்ட சிறிய requests, அனைத்து cache writes மற்றும் reads, மற்றும் அனைத்து output tokens (இவற்றை proxy ஒருபோதும் சுருக்காது). Compressed-only எண் அதிகமாக வரும், அது தனியாக மேற்கோள் காட்டப்படுகிறது, headline ஆக ஒருபோதும் இல்லை.
+
+**சேமிப்பு எப்படி அளவிடப்படுகிறது?**
+ஒரே requestன் இரு பக்கங்களும், ஒரே தருணத்தில். ஒவ்வொரு `/v1/messages` POST-க்கும் proxy மூல uncompressed body-இல் (counterfactual) ஒரு இலவச `count_tokens` probe-ஐ, உண்மையான forward-உடன் இணையாக இயக்குகிறது, மேலும் response-இலிருந்து provider உண்மையில் பில் செய்த usage block-ஐ படிக்கிறது — இரண்டும் ஒரே event row-இல் பதிவாகின்றன. Cache pricing இரு பக்கங்களுக்கும் ஒரே மாதிரியாக பயன்படுத்தப்படுகிறது, எனவே caching தள்ளுபடி ரத்தாகி "savings" ஆக இரட்டிப்பு கணக்கிடப்பட முடியாது. ஃபார்முலா `src/core/baseline.ts`-இல் உள்ளது; அதை உங்கள் சொந்த events log-இலிருந்து மீண்டும் derive செய்யுங்கள்.
+
+**ஒரு தவறு ஏன் read error-க்குப் பதிலாக confabulation ஆக இருக்கும்?**
+ஏனெனில் model vision OCR அல்ல: பக்கம் patch embeddings ஆக மாறுகிறது, ஒருபோதும் தனித்தனி எழுத்துகளாக அல்ல, எனவே சத்தமாக தோல்வியடைய per-glyph confidence எதுவும் இல்லை — pixels ஒரு glyph-ஐ underdetermine செய்யும்போது, language prior அந்த இடைவெளியை நம்பகமான ஏதோவொன்றால் நிரப்புகிறது. இந்த mechanism தான் OmniGlyph இதில் fail-closed ஆக இருப்பதற்குக் காரணம்: byte-exact மதிப்புகள் எப்போதும் படத்தின் அருகில் உரையாகப் பயணிக்கின்றன, தவறாகப் படிக்கும் மாடல்கள் gate-ஆல் தடுக்கப்படுகின்றன, மேலும் அளவிடப்பட்ட production config ~300 read probes-இல் **பூஜ்ஜிய** silent confabulations-ஐ உருவாக்கியது — தோல்வியுற்ற reads தவிர்க்கின்றன.
+
+**byte-exact வேலை (hashes, IDs, secrets) பற்றி என்ன?**
+சமீபத்திய turns மற்றும் exact identifiers வடிவமைப்பால் உரையாகவே இருக்கும். *முழுவதும்* byte-exact ஆன workloads-க்கு, அவற்றை ஒரு non-allowlisted மாடலுக்கு route செய்யுங்கள் (எ.கா., வேறொரு Claude மாடலில் ஒரு subagent) — allowlist-க்கு வெளியே உள்ள எதுவும் byte-identical ஆக, தொடப்படாமல் கடந்து செல்கிறது.
+
+**DeepSeek-OCR இது வேலை செய்கிறதா என்பதை தீர்மானிக்கவில்லையா?**
+அது *channel* வேலை செய்கிறது என்பதை நிரூபித்தது — இந்த வேலைக்காகப் பயிற்சி பெற்ற ஒரு encoder/decoder ஜோடியுடன். எந்த stock production மாடலும் அடர்த்தியான renders-ஐ படிக்க முடியாத காலத்திலிருந்து இந்த சந்தேகம் தொடர்கிறது; அது மாறிவிட்டது, மேலும் மேலே உள்ள [மாடல் scorecard](../../../README.md#-the-numbers--measured-not-estimated) இன்று அவற்றை யார் படிக்க முடியும் என்பதை ஆதாரங்களுடன் சரியாகக் காட்டுகிறது. [benchmark harness](../../../benchmarks/README.md) எந்த புதிய மாடலையும் ஒரே கட்டளையில் மீண்டும் சோதிக்கிறது — gate hype-ஐ அல்ல, தரவைப் பின்பற்றுகிறது.
 
 # 🔬 ஒவ்வொரு எண்ணையும் மறுஉருவாக்குங்கள்
 
@@ -134,6 +171,20 @@ OmniGlyph [OmniRoute](https://github.com/diegosouzapw/OmniRoute)-க்குள
 - 🔒 [SECURITY.md](SECURITY.md) — vulnerability அறிக்கைகள்
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — strict TDD + measurement-before-claims
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 நன்றி
+
+OmniGlyph குறிப்பாக ஒரு project-இன் தோள்களில் நிற்கிறது — இந்த பகுதி எங்கள் நிரந்தர நன்றியாகும்.
+
+| Project | OmniGlyph-ஐ இது எப்படி வடிவமைத்தது |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **இந்த முழு project-உம் கட்டமைக்கப்பட்டுள்ள கண்டுபிடிப்பு.** ஒரு production LLM-இன் vision channel, token செலவின் ஒரு சிறு பங்கில் அடர்த்தியான textual context-ஐ சுமக்க முடியும் என்பதையும், அந்த மாற்றம் per-request சரியான பில்லிங் கணிதத்தால் தான் முடிவு செய்யப்பட வேண்டும், ஒருபோதும் ஊகத்தால் அல்ல என்பதையும் pxpipe ஆதாரங்களுடன் நிரூபித்தது. அடர்த்தியான 1-bit rendering, profitability gate, `count_tokens` counterfactual, fail-closed model allowlist, மற்றும் "claim செய்வதற்கு முன் measure செய்" என்ற documentation கலாச்சாரம் — இவை அனைத்தும் அங்கேயே முன்னோடியாகத் தொடங்கப்பட்டன. OmniGlyph நேரடியாக அந்த codebase-இலிருந்து வந்தது (MIT — மூல copyright வரி எங்கள் [LICENSE](../../../LICENSE)-இல் தொடர்கிறது). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | எங்கள் அடர்த்தியான 1-bit glyph atlas பெறப்பட்ட 5×8 bitmap font family (license `assets/`-இல்). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Spleen-இன் வரம்புக்கு அப்பாற்பட்ட glyphs-க்கான coverage, அதே atlas-இல் (license `assets/`-இல்). |
+
+OmniGlyph பயனுள்ளதாக இருந்தால், upstream project-ஐயும் star செய்யுங்கள் — கண்டுபிடிப்பு அவர்களுடையது. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 License
 

@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **Vad som konverteras**: den statiska systemprompten + verktygsdokumentation, gammal hopfälld historik, stora verktygsutdata.
 - **Vad som aldrig konverteras**: dina meddelanden, senaste turerna, modellens utdata, gles prosa, byte-exakta värden (hashar/id:n följer med som text), samt varje modell som misslyckats med läsbenchmarken.
 
+# 📚 Användning som bibliotek (utan proxy)
+
+Allt proxyn gör per förfrågan är också ett dokumenterat, importerbart API:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` fäster block som text; `options.emitRecoverable` returnerar originalen för avbildade block. Den exakta faktureringsmatematiken levereras även vid paketets rot (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — det är vad [OmniRoute](https://github.com/diegosouzapw/OmniRoute) använder. Ren JS-körtid (Node och edge/Workers). Fullständigt gränssnitt: `src/core/index.ts`.
+
 # 🧭 The honest part
 
 - **Det är förlustbehäftat.** Byte-exakt återgivning från bilder är till sin natur opålitlig. Genomförda motåtgärder: exakta identifierare reser som text bredvid bilden, och den mätta produktionskonfigurationen gav **noll tysta konfabulationer** — misslyckade läsningar avstår.
 - **Endast Fable 5 är godkänd idag**, med belägg. GPT-5.5 och Gemini 2.5-flash kan mätbart inte läsa täta renderingar; Opus 4.8 behöver 4× större glyfer. Spärren upprätthåller detta.
 - **Vi hittade och undvek en faktureringsfälla**: den högupplösta bildnivån fakturerar 3,3× mer per sida, men vision-kodaren tar inte emot den extra upplösningen — större sidor läses *sämre*. Mätt, dokumenterat i [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md), inte aktiverat.
 - Priser förändras; det bestående måttet är tokenminskningen, som proxyn loggar per förfrågan mot ett kostnadsfritt `count_tokens`-motfaktum.
+
+# 🧠 Vanliga frågor
+
+**Är det 59–70 % från ände till ände, eller bara på de förfrågningar det påverkade?**
+Från ände till ände — hela räkningen. De flesta komprimeringsverktyg redovisar besparingar bara på den del de faktiskt rörde, vilket smickrar siffran. Vår nämnare är *varje* förfrågan: de små som spärren korrekt lämnade orörda, alla cache-skrivningar och -läsningar, och alla utdata-tokens (som proxyn aldrig komprimerar). Enbart-komprimerat ger ett högre tal och anges separat, aldrig som huvudsiffra.
+
+**Hur mäts besparingen?**
+Båda sidor av samma förfrågan, vid samma tidpunkt. För varje `/v1/messages`-POST skickar proxyn en kostnadsfri `count_tokens`-prob på den ursprungliga, okomprimerade kroppen (motfaktumet) parallellt med den verkliga vidarebefordran, och läser leverantörens faktiskt fakturerade användningsblock från svaret — båda hamnar i samma händelserad. Cachepriser tillämpas identiskt på båda sidor, så cache-rabatten tar ut sig själv och kan inte dubbelräknas som "besparing". Formeln finns i `src/core/baseline.ts`; härled den själv ur din egen händelselogg.
+
+**Varför skulle en missad läsning vara en konfabulation snarare än ett läsfel?**
+Därför att modellens synförmåga inte är OCR: sidan blir till patch-embeddingar, aldrig diskreta tecken, så det finns ingen per-glyf-konfidens att misslyckas högljutt på — när pixlarna underbestämmer en glyf fyller språkmodellens prior i luckan med något rimligt. Just den mekanismen är anledningen till att OmniGlyph är fail-closed kring detta: byte-exakta värden reser alltid som text bredvid bilden, modeller som misstolkar blockeras av spärren, och den mätta produktionskonfigurationen gav **noll** tysta konfabulationer i cirka 300 läsprober — misslyckade läsningar avstår.
+
+**Vad gäller byte-exakt arbete (hashar, id:n, hemligheter)?**
+Senaste turerna och exakta identifierare förblir text med avsikt. För arbetsbelastningar som är *helt* byte-exakta, dirigera dem till en modell som inte finns med på listan över godkända modeller (t.ex. en subagent på en annan Claude-modell) — allt som ligger utanför listan över godkända modeller passerar byte-identiskt, orört.
+
+**Avgjorde inte DeepSeek-OCR redan om det här fungerar?**
+Det bevisade att *kanalen* fungerar — med ett kodare/avkodare-par tränat för uppgiften. Skepsisen härstammar från en tid då ingen standardmodell i produktion kunde läsa täta renderingar; det har ändrats, och [modellöversikten](../../../README.md#-the-numbers--measured-not-estimated) ovan visar exakt vem som läser dem idag, med belägg. [Benchmark-ramverket](../../../benchmarks/README.md) omtestar varje ny modell med ett enda kommando — spärren följer data, inte hypen.
 
 # 🔬 Reproducera varje siffra
 
@@ -134,6 +171,20 @@ OmniGlyph levereras också som en **inbyggd kompressionsmotor inuti [OmniRoute](
 - 🔒 [SECURITY.md](SECURITY.md) — säkerhetsrapporter
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — strikt TDD + mätning-före-påståenden
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Erkännanden
+
+OmniGlyph står på axlarna av ett projekt i synnerhet — det här avsnittet är vårt permanenta tack.
+
+| Projekt | Hur det formade OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **Upptäckten som hela det här projektet bygger på.** pxpipe bevisade, med belägg, att en produktionsmodells (LLM) synkanal kan bära tät textuell kontext till en bråkdel av tokenkostnaden — och att konverteringen måste avgöras per förfrågan genom exakt faktureringsmatematik, aldrig på känsla. Den täta 1-bitars-renderingen, lönsamhetsspärren, `count_tokens`-motfaktumet, listan över godkända modeller (fail-closed) och dokumentationskulturen "mät innan du påstår" pionjärades allihop där. OmniGlyph härstammar direkt från den kodbasen (MIT — den ursprungliga upphovsrättsraden finns kvar i vår [LICENSE](../../../LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | Typsnittsfamiljen i 5×8-bitmap som vår täta 1-bitars glyfatlas härstammar från (licens i `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Täckning för glyferna utanför Spleens omfång i samma atlas (licens i `assets/`). |
+
+Om du tycker OmniGlyph är användbart, stjärnmärk gärna uppströmsprojektet också — upptäckten var deras. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Licens
 

@@ -86,12 +86,49 @@ bloco de request volumoso ──► gate de rentabilidade ──► reflow + ren
 - **O que é convertido**: o system prompt estático + docs de ferramentas, histórico antigo colapsado, saídas grandes de ferramenta.
 - **O que nunca é convertido**: suas mensagens, turnos recentes, a saída do modelo, prosa esparsa, valores byte-exatos (hashes/IDs viajam junto como texto), e qualquer modelo que falhou no benchmark de leitura.
 
+# 📚 Uso como biblioteca (sem proxy)
+
+Tudo que o proxy faz por request também é uma API documentada e importável:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Renderize qualquer texto em páginas PNG densas de 1-bit
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Ou execute você mesmo toda a transformação do request — gate, matemática de cobrança e tudo mais
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // o JSON body cru do /v1/messages
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)` fixa blocos como texto; `options.emitRecoverable` retorna os originais dos blocos convertidos em imagem. A matemática de cobrança exata também é exportada na raiz do pacote (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — é isso que o [OmniRoute](https://github.com/diegosouzapw/OmniRoute) consome. Runtime puro-JS (Node e edge/Workers). Superfície completa: `src/core/index.ts`.
+
 # 🧭 A parte honesta
 
 - **É lossy.** Recall byte-exato a partir de imagens é inerentemente não confiável. Mitigações já implementadas: identificadores exatos viajam como texto ao lado da imagem, e a config de produção medida produziu **zero confabulações silenciosas** — leituras que falham se abstêm.
 - **Só o Fable 5 está aprovado hoje**, com comprovantes. GPT-5.5 e Gemini 2.5-flash mensuravelmente não conseguem ler renders densos; Opus 4.8 precisa de glifos 4× maiores. O gate impõe isso.
 - **Encontramos e evitamos uma armadilha de cobrança**: o tier de imagem em alta resolução cobra 3,3× mais por página, mas o encoder de visão não recebe a resolução extra — páginas maiores leem *pior*. Medido, documentado em [docs/benchmarks/BENCHMARKS.md](../../../docs/benchmarks/BENCHMARKS.md), não habilitado.
 - Preços mudam; a métrica durável é o corte de tokens, que o proxy registra por request contra um contrafactual gratuito de `count_tokens`.
+
+# 🧠 FAQ
+
+**Os 59–70% são de ponta a ponta, ou só nos requests que ele tocou?**
+De ponta a ponta — a conta inteira. A maioria das ferramentas de compressão reporta economia só na fatia que tocou, o que infla o número. Nosso denominador é *todo* request: os pequenos que o gate corretamente deixou intocados, todas as escritas e leituras de cache, e todos os tokens de saída (que o proxy nunca comprime). Rodando só sobre o que foi convertido o número fica maior, e é citado à parte, nunca como manchete.
+
+**Como a economia é medida?**
+Os dois lados do mesmo request, no mesmo momento. Para cada POST em `/v1/messages` o proxy dispara uma sonda `count_tokens` gratuita sobre o body original não comprimido (o contrafactual) em paralelo com o envio real, e lê o bloco de uso efetivamente cobrado pelo provedor na resposta — ambos caem na mesma linha de evento. O preço de cache é aplicado de forma idêntica aos dois lados, então o desconto de cache se cancela e não pode ser contado em dobro como "economia". A fórmula está em `src/core/baseline.ts`; re-derive a partir do seu próprio log de eventos.
+
+**Por que um erro seria uma confabulação, e não um simples erro de leitura?**
+Porque visão de modelo não é OCR: a página vira embeddings de patch, nunca caracteres discretos — então não existe uma confiança por glifo para falhar de forma visível. Quando os pixels subdeterminam um glifo, o prior linguístico preenche a lacuna com algo plausível. É exatamente por esse mecanismo que o OmniGlyph é fail-closed nesse ponto: valores byte-exatos sempre viajam como texto ao lado da imagem, modelos que leem errado são bloqueados pelo gate, e a config de produção medida produziu **zero** confabulações silenciosas em ~300 sondas de leitura — leituras que falham se abstêm.
+
+**E o trabalho byte-exato (hashes, IDs, segredos)?**
+Turnos recentes e identificadores exatos permanecem como texto, por design. Para cargas de trabalho que são *inteiramente* byte-exatas, roteie-as para um modelo fora do allowlist (por exemplo, um subagente rodando em outro modelo Claude) — qualquer coisa fora do allowlist passa intocada, byte-idêntica.
+
+**O DeepSeek-OCR não resolveu de vez se isso funciona?**
+Ele provou que o *canal* funciona — com um par encoder/decoder treinado especificamente para a tarefa. O ceticismo vem de uma época em que nenhum modelo de produção padrão conseguia ler renders densos; isso mudou, e o [placar de modelos](../../../README.md#-the-numbers--measured-not-estimated) acima mostra exatamente quem os lê hoje, com comprovantes. O [harness de benchmark](../../../benchmarks/README.md) retesta qualquer modelo novo em um único comando — o gate segue os dados, não o hype.
 
 # 🔬 Reproduza cada número
 
@@ -134,6 +171,20 @@ O OmniGlyph também é distribuído como um **motor de compressão nativo dentro
 - 🔒 [SECURITY.md](SECURITY.md) — relatos de vulnerabilidade
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — TDD estrito + medição antes de afirmações
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Agradecimentos
+
+O OmniGlyph se apoia nos ombros de um projeto em particular — esta seção é nosso agradecimento permanente.
+
+| Projeto | Como moldou o OmniGlyph |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **A descoberta sobre a qual todo este projeto é construído.** O pxpipe provou, com comprovantes, que o canal de visão de um LLM de produção pode carregar contexto textual denso por uma fração do custo em tokens — e que a conversão precisa ser decidida por request pela matemática exata de cobrança, nunca por intuição. A renderização densa em 1-bit, o gate de rentabilidade, o contrafactual `count_tokens`, o allowlist fail-closed de modelos e a cultura de documentação "meça antes de afirmar" foram todos pioneiros ali. O OmniGlyph descende diretamente daquele codebase (MIT — a linha de copyright original permanece na nossa [LICENSE](../../../LICENSE)). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | A família de fontes bitmap 5×8 da qual nosso atlas de glifos denso em 1-bit deriva (licença em `assets/`). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | Cobertura para os glifos além do alcance do Spleen, no mesmo atlas (licença em `assets/`). |
+
+Se você acha o OmniGlyph útil, vá dar uma estrela no projeto original também — a descoberta foi deles. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 Licença
 

@@ -86,12 +86,49 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 - **변환 대상**: 정적 시스템 프롬프트 + 툴 문서, 오래되어 접힌(collapsed) 히스토리, 큰 툴 출력.
 - **결코 변환되지 않는 것**: 사용자의 메시지, 최근 턴, 모델의 출력, 희소한 산문, 바이트 단위로 정확해야 하는 값(해시/ID는 텍스트로 함께 전송), 그리고 판독 벤치마크를 통과하지 못한 모델.
 
+# 📚 Library use (no proxy)
+
+프록시가 요청마다 수행하는 모든 작업은 문서화된, 임포트 가능한 API로도 제공됩니다:
+
+```ts
+import { renderTextToImages, transformAnthropicMessages } from "omniglyph";
+
+// Render any text to dense 1-bit PNG pages
+const { pages } = await renderTextToImages(bigToolOutput, { reflow: true });
+// pages[i].png: Uint8Array · pages[i].width × pages[i].height
+
+// Or run the full request transform yourself — gate, billing math and all
+const { body, applied, reason } = await transformAnthropicMessages({
+  body: requestBytes,           // the raw /v1/messages JSON body
+  model: "claude-fable-5",
+});
+```
+
+`options.keepSharp(block)`는 블록을 텍스트로 고정합니다. `options.emitRecoverable`는 이미지화된 블록의 원본을 반환합니다. 정확한 과금 수학은 패키지 루트에서도 제공됩니다(`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — 이것이 바로 [OmniRoute](https://github.com/diegosouzapw/OmniRoute)가 사용하는 것입니다. 순수 JS 런타임(Node 및 edge/Workers)입니다. 전체 API 표면: `src/core/index.ts`.
+
 # 🧭 The honest part
 
 - **손실이 있습니다.** 이미지에서 바이트 단위로 정확한 복원은 본질적으로 신뢰할 수 없습니다. 적용된 완화책: 정확한 식별자는 이미지 옆에 텍스트로 함께 이동하며, 측정된 프로덕션 설정은 **은밀한 컨퓨불레이션 0건**을 기록했습니다 — 판독에 실패하면 기권합니다.
 - **오늘 승인된 것은 Fable 5뿐**이며, 근거가 있습니다. GPT-5.5와 Gemini 2.5-flash는 밀도 높은 렌더를 측정 가능한 수준으로 읽지 못하며, Opus 4.8은 4배 큰 글리프가 필요합니다. 게이트가 이를 강제합니다.
 - **과금 함정을 발견하고 피했습니다**: 고해상도 이미지 티어는 페이지당 3.3배 더 많이 과금되지만, 비전 인코더는 추가 해상도를 받지 못합니다 — 더 큰 페이지가 오히려 *더 나쁘게* 읽힙니다. 측정 결과는 [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md)에 문서화되어 있으며, 활성화되어 있지 않습니다.
 - 가격은 변동됩니다. 지속되는 지표는 토큰 절감률이며, 프록시는 요청마다 무료 `count_tokens` 반사실(counterfactual) 대비로 이를 기록합니다.
+
+# 🧠 FAQ
+
+**59–70%는 종단 간(end-to-end) 수치입니까, 아니면 프록시가 손댄 요청에만 해당합니까?**
+종단 간입니다 — 전체 요금 기준입니다. 대부분의 압축 도구는 자신이 손댄 부분에서만 절감률을 보고하는데, 이는 숫자를 부풀립니다. 저희의 분모는 *모든* 요청입니다: 게이트가 올바르게 그대로 둔 작은 요청들, 모든 캐시 쓰기와 읽기, 그리고 (프록시가 결코 압축하지 않는) 모든 출력 토큰까지 포함합니다. 압축된 요청만 놓고 보면 수치는 더 높게 나오며, 이는 헤드라인이 아니라 별도로 표기됩니다.
+
+**절감률은 어떻게 측정합니까?**
+동일한 요청의 양쪽을, 동일한 시점에 측정합니다. 모든 `/v1/messages` POST 요청에 대해 프록시는 원본 비압축 본문(반사실, counterfactual)에 대해 무료 `count_tokens` 프로브를 실제 전달과 병렬로 실행하고, 응답에서 프로바이더가 실제로 과금한 usage 블록을 읽습니다 — 둘 다 동일한 이벤트 행에 기록됩니다. 캐시 가격은 양쪽에 동일하게 적용되므로 캐싱 할인은 상쇄되며 "절감"으로 이중 계산될 수 없습니다. 이 공식은 `src/core/baseline.ts`에 있습니다. 여러분 자신의 이벤트 로그에서 직접 재도출해 볼 수 있습니다.
+
+**왜 미스가 판독 오류가 아니라 컨퓨불레이션(confabulation)이 됩니까?**
+모델의 비전은 OCR이 아니기 때문입니다: 페이지는 패치 임베딩이 될 뿐 결코 개별 문자가 되지 않으므로, 크게 실패를 알릴 수 있는 글리프 단위의 신뢰도가 존재하지 않습니다 — 픽셀이 글리프를 충분히 결정하지 못할 때, 언어 사전 지식이 그 빈틈을 그럴듯한 무언가로 채웁니다. 이것이 바로 OmniGlyph가 이 문제에 대해 fail-closed로 설계된 이유입니다: 바이트 단위로 정확해야 하는 값은 항상 이미지 옆에 텍스트로 함께 이동하고, 오독하는 모델은 게이트로 차단되며, 측정된 프로덕션 설정은 약 300회의 판독 프로브 중 은밀한 컨퓨불레이션이 **0건**이었습니다 — 판독에 실패하면 기권합니다.
+
+**바이트 단위로 정확해야 하는 작업(해시, ID, 비밀값)은 어떻게 됩니까?**
+최근 턴과 정확한 식별자는 설계상 텍스트로 유지됩니다. 작업 전체가 바이트 단위로 정확해야 하는 경우, 허용 목록(allowlist)에 없는 모델로 라우팅하세요(예: 다른 Claude 모델을 사용하는 서브에이전트) — 허용 목록 밖에 있는 것은 무엇이든 바이트 단위로 동일하게, 손대지 않고 통과합니다.
+
+**DeepSeek-OCR가 이미 이것이 통한다는 것을 증명하지 않았습니까?**
+그것은 *채널*이 작동한다는 것을 증명했습니다 — 해당 작업을 위해 훈련된 인코더/디코더 쌍으로요. 회의론은 어떤 기성 프로덕션 모델도 밀도 높은 렌더를 읽지 못하던 시절에서 비롯된 것입니다. 상황은 바뀌었고, 위의 [모델 스코어카드](../../../README.md#-the-numbers--measured-not-estimated)는 오늘날 정확히 누가 이를 판독할 수 있는지 근거와 함께 보여줍니다. [벤치마크 하네스](../../../benchmarks/README.md)는 새 모델을 명령 한 번으로 재검사합니다 — 게이트는 과대광고가 아니라 데이터를 따릅니다.
 
 # 🔬 Reproduce every number
 
@@ -134,6 +171,20 @@ OmniGlyph는 무료 AI 게이트웨이인 **[OmniRoute](https://github.com/diego
 - 🔒 [SECURITY.md](SECURITY.md) — 취약점 신고
 - 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — 엄격한 TDD + 측정-후-주장 원칙
 - 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+<!-- omniglyph:upstream-credits:start -->
+# 🙏 Acknowledgments
+
+OmniGlyph는 특히 한 프로젝트의 어깨 위에 서 있습니다 — 이 섹션은 저희의 변치 않는 감사 인사입니다.
+
+| 프로젝트 | OmniGlyph에 미친 영향 |
+|---|---|
+| **[pxpipe](https://github.com/teamchong/pxpipe)** · [teamchong](https://github.com/teamchong) | **이 프로젝트 전체가 기반하고 있는 발견.** pxpipe는 프로덕션 LLM의 비전 채널이 밀도 높은 텍스트 컨텍스트를 훨씬 적은 토큰 비용으로 실어 나를 수 있다는 것을, 그리고 그 변환은 감이 아니라 정확한 과금 수학으로 요청마다 결정되어야 한다는 것을 근거와 함께 증명했습니다. 밀도 높은 1비트 렌더링, 수익성 게이트, `count_tokens` 반사실(counterfactual), fail-closed 모델 허용 목록, 그리고 "주장하기 전에 측정하라"는 문서화 문화는 모두 그곳에서 처음 시작되었습니다. OmniGlyph는 그 코드베이스에서 직접 파생되었습니다(MIT — 원본 저작권 표시는 저희 [LICENSE](../../../LICENSE)에 그대로 유지됩니다). |
+| **[Spleen](https://github.com/fcambus/spleen)** · Frederic Cambus | 저희의 밀도 높은 1비트 글리프 아틀라스가 파생된 5×8 비트맵 폰트 패밀리(라이선스는 `assets/`에 있음). |
+| **[GNU Unifont](https://unifoundry.com/unifont/)** · Unifoundry | 같은 아틀라스에서 Spleen의 범위를 넘어서는 글리프를 커버합니다(라이선스는 `assets/`에 있음). |
+
+OmniGlyph가 유용하다고 느끼신다면 업스트림에도 별을 눌러 주세요 — 이 발견은 그들의 것입니다. 🙏
+<!-- omniglyph:upstream-credits:end -->
 
 ## 📄 License
 

@@ -112,15 +112,25 @@ describe('docs integrity', () => {
     expect(dead, `dead relative links:\n${dead.join('\n')}`).toEqual([]);
   });
 
-  it('rebrand guard: no reference to the upstream project outside LICENSE', () => {
+  it('rebrand guard: no reference to the upstream project outside LICENSE and marked credits', () => {
     // The upstream is MIT: its copyright line STAYS in the LICENSE (legal
     // obligation). Everything else in the public repo is OmniGlyph-branded
     // only — this test freezes that forever. `archive/` no longer exists in
     // public; the private omniglyph-history mirror preserves the history with
     // the original attributions.
+    //
+    // ONE deliberate exception: the Acknowledgments section of the README
+    // (and its i18n translations) credits the upstream author by name — an
+    // intentional thank-you, not rebrand drift. It must sit between explicit
+    // `omniglyph:upstream-credits` markers; anything outside them still fails.
     const forbidden = /pxpipe|teamchong|claude-image-proxy/i;
+    const creditsBlock = /<!--\s*omniglyph:upstream-credits:start\s*-->[\s\S]*?<!--\s*omniglyph:upstream-credits:end\s*-->/g;
     const scanExt = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.md', '.json', '.yml', '.yaml', '.txt', '.toml', '.html', '.css', '.sh']);
-    const skipDirs = new Set(['node_modules', 'dist', 'archive', 'results']);
+    // `_references/` (upstream checkouts) and `docs/ops/` (operational notes)
+    // are gitignored, local-only trees — never published, so they are outside
+    // the rebrand guard's scope by design.
+    const skipDirs = new Set(['node_modules', 'dist', 'archive', 'results', '_references']);
+    const skipPaths = new Set(['docs/ops']);
     const selfRel = path.relative(repoRoot, fileURLToPath(import.meta.url)).replace(/\\/g, '/');
     const hits: string[] = [];
     const walk = (rel: string): void => {
@@ -128,13 +138,16 @@ describe('docs integrity', () => {
         const childRel = rel ? path.join(rel, name.name) : name.name;
         if (name.isDirectory()) {
           if (skipDirs.has(name.name) || name.name.startsWith('.')) continue;
+          if (skipPaths.has(childRel.replace(/\\/g, '/'))) continue;
           walk(childRel);
           continue;
         }
         if (name.name === 'LICENSE') continue; // upstream legal line stays
         if (childRel.replace(/\\/g, '/') === selfRel) continue; // this test quotes the terms
         if (!scanExt.has(path.extname(name.name))) continue;
-        const body = fs.readFileSync(path.join(repoRoot, childRel), 'utf8');
+        const raw = fs.readFileSync(path.join(repoRoot, childRel), 'utf8');
+        // Marked credits are only honored in markdown — code/config never gets the exception.
+        const body = path.extname(name.name) === '.md' ? raw.replace(creditsBlock, '') : raw;
         if (forbidden.test(body)) {
           const line = body.split('\n').findIndex((l) => forbidden.test(l)) + 1;
           hits.push(`${childRel}:${line}`);
@@ -143,6 +156,18 @@ describe('docs integrity', () => {
     };
     walk('');
     expect(hits, `upstream references found:\n${hits.join('\n')}`).toEqual([]);
+  });
+
+  it('README credits the upstream discovery inside the marked acknowledgments section', () => {
+    // The concept OmniGlyph implements — context-as-image with exact billing
+    // math — was discovered and proven by the upstream project. That credit is
+    // a permanent part of the README, fenced by the markers the rebrand guard
+    // honors. Removing the section (or its markers) is a regression.
+    const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
+    const block = /<!--\s*omniglyph:upstream-credits:start\s*-->([\s\S]*?)<!--\s*omniglyph:upstream-credits:end\s*-->/.exec(readme);
+    expect(block, 'README.md must contain the omniglyph:upstream-credits marker pair').not.toBeNull();
+    expect(block![1]).toMatch(/github\.com\/teamchong\/pxpipe/);
+    expect(block![1]).toMatch(/acknowledg/i);
   });
 
   it('every #fragment resolves to a heading in the target markdown file', () => {
