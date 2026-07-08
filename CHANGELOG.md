@@ -2,6 +2,29 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [1.0.1] — 2026-07-08
+
+Security and documentation release. No behavior change to the compression path.
+
+### Security
+
+- **Resolve all CodeQL code-scanning alerts.** Rewrote regex-heavy hot paths to
+  run in linear time (the tag sniffer and `<env>` extraction in `transform.ts`
+  now locate delimiters with `indexOf` instead of backtracking regexes; trailing
+  slash/space strips and variant-tag stripping became linear scans). Closed two
+  time-of-check/time-of-use file reads (`export-collect.ts` and the reflow corpus
+  reader now `fstat` the same fd they read). Fixed an automatic-semicolon-insertion
+  hazard in `render.ts`.
+
+### Docs
+
+- Documentation translated into **41 languages** under `docs/i18n/`, with a
+  localized CLI `--help` (`OMNIGLYPH_LANG`). English remains the source of truth.
+- Visual benchmark explainers (text-vs-image token bars, the patch grid the API
+  bills, the cost×accuracy frontier, the three-outcome scoring legend).
+- Standard community health files (issue/PR templates, CODEOWNERS, FUNDING) and
+  the AI-assistant contributor guides (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`).
+
 ## [1.0.0] — 2026-07-07
 
 First public release.
