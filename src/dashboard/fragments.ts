@@ -453,7 +453,7 @@ export function renderKpisFragment(
 
   const cards = [
     kpiCard(
-      '◔',
+      '📉',
       'Savings %',
       `${Math.abs(pct).toFixed(0)}%`,
       baselineW > 0 ? 'weighted, cache-aware' : 'warming up',
@@ -461,19 +461,19 @@ export function renderKpisFragment(
       sparkHtml,
     ),
     kpiCard(
-      '$',
+      '💰',
       'Saved',
       `$${savedUsd.toFixed(2)}`,
       'estimated, at input rate',
       savedUsd < 0 ? 'kpi-loss' : '',
     ),
     kpiCard(
-      '⇄',
+      '🔀',
       'Requests',
       numFmt(reqs),
       `${numFmt(imaged)} imaged · ${numFmt(passthrough)} passthrough`,
     ),
-    kpiCard('⏱', 'Latency p95', full ? fmtMs(full.durationP95) : '—', 'end-to-end, from disk log'),
+    kpiCard('⏱️', 'Latency p95', full ? fmtMs(full.durationP95) : '—', 'end-to-end, from disk log'),
     kpiCard(
       '⚡',
       'First byte p50',
@@ -481,19 +481,19 @@ export function renderKpisFragment(
       'time to first streamed byte',
     ),
     kpiCard(
-      '◈',
+      '💾',
       'Cache hits',
       cacheHitPct != null ? `${cacheHitPct}%` : '—',
       'of all logged requests',
     ),
     kpiCard(
-      '⚠',
+      '⚠️',
       'Errors',
       errs != null ? numFmt(errs) : '—',
       '4xx + 5xx, from disk log',
       errs != null && errs > 0 ? 'kpi-alert' : '',
     ),
-    kpiCard('▦', 'Imaged', kFmt(imagedChars), 'chars measured into pages'),
+    kpiCard('🖼️', 'Imaged', kFmt(imagedChars), 'chars measured into pages'),
   ].join('');
 
   return `<div class="kpi-grid">${cards}</div>`;
@@ -1887,7 +1887,7 @@ const THEME_JS = `
       document.documentElement.dataset.theme = t;
       var b = document.getElementById('theme-btn');
       if (b) {
-        b.textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
+        b.textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark';
         b.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
       }
     }
@@ -1913,12 +1913,12 @@ export type DashboardPageId =
   | 'history';
 
 const NAV: ReadonlyArray<{ page: DashboardPageId; href: string; icon: string; label: string }> = [
-  { page: 'overview', href: '/', icon: '⌂', label: 'Overview' },
-  { page: 'flow', href: '/flow', icon: '⇄', label: 'Live Flow' },
-  { page: 'telemetry', href: '/telemetry', icon: '◈', label: 'Telemetry' },
-  { page: 'benchmarks', href: '/benchmarks', icon: '⏱', label: 'Benchmarks' },
-  { page: 'sessions', href: '/sessions', icon: '▤', label: 'Sessions' },
-  { page: 'history', href: '/history', icon: '≡', label: 'History' },
+  { page: 'overview', href: '/', icon: '🏠', label: 'Overview' },
+  { page: 'flow', href: '/flow', icon: '🔀', label: 'Live Flow' },
+  { page: 'telemetry', href: '/telemetry', icon: '📡', label: 'Telemetry' },
+  { page: 'benchmarks', href: '/benchmarks', icon: '📊', label: 'Benchmarks' },
+  { page: 'sessions', href: '/sessions', icon: '📁', label: 'Sessions' },
+  { page: 'history', href: '/history', icon: '🗂️', label: 'History' },
 ];
 
 const PAGE_META: Record<DashboardPageId, { title: string; sub: string }> = {
@@ -1956,7 +1956,7 @@ function renderTopbar(page: DashboardPageId): string {
     `<header class="topbar">` +
     `<div class="page-heading"><h1 class="page-title">${meta.title}</h1><div class="page-sub">${meta.sub}</div></div>` +
     `<div class="controls">` +
-    `<button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="Toggle dark mode" title="Toggle dark / light mode">☾ Dark</button>` +
+    `<button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="Toggle dark mode" title="Toggle dark / light mode">🌙 Dark</button>` +
     `<div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>` +
     `</div>` +
     `</header>`
