@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 Ang `options.keepSharp(block)` ay nagpipin ng mga block bilang text; ibinabalik ng `options.emitRecoverable` ang mga orihinal ng mga naka-imaheng block. Ang eksaktong matematika ng billing ay ipinapadala rin sa package root (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — ito ang ginagamit ng [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Pure-JS runtime (Node at edge/Workers). Buong surface: `src/core/index.ts`.
 
+# 📤 Offline na export — walang proxy, walang Claude Code
+
+Wala sa Claude Code? I-render ang konteksto sa PNG pages **nang lokal** at i-paste ang mga ito sa Cursor, ChatGPT, o anumang chat na tumatanggap ng image uploads. Walang proxy, walang API key, walang account na kailangang i-set up:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Makakakuha ka ng isang folder na may lahat ng kailangang i-drop sa chat:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+Nire-render ng `--git` ang iyong uncommitted diff, ng `--diff <ref>` ang isang commit range, at inilalantad ng `--open` ang folder (macOS). Lahat ito ay tumatakbo sa iyong makina — hindi kailanman sinisimulan ng export path ang proxy at hindi kailanman tumatawag sa isang modelo. Patakbuhin ang `omniglyph export --help` para sa bawat flag.
+
 # 🧭 Ang tapat na bahagi
 
 - **Lossy ito.** Hindi maaasahan sa likas na katangian ang byte-exact na recall mula sa mga imahe. Mga mitigasyong ipinatupad: ang eksaktong mga identifier ay sumasakay bilang text sa tabi ng imahe, at ang sinukat na production config ay walang naging **tahimik na confabulations** — ang mga nabigong pagbasa ay umaatras.
@@ -147,6 +168,12 @@ Nananatiling text sa disenyo ang kamakailang turns at eksaktong mga identifier. 
 
 **Hindi ba nasagot na ng DeepSeek-OCR kung gumagana ito?**
 Pinatunayan nito na gumagana ang *channel* — na may encoder/decoder pair na sinanay para sa trabaho. Ang pag-aalinlangan ay mula pa sa panahong walang stock production model na makabasa ng siksik na render; nagbago na iyon, at ipinapakita ng [model scorecard](../../../README.md#-the-numbers--measured-not-estimated) sa itaas kung sino talaga ang makakabasa nito ngayon, na may mga resibo. Muling sinusubok ng [benchmark harness](../../../benchmarks/README.md) ang anumang bagong modelo sa isang command — sinusunod ng gate ang datos, hindi ang hype.
+
+**Magagamit ko ba ito nang walang Claude Code — Cursor, ChatGPT, isang simpleng pipe?**
+Oo, sa dalawang paraan. Bilang isang **proxy**, gumagana ito sa anumang client na nagbibigay-daan sa iyong itakda ang API base URL (`ANTHROPIC_BASE_URL`, o ang OpenAI base URL) — Claude Code, ang iyong sariling mga script, kahit anong HTTP. At para sa mga tool na hindi maaaring mag-proxy, nire-render ng **Offline na export** sa itaas ang konteksto sa PNG pages na ipe-paste mo nang mano-mano — kahit ang `omniglyph export --stdin` ay direktang bumabasa mula sa isang Unix pipe.
+
+**Paano nga ba nito ginagawang imahe ang text?**
+Ini-reflow nito ang text at ipininta ito gamit ang isang 1-bit 5×8 pixel glyph atlas papunta sa mga siksik na 1568×728 PNG pages — isang bit kada pixel, walang anti-aliasing, kaya sinisingil ng modelo ang pahina base sa mga sukat nito, hindi kung ilang karakter ang nasa loob. Nasa **Paano ito gumagana** sa itaas ang pipeline; nasa dokumento ng benchmarks ang geometry at kung bakit hindi laging mas mura ang mas siksik.
 
 # 🔬 Ulitin ang bawat numero
 

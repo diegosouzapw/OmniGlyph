@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` 會將區塊固定為文字;`options.emitRecoverable` 會回傳已轉為圖像之區塊的原始內容。精確的計費數學也一併於套件根目錄提供(`anthropicImageTokens`、`resolveAnthropicVisionTier`、`openAIVisionTokens`)——這正是 [OmniRoute](https://github.com/diegosouzapw/OmniRoute) 所使用的部分。純 JS 執行環境(Node 與 edge/Workers 皆可)。完整介面請見:`src/core/index.ts`。
 
+# 📤 離線匯出——免代理、免 Claude Code
+
+沒有使用 Claude Code?在**本地**將上下文渲染為 PNG 頁面,再貼進 Cursor、ChatGPT,或任何接受圖像上傳的聊天工具。免代理、免 API key、不必串接任何帳號:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+你會得到一個資料夾,裡面備齊了所有要丟進聊天工具的東西:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` 會渲染你尚未提交的 diff,`--diff <ref>` 是一段提交範圍,`--open` 會顯示該資料夾(macOS)。這一切都在你的機器上執行——匯出流程永遠不會啟動代理,也永遠不會呼叫任何模型。執行 `omniglyph export --help` 可查看所有旗標。
+
 # 🧭 The honest part
 
 - **這是有損的。** 從圖像中做到位元組精確的還原,本質上是不可靠的。已採取的緩解措施:精確識別碼以文字形式隨圖像一起傳輸,並且測得的生產配置產生了**零靜默虛構**——讀取失敗時會主動棄權。
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **DeepSeek-OCR 不是已經證明這行得通了嗎?**
 它證明的是這個*通道*可行——但那是用專為此任務訓練的編碼器/解碼器配對做到的。當初的質疑源自於當時沒有任何現成的生產模型能讀取高密度渲染圖;如今情況已經改變,上方的[模型評分卡](../../../README.md#-the-numbers--measured-not-estimated)確切顯示了今天誰能讀取這些渲染圖,並附有實證。[基準測試套件](../../../benchmarks/README.md) 可用一條命令重新測試任何新模型——門控依據的是資料,而非炒作。
+
+**不使用 Claude Code 也能用嗎——Cursor、ChatGPT、單純的管線?**
+可以,有兩種方式。作為**代理**,它能搭配任何允許你設定 API base URL 的客戶端(`ANTHROPIC_BASE_URL`,或 OpenAI 的 base URL)——Claude Code、你自己的腳本,任何走 HTTP 的東西都行。而對於無法使用代理的工具,上方的**離線匯出**會把上下文渲染成 PNG 頁面,讓你手動貼上——`omniglyph export --stdin` 甚至能直接從 Unix 管線讀取。
+
+**它究竟是怎麼把文字變成圖像的?**
+它會重新排版文字,並用 1-bit 5×8 像素的字形圖集,將其繪製到高密度的 1568×728 PNG 頁面上——每像素一個位元、無反鋸齒,因此模型是按頁面的尺寸計費,而非取決於裡面裝了多少字元。上方的 **How it works** 說明了整條流水線;基準測試文件則說明了幾何原理,以及為何密度更高未必更省。
 
 # 🔬 Reproduce every number
 

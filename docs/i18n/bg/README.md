@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` закача блокове като текст; `options.emitRecoverable` връща оригиналите на превърнатите в изображения блокове. Точната математика на таксуването се доставя и в корена на пакета (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — това е, което консумира [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Чиста JS среда на изпълнение (Node и edge/Workers). Пълен интерфейс: `src/core/index.ts`.
 
+# 📤 Офлайн експорт — без прокси, без Claude Code
+
+Не сте на Claude Code? Рендирайте контекста в PNG страници **локално** и ги поставете в Cursor, ChatGPT или всеки чат, който приема качване на изображения. Без прокси, без API ключ, без свързан акаунт:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Получавате една папка с всичко необходимо за пускане в чата:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` рендира вашия некомитнат diff, `--diff <ref>` диапазон от комити, `--open` разкрива папката (macOS). Всичко се изпълнява на вашата машина — пътят на експорта никога не стартира проксито и никога не извиква модел. Изпълнете `omniglyph export --help` за всеки флаг.
+
 # 🧭 The honest part
 
 - **Не е загубоустойчиво.** Точното до байт възстановяване от изображения е ненадеждно по природа. Приложени мерки: точните идентификатори пътуват като текст до изображението, а измерената производствена конфигурация даде **нула мълчаливи конфабулации** — неуспешните четения се въздържат.
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **Не установи ли DeepSeek-OCR дали това работи?**
 Той доказа, че *каналът* работи — с двойка енкодер/декодер, обучена точно за тази задача. Скептицизмът датира от времето, когато нито един стандартен производствен модел не можеше да чете плътни рендери; това се промени, а [класацията на моделите](../../../README.md#-the-numbers--measured-not-estimated) по-горе показва точно кой ги чете днес, с доказателства. [Harness-ът за бенчмаркове](../../../benchmarks/README.md) повторно тества всеки нов модел с една команда — вратата следва данните, не шума.
+
+**Мога ли да го използвам без Claude Code — Cursor, ChatGPT, обикновен pipe?**
+Да, по два начина. Като **прокси** работи с всеки клиент, който ви позволява да зададете базовия API URL (`ANTHROPIC_BASE_URL` или базовия URL на OpenAI) — Claude Code, собствените ви скриптове, всичко по HTTP. А за инструменти, които не могат да ползват прокси, **Офлайн експорт** по-горе рендира контекста в PNG страници, които поставяте на ръка — `omniglyph export --stdin` дори чете направо от Unix pipe.
+
+**Как всъщност превръща текст в изображение?**
+Прелива текста (reflow) и го изрисува с 1-битов атлас с глифи 5×8 пиксела върху плътни PNG страници 1568×728 — по един бит на пиксел, без изглаждане (anti-aliasing), така че моделът таксува страницата по нейните размери, а не по това колко символа са вътре. **Как работи** по-горе съдържа конвейера; документът с бенчмаркове съдържа геометрията и защо по-плътното не винаги е по-евтино.
 
 # 🔬 Възпроизведете всяко число
 

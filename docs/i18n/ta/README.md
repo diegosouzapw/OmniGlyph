@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` blocks-ஐ உரையாகப் பின் செய்கிறது; `options.emitRecoverable` படமாக்கப்பட்ட blocks-இன் originals-ஐ திருப்பித் தருகிறது. சரியான பில்லிங் கணிதமும் package root-இல் shipped ஆகிறது (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — இதைத்தான் [OmniRoute](https://github.com/diegosouzapw/OmniRoute) உபயோகிக்கிறது. Pure-JS runtime (Node மற்றும் edge/Workers). முழு surface: `src/core/index.ts`.
 
+# 📤 Offline export — proxy இல்லை, Claude Code இல்லை
+
+Claude Code-இல் இல்லையா? context-ஐ PNG பக்கங்களாக **உள்ளூரில்** render செய்து, அவற்றை Cursor, ChatGPT, அல்லது image uploads-ஐ ஏற்கும் எந்த chat-இலும் paste செய்யுங்கள். proxy இல்லை, API key இல்லை, எந்த account-உம் இணைக்கப்படவில்லை:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+chat-இல் இணைக்க வேண்டிய அனைத்தையும் கொண்ட ஒரே ஒரு folder உங்களுக்குக் கிடைக்கிறது:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` உங்கள் commit செய்யப்படாத diff-ஐ render செய்கிறது, `--diff <ref>` ஒரு commit range-ஐ, `--open` folder-ஐக் காட்டுகிறது (macOS). இது அனைத்தும் உங்கள் மெஷினிலேயே இயங்குகிறது — export path ஒருபோதும் proxy-ஐத் தொடங்குவதில்லை, ஒருபோதும் ஒரு மாடலை அழைப்பதில்லை. ஒவ்வொரு flag-க்கும் `omniglyph export --help` இயக்குங்கள்.
+
 # 🧭 The honest part
 
 - **இது lossy.** படங்களிலிருந்து Byte-exact recall இயற்கையாகவே நம்பகமற்றது. அனுப்பப்பட்ட தணிப்புகள்: exact identifiers படத்தின் அருகில் உரையாகப் பயணிக்கின்றன, மற்றும் அளவிடப்பட்ட production config **பூஜ்ஜிய silent confabulations** ஐ உருவாக்கியது — தோல்வியுற்ற reads தவிர்க்கின்றன.
@@ -147,6 +168,12 @@ End-to-end — முழு பில். பெரும்பாலான comp
 
 **DeepSeek-OCR இது வேலை செய்கிறதா என்பதை தீர்மானிக்கவில்லையா?**
 அது *channel* வேலை செய்கிறது என்பதை நிரூபித்தது — இந்த வேலைக்காகப் பயிற்சி பெற்ற ஒரு encoder/decoder ஜோடியுடன். எந்த stock production மாடலும் அடர்த்தியான renders-ஐ படிக்க முடியாத காலத்திலிருந்து இந்த சந்தேகம் தொடர்கிறது; அது மாறிவிட்டது, மேலும் மேலே உள்ள [மாடல் scorecard](../../../README.md#-the-numbers--measured-not-estimated) இன்று அவற்றை யார் படிக்க முடியும் என்பதை ஆதாரங்களுடன் சரியாகக் காட்டுகிறது. [benchmark harness](../../../benchmarks/README.md) எந்த புதிய மாடலையும் ஒரே கட்டளையில் மீண்டும் சோதிக்கிறது — gate hype-ஐ அல்ல, தரவைப் பின்பற்றுகிறது.
+
+**Claude Code இல்லாமல் — Cursor, ChatGPT, ஒரு எளிய pipe — இதை நான் பயன்படுத்த முடியுமா?**
+ஆம், இரண்டு வழிகள். ஒரு **proxy** ஆக, API base URL-ஐ (`ANTHROPIC_BASE_URL`, அல்லது OpenAI base URL) அமைக்க அனுமதிக்கும் எந்த client-உடனும் இது வேலை செய்கிறது — Claude Code, உங்கள் சொந்த scripts, HTTP ஆன எதுவும். மேலும் proxy செய்ய முடியாத tools-க்கு, மேலே உள்ள **Offline export** context-ஐ PNG பக்கங்களாக render செய்கிறது, அவற்றை நீங்கள் கையால் paste செய்கிறீர்கள் — `omniglyph export --stdin` ஒரு Unix pipe-இலிருந்து நேரடியாகவே கூட படிக்கிறது.
+
+**இது உண்மையில் உரையை ஒரு படமாக எப்படி மாற்றுகிறது?**
+இது உரையை reflow செய்து, ஒரு 1-bit 5×8 pixel glyph atlas-ஐக் கொண்டு அடர்த்தியான 1568×728 PNG பக்கங்களில் வரைகிறது — ஒரு pixel-க்கு ஒரு bit, anti-aliasing இல்லை, எனவே மாடல் அந்தப் பக்கத்தை அதன் dimensions வாரியாக பில் செய்கிறது, அதற்குள் எத்தனை எழுத்துகள் உள்ளன என்பதைக் கொண்டு அல்ல. மேலே உள்ள **இது எப்படி வேலை செய்கிறது** pipeline-ஐக் கொண்டுள்ளது; benchmarks doc geometry-ஐயும், ஏன் அடர்த்தியானது எப்போதும் மலிவானது அல்ல என்பதையும் கொண்டுள்ளது.
 
 # 🔬 ஒவ்வொரு எண்ணையும் மறுஉருவாக்குங்கள்
 

@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` מצמיד בלוקים כטקסט; `options.emitRecoverable` מחזיר את המקוריים של הבלוקים שהומרו לתמונה. מתמטיקת החיוב המדויקת נשלחת גם היא בשורש החבילה (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — וזה מה ש-[OmniRoute](https://github.com/diegosouzapw/OmniRoute) צורך. זמן ריצה Pure-JS (Node ו-edge/Workers). המשטח המלא: `src/core/index.ts`.
 
+# 📤 ייצוא אופליין — ללא פרוקסי, ללא Claude Code
+
+לא על Claude Code? רנדרו את ההקשר לעמודי PNG **מקומית** והדביקו אותם ב-Cursor, ב-ChatGPT או בכל צ'אט שמקבל העלאות תמונה. ללא פרוקסי, ללא מפתח API, ללא חשבון מחווט:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+אתם מקבלים תיקייה אחת עם כל מה שצריך כדי לגרור לתוך הצ'אט:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` מרנדר את ה-diff שלכם שטרם עבר קומיט, `--diff <ref>` טווח קומיטים, `--open` חושף את התיקייה (macOS). הכול רץ על המחשב שלכם — נתיב הייצוא לעולם אינו מפעיל את הפרוקסי ולעולם אינו קורא למודל. הריצו `omniglyph export --help` לכל הדגלים.
+
 # 🧭 The honest part
 
 - **זה עם אובדן (lossy).** שחזור בייט-מדויק מתמונות אינו אמין מטבעו. הפחתות שיושמו: מזהים מדויקים נוסעים כטקסט לצד התמונה, ותצורת הייצור הנמדדת הפיקה **אפס בדיות שקטות** — קריאות כושלות נמנעות.
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **האם DeepSeek-OCR לא כבר הכריע אם זה עובד?**
 זה הוכיח שה*ערוץ* עובד — עם זוג מקודד/מפענח שאומן במיוחד למשימה. הספקנות מקורה בתקופה שבה שום מודל ייצור מדף לא היה מסוגל לקרוא רינדורים צפופים; זה השתנה, וה[כרטיס ציונים למודלים](../../../README.md#-the-numbers--measured-not-estimated) שלמעלה מראה בדיוק מי קורא אותם היום, עם קבלות. [רתמת הבנצ'מרק](../../../benchmarks/README.md) בודקת מחדש כל מודל חדש בפקודה אחת — השער הולך אחרי הנתונים, לא אחרי ההייפ.
+
+**האם אפשר להשתמש בזה ללא Claude Code — Cursor, ChatGPT, או pipe פשוט?**
+כן, בשתי דרכים. כ**פרוקסי** זה עובד עם כל לקוח שמאפשר לכם להגדיר את כתובת בסיס ה-API (`ANTHROPIC_BASE_URL`, או כתובת בסיס ה-API של OpenAI) — Claude Code, הסקריפטים שלכם, כל דבר HTTP. ולכלים שאינם יכולים לעבוד דרך פרוקסי, ה**ייצוא אופליין** שלמעלה מרנדר את ההקשר לעמודי PNG שאתם מדביקים ידנית — `omniglyph export --stdin` אפילו קורא ישירות מ-pipe של Unix.
+
+**איך זה למעשה הופך טקסט לתמונה?**
+זה מזרים מחדש (reflow) את הטקסט וצובע אותו עם אטלס גליפים של 1-ביט בגודל 5×8 פיקסלים על עמודי PNG צפופים בגודל 1568×728 — ביט אחד לכל פיקסל, ללא החלקה (anti-aliasing), כך שהמודל מחייב את העמוד לפי מידותיו, לא לפי כמות התווים שבתוכו. **איך זה עובד** שלמעלה מכיל את הצינור; מסמך הבנצ'מרקים מכיל את הגאומטריה ואת הסיבה לכך שצפוף יותר אינו תמיד זול יותר.
 
 # 🔬 שחזרו כל מספר
 

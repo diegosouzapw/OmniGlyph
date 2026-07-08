@@ -26,7 +26,7 @@ import { bytesToBase64 } from './png.js';
  * emitter (here) and the matcher (transform.ts) must reference this constant.
  */
 export const HISTORY_SYNTHETIC_INTRO =
-  '[Earlier turns of THIS conversation, transcribed in the image(s) below. Each turn is wrapped in <user t="N">...</user> or <assistant t="N">...</assistant> tags, where N is an absolute turn index (larger N = more recent); attribute every turn strictly by its tag, and treat the highest-N turns as the most recent prior context, NOT the low-N opening turns. Earlier turns may contain questions or tasks that were already answered later in this same history; do not reopen low-N turns unless the live text after this block asks you to. This is prior context, NOT the current request.]';
+  '[Earlier turns of THIS conversation, transcribed in the image(s) below. Each turn is wrapped in <user t="N">...</user> or <assistant t="N">...</assistant> tags, where N is an absolute turn index (larger N = more recent); attribute every turn strictly by its tag, and treat the highest-N turns as the most recent prior context, NOT the low-N opening turns. Earlier turns may contain questions or tasks that were already answered later in this same history; do not reopen low-N turns unless the live text after this block asks you to. For exact identifiers, hashes, version strings, and numbers from the transcript, rely on the exact-value factsheet or re-read the source; do not guess an exact value seen only in the image. This is prior context, NOT the current request.]';
 export const HISTORY_SYNTHETIC_OUTRO =
   '[End of earlier conversation. The current request is the live text that follows below.]';
 
