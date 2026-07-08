@@ -3,6 +3,8 @@
 
 import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
+import { t, fmt, type MessageKey } from '../i18n/index.js';
+import { DASH_LOCALES, RTL_LOCALES } from '../i18n/locales.js';
 import type {
   StatsPayload,
   RecentPayload,
@@ -66,23 +68,23 @@ function shortPath(p: string | null | undefined): string {
 
 // ---- compression toggle (kill switch) ------------------------------------
 
-export function renderToggleFragment(enabled: boolean): string {
-  // NOTE: "PASSTHROUGH MODE", "Disable compression", "Enable compression" are asserted by tests.
+export function renderToggleFragment(enabled: boolean, locale = 'en'): string {
+  // NOTE: "PASSTHROUGH MODE", "Disable compression", "Enable compression" are asserted by tests (English default locale).
   const banner = enabled
     ? ''
-    : `<div class="banner"><strong>PASSTHROUGH MODE</strong> — compression is off. Every request goes to Claude unchanged: no images, no savings. Use this to A/B test, or if the upstream API is having problems.</div>`;
+    : `<div class="banner"><strong>${t('dash.toggle.passthroughTitle', locale)}</strong> ${t('dash.toggle.passthroughBody', locale)}</div>`;
   // Button POSTs the OPPOSITE of current state; 2s poll keeps it fresh.
   const confirm = enabled
-    ? ` hx-confirm="Turn compression off?\n\nRequests will pass straight through to Claude, unchanged. Restarting the proxy turns it back on."`
+    ? ` hx-confirm="${escapeHtml(t('dash.toggle.confirmOff', locale))}"`
     : '';
   return (
     banner +
     `<div class="switch">` +
-    `<span class="switch-state ${enabled ? 'on' : 'off'}"><span class="switch-dot"></span>${enabled ? 'Compression on' : 'Compression off'}</span>` +
+    `<span class="switch-state ${enabled ? 'on' : 'off'}"><span class="switch-dot"></span>${enabled ? t('dash.toggle.on', locale) : t('dash.toggle.off', locale)}</span>` +
     `<button class="switch-btn" type="button" hx-post="/fragments/toggle" hx-target="#frag-toggle" hx-vals='{"enabled": ${!enabled}}'${confirm}>` +
-    (enabled ? 'Disable compression' : 'Enable compression') +
+    (enabled ? t('dash.toggle.disable', locale) : t('dash.toggle.enable', locale)) +
     `</button>` +
-    `<span class="hint">kill switch · resets to on when you restart</span>` +
+    `<span class="hint">${t('dash.toggle.hint', locale)}</span>` +
     `</div>`
   );
 }
@@ -107,6 +109,7 @@ export function renderModelsFragment(
   active: string[],
   configured: string[],
   enabled: boolean,
+  locale = 'en',
 ): string {
   const on = new Set(active);
   const labelOf = new Map(
@@ -138,17 +141,17 @@ export function renderModelsFragment(
   };
   const claudeChips = ids.filter((id) => !id.startsWith('gpt')).map(chipFor).join('');
   const gptChips = ids.filter((id) => id.startsWith('gpt')).map(chipFor).join('');
-  const moot = enabled ? '' : ` <span class="hint">compression is off, so this has no effect right now</span>`;
+  const moot = enabled ? '' : ` <span class="hint">${t('dash.models.moot', locale)}</span>`;
   return (
     `<div class="models">` +
-    `<span class="models-label">Image Claude models</span>` +
+    `<span class="models-label">${t('dash.models.claudeLabel', locale)}</span>` +
     claudeChips +
-    `<span class="hint">everything else is sent as normal text · runtime only · persist with OMNIGLYPH_MODELS</span>${moot}` +
+    `<span class="hint">${t('dash.models.hintClaude', locale)}</span>${moot}` +
     `</div>` +
     `<div class="models" style="display:none">` +
-    `<span class="models-label">Image GPT models</span>` +
+    `<span class="models-label">${t('dash.models.gptLabel', locale)}</span>` +
     gptChips +
-    `<span class="hint">imaging only, no Anthropic cache_control · one scope for all families · set OMNIGLYPH_MODELS (CSV of bases, or off) to persist</span>${moot}` +
+    `<span class="hint">${t('dash.models.hintGpt', locale)}</span>${moot}` +
     `</div>`
   );
 }
@@ -164,14 +167,14 @@ void INPUT_USD_PER_MTOK; // suppress unused-var; renderHeaderFragment uses the s
 // the number stops swinging on tiny per-session samples. Cache-weighted on
 // purpose ("lifeweight"): it answers "did OmniGlyph move my real, cache-discounted
 // bill since this proxy started", not a raw token count.
-export function renderSessionSummaryFragment(s: StatsPayload): string {
+export function renderSessionSummaryFragment(s: StatsPayload, locale = 'en'): string {
   const measured = s.compressed_requests ?? 0;
   if (measured <= 0) {
     return (
       `<div class="hero hero-empty">` +
-      `<div class="hero-eyebrow">Since start</div>` +
-      `<div class="hero-headline">Warming up…</div>` +
-      `<div class="hero-sub">Point Claude Code at this proxy and send a message. The moment a request flows through, your running savings show up right here.</div>` +
+      `<div class="hero-eyebrow">${t('dash.hero.eyebrowEmpty', locale)}</div>` +
+      `<div class="hero-headline">${t('dash.hero.headlineEmpty', locale)}</div>` +
+      `<div class="hero-sub">${t('dash.hero.subEmpty', locale)}</div>` +
       `</div>`
     );
   }
@@ -187,20 +190,21 @@ export function renderSessionSummaryFragment(s: StatsPayload): string {
   const inputPct = baselineW > 0 ? (1 - actualW / baselineW) * 100 : 0;
   const positive = inputPct >= 0;
   const bigNum = `${Math.abs(inputPct).toFixed(0)}%`;
-  const word = positive ? 'fewer tokens' : 'more tokens';
+  const word = t(positive ? 'dash.hero.fewer' : 'dash.hero.more', locale);
+  const reqWord = t(measured === 1 ? 'dash.common.request' : 'dash.common.requests', locale);
 
   return (
     `<div class="hero${positive ? '' : ' hero-neg'}">` +
-    `<div class="hero-eyebrow">Since start · ${numFmt(measured)} request${measured === 1 ? '' : 's'} imaged</div>` +
-    `<div class="hero-headline"><span class="hero-num">${bigNum}</span> ${word} after caching</div>` +
+    `<div class="hero-eyebrow">${fmt(t('dash.hero.eyebrowActive', locale), { n: numFmt(measured), word: reqWord })}</div>` +
+    `<div class="hero-headline"><span class="hero-num">${bigNum}</span> ${fmt(t('dash.hero.headline', locale), { word })}</div>` +
     `<div class="hero-sub">` +
-    `<strong>${kFmt(actualW)}</strong> effective tokens vs <strong>${kFmt(baselineW)}</strong> if this same context ` +
-    `stayed plain text — both counted after normal cache discounts since this proxy started. ` +
-    `Your latest messages and Claude's live output are never compressed.` +
+    fmt(t('dash.hero.sub', locale), {
+      actual: `<strong>${kFmt(actualW)}</strong>`,
+      baseline: `<strong>${kFmt(baselineW)}</strong>`,
+    }) +
     `</div>` +
     `<div class="hero-meta">` +
-    `Cache-aware — cached reads counted at their real ~0.1× weight, not full price · ` +
-    `output untouched (${kFmt(rawOutput)}) · no $ assumptions` +
+    fmt(t('dash.hero.meta', locale), { output: kFmt(rawOutput) }) +
     `</div>` +
     `</div>`
   );
@@ -236,7 +240,7 @@ function statTile(
   );
 }
 
-export function renderHeaderFragment(s: StatsPayload, port: number): string {
+export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en'): string {
   const pa = s.pricing_assumptions;
 
   // stat strip
@@ -245,36 +249,43 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
   const pAvg = s.passthrough_avg_usd_per_request ?? 0;
   const costTile = splitReady
     ? statTile(
-        'Cost per request',
+        t('dash.strip.costLabel', locale),
         `$${cAvg.toFixed(4)}`,
-        `vs $${pAvg.toFixed(4)} without OmniGlyph`,
+        fmt(t('dash.strip.costSub', locale), { amount: `$${pAvg.toFixed(4)}` }),
         cAvg <= pAvg ? 'pos' : 'neg',
-        'Average real cost of a request with imaging on vs off (passthrough), measured on your own traffic.',
+        t('dash.strip.costTip', locale),
       )
     : statTile(
-        'Cost per request',
-        'collecting…',
-        `${numFmt(s.compressed_paid_requests)} imaged · ${numFmt(s.passthrough_paid_requests)} passthrough so far`,
+        t('dash.strip.costLabel', locale),
+        t('dash.strip.costCollecting', locale),
+        fmt(t('dash.strip.costCollectingSub', locale), {
+          imaged: numFmt(s.compressed_paid_requests),
+          passthrough: numFmt(s.passthrough_paid_requests),
+        }),
         'muted-val',
-        `Needs at least ${s.split_min_sample_per_bucket} paid requests on each path before the comparison is trustworthy.`,
+        fmt(t('dash.strip.costCollectingTip', locale), { n: String(s.split_min_sample_per_bucket) }),
       );
 
   const strip =
     `<div class="strip">` +
-    statTile('Requests', numFmt(s.requests), `${numFmt(s.compressed_requests)} turned into images`) +
     statTile(
-      'Input tokens saved',
-      numFmt(s.saved_input_tokens),
-      'vs sending the same context as text',
-      'pos',
-      'Bulky context (system prompt, tool output, old turns) sent as compact images instead of text. Cache-aware, input side only — recent turns and the live output stay text.',
+      t('dash.strip.requestsLabel', locale),
+      numFmt(s.requests),
+      fmt(t('dash.strip.requestsSub', locale), { n: numFmt(s.compressed_requests) }),
     ) +
     statTile(
-      'Estimated saved',
+      t('dash.strip.savedTokensLabel', locale),
+      numFmt(s.saved_input_tokens),
+      t('dash.strip.savedTokensSub', locale),
+      'pos',
+      t('dash.strip.savedTokensTip', locale),
+    ) +
+    statTile(
+      t('dash.strip.estSavedLabel', locale),
       `$${(s.saved_usd ?? 0).toFixed(2)}`,
-      `at $${pa.input_per_mtok}/M input tokens`,
+      fmt(t('dash.strip.estSavedSub', locale), { rate: `$${pa.input_per_mtok}` }),
       '',
-      'A rough dollar figure: saved tokens × the input price. Actual savings depend on your plan and caching — see the math drawer.',
+      t('dash.strip.estSavedTip', locale),
     ) +
     costTile +
     `</div>`;
@@ -298,7 +309,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
 
   const splitMath =
     `<div><span class="k">formula:</span> <span class="v">bucket_$ = (Σ actual_input + Σ output × ${pa.output_multiplier}) × $${pa.input_per_mtok}/Mtok</span></div>` +
-    `<div><span class="k">why:</span> <span class="v">partition the paid-rows set by which path actually ran (compressed vs passthrough). Same $/Mtok on both sides so the rate assumption cancels in the delta. Selection bias (the gate routes each turn) does NOT cancel — read with the sample counts.</span></div>` +
+    `<div><span class="k">why:</span> <span class="v">${t('dash.drawer.splitWhy', locale)}</span></div>` +
     `<div class="sp"></div>` +
     mathRow(`compressed (n=${s.compressed_paid_requests})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, `total · avg $${(s.compressed_avg_usd_per_request || 0).toFixed(4)}/req`) +
     mathRow(`passthrough (n=${s.passthrough_paid_requests})`, `$${(s.passthrough_actual_usd || 0).toFixed(4)}`, `total · avg $${(s.passthrough_avg_usd_per_request || 0).toFixed(4)}/req`) +
@@ -313,7 +324,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
 
   const pctMath =
     `<div><span class="k">formula:</span> <span class="v">share_of_spend = saved / (all_baseline_equivalent + all_output × ${pa.output_multiplier})</span></div>` +
-    `<div><span class="k">diagnostic, not the headline:</span> <span class="v">this is a counterfactual ("what you WOULD have paid"). It leans on the count_tokens probe, the cache-aware split, and an input-rate assumption. Useful as a sanity check; the real-traffic answer is the compressed-vs-passthrough split above.</span></div>` +
+    `<div><span class="k">diagnostic, not the headline:</span> <span class="v">${t('dash.drawer.pctDiagnostic', locale)}</span></div>` +
     `<div class="sp"></div>` +
     mathRow('saved', s.saved_input_tokens, '(measured-rows numerator; cache-aware)') +
     mathRow('all_baseline_equivalent', s.all_baseline_equivalent_weighted, '(every paid request; baseline on measured + actual on the rest)') +
@@ -338,18 +349,18 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
 
   const drawer =
     `<details class="drawer" id="math-drawer">` +
-    `<summary>Show the math &amp; honesty receipts</summary>` +
-    `<div class="drawer-intro">Every number above, derived from the same per-event log. The proxy only moves <em>input</em> tokens; output is shown on both sides so percentages stay honest.</div>` +
+    `<summary>${t('dash.drawer.summary', locale)}</summary>` +
+    `<div class="drawer-intro">${t('dash.drawer.intro', locale)}</div>` +
     `<div class="math-grid">` +
-    mathBlock('Input tokens saved', savedMath) +
-    mathBlock('Dollars saved', usdMath) +
-    mathBlock('Compressed vs passthrough, per request', splitMath) +
-    mathBlock('Share of total spend (diagnostic)', pctMath) +
-    mathBlock('Token-equivalent (what the weekly cap counts)', tokeqMath) +
+    mathBlock(t('dash.drawer.blockSaved', locale), savedMath) +
+    mathBlock(t('dash.drawer.blockUsd', locale), usdMath) +
+    mathBlock(t('dash.drawer.blockSplit', locale), splitMath) +
+    mathBlock(t('dash.drawer.blockPct', locale), pctMath) +
+    mathBlock(t('dash.drawer.blockTokeq', locale), tokeqMath) +
     `</div></details>`;
 
   // NOTE: tests assert the header fragment contains the port number.
-  const updated = `<div class="updated"><span class="live-dot"></span>live · port ${port} · uptime ${formatDuration(s.uptime_sec)}</div>`;
+  const updated = `<div class="updated"><span class="live-dot"></span>${fmt(t('dash.drawer.updated', locale), { port: String(port), uptime: formatDuration(s.uptime_sec) })}</div>`;
 
   return strip + drawer + updated;
 }
@@ -429,6 +440,7 @@ export function renderKpisFragment(
   s: StatsPayload,
   full: FullStatsSummary | null,
   recent: RecentPayload,
+  locale = 'en',
 ): string {
   // Same cache-weighted pair and direction as the hero (renderSessionSummaryFragment).
   const baselineW = s.baseline_input_weighted ?? 0;
@@ -454,46 +466,51 @@ export function renderKpisFragment(
   const cards = [
     kpiCard(
       '📉',
-      'Savings %',
+      t('dash.kpi.savingsLabel', locale),
       `${Math.abs(pct).toFixed(0)}%`,
-      baselineW > 0 ? 'weighted, cache-aware' : 'warming up',
+      t(baselineW > 0 ? 'dash.kpi.savingsSubWeighted' : 'dash.kpi.savingsSubWarming', locale),
       pctCls,
       sparkHtml,
     ),
     kpiCard(
       '💰',
-      'Saved',
+      t('dash.kpi.savedLabel', locale),
       `$${savedUsd.toFixed(2)}`,
-      'estimated, at input rate',
+      t('dash.kpi.savedSub', locale),
       savedUsd < 0 ? 'kpi-loss' : '',
     ),
     kpiCard(
       '🔀',
-      'Requests',
+      t('dash.kpi.requestsLabel', locale),
       numFmt(reqs),
-      `${numFmt(imaged)} imaged · ${numFmt(passthrough)} passthrough`,
+      fmt(t('dash.kpi.requestsSub', locale), { imaged: numFmt(imaged), passthrough: numFmt(passthrough) }),
     ),
-    kpiCard('⏱️', 'Latency p95', full ? fmtMs(full.durationP95) : '—', 'end-to-end, from disk log'),
+    kpiCard(
+      '⏱️',
+      t('dash.kpi.latencyLabel', locale),
+      full ? fmtMs(full.durationP95) : '—',
+      t('dash.kpi.latencySub', locale),
+    ),
     kpiCard(
       '⚡',
-      'First byte p50',
+      t('dash.kpi.firstByteLabel', locale),
       full ? fmtMs(full.firstByteP50) : '—',
-      'time to first streamed byte',
+      t('dash.kpi.firstByteSub', locale),
     ),
     kpiCard(
       '💾',
-      'Cache hits',
+      t('dash.kpi.cacheHitsLabel', locale),
       cacheHitPct != null ? `${cacheHitPct}%` : '—',
-      'of all logged requests',
+      t('dash.kpi.cacheHitsSub', locale),
     ),
     kpiCard(
       '⚠️',
-      'Errors',
+      t('dash.kpi.errorsLabel', locale),
       errs != null ? numFmt(errs) : '—',
-      '4xx + 5xx, from disk log',
+      t('dash.kpi.errorsSub', locale),
       errs != null && errs > 0 ? 'kpi-alert' : '',
     ),
-    kpiCard('🖼️', 'Imaged', kFmt(imagedChars), 'chars measured into pages'),
+    kpiCard('🖼️', t('dash.kpi.imagedLabel', locale), kFmt(imagedChars), t('dash.kpi.imagedSub', locale)),
   ].join('');
 
   return `<div class="kpi-grid">${cards}</div>`;
@@ -502,10 +519,10 @@ export function renderKpisFragment(
 /** Compact live feed, most-recent request first. Poll-driven (htmx `every
  *  2s`) in this phase; a later phase swaps the transport for SSE without
  *  touching this render function. */
-export function renderFeedFragment(p: RecentPayload): string {
+export function renderFeedFragment(p: RecentPayload, locale = 'en'): string {
   const rows = (p.recent ?? []).slice().reverse();
   if (rows.length === 0) {
-    return `<div class="feed-empty">No traffic yet</div>`;
+    return `<div class="feed-empty">${t('dash.feed.empty', locale)}</div>`;
   }
   const items = rows
     .map((r) => {
@@ -541,7 +558,7 @@ export function renderFeedFragment(p: RecentPayload): string {
  *  (`od-tokens` / `od-usd` / `od-reqs`) so the SSE client (GLUE_JS) can
  *  update them in place on every broadcast frame without a full htmx swap —
  *  the fragment itself stays the poll-driven fallback for hosts without SSE. */
-export function renderOdometerFragment(s: StatsPayload): string {
+export function renderOdometerFragment(s: StatsPayload, locale = 'en'): string {
   const tokens = kFmt(s.saved_input_tokens ?? 0);
   const usd = (Number(s.saved_usd) || 0).toFixed(2);
   const reqs = numFmt(s.requests ?? 0);
@@ -550,9 +567,9 @@ export function renderOdometerFragment(s: StatsPayload): string {
   // (short) sentence, not a fragment of digits.
   return (
     `<div class="odometer" aria-live="polite" aria-atomic="true">` +
-    `<div class="od-cell"><div id="od-tokens" class="od-value od-grad">${tokens}</div><div class="od-label">tokens saved</div></div>` +
-    `<div class="od-cell"><div id="od-usd" class="od-value od-grad">$${usd}</div><div class="od-label">saved</div></div>` +
-    `<div class="od-cell"><div id="od-reqs" class="od-value">${reqs}</div><div class="od-label">requests</div></div>` +
+    `<div class="od-cell"><div id="od-tokens" class="od-value od-grad">${tokens}</div><div class="od-label">${t('dash.odometer.tokensSaved', locale)}</div></div>` +
+    `<div class="od-cell"><div id="od-usd" class="od-value od-grad">$${usd}</div><div class="od-label">${t('dash.odometer.saved', locale)}</div></div>` +
+    `<div class="od-cell"><div id="od-reqs" class="od-value">${reqs}</div><div class="od-label">${t('dash.odometer.requests', locale)}</div></div>` +
     `</div>`
   );
 }
@@ -574,10 +591,10 @@ function shortModel(m: string | null | undefined): string {
  *  "click a request" changes. `renderRecentFragment` (the table this
  *  replaces on this page) is untouched — /fragments/recent and the legacy
  *  /proxy-recent HTML still render it for any other caller. */
-export function renderTimelineFragment(p: RecentPayload): string {
+export function renderTimelineFragment(p: RecentPayload, locale = 'en'): string {
   const rows = (p.recent ?? []).slice().reverse();
   if (rows.length === 0) {
-    return `<div class="timeline empty-note">No traffic yet</div>`;
+    return `<div class="timeline empty-note">${t('dash.timeline.empty', locale)}</div>`;
   }
   const body = rows
     .map((e: RecentRow) => {
@@ -587,11 +604,11 @@ export function renderTimelineFragment(p: RecentPayload): string {
       // announced semantics honest for assistive tech and no-JS fallback.
       const details =
         viewId != null
-          ? `<a class="row-view" href="#" role="button" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">Details →</a>`
+          ? `<a class="row-view" href="#" role="button" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">${t('dash.common.details', locale)}</a>`
           : `<span class="muted">—</span>`;
       const gate = e.compressed
-        ? `<span class="tl-gate tl-gate-img"><span class="tl-dot"></span>✓ imaged</span>`
-        : `<span class="tl-gate tl-gate-txt">○ passthrough</span>`;
+        ? `<span class="tl-gate tl-gate-img"><span class="tl-dot"></span>${t('dash.timeline.imaged', locale)}</span>`
+        : `<span class="tl-gate tl-gate-txt">${t('dash.timeline.passthrough', locale)}</span>`;
       const saved = e.session_saved_so_far_delta;
       const tokens =
         saved == null
@@ -639,28 +656,33 @@ export interface ContextMapData {
   restored?: boolean; // rebuilt from JSONL after a restart — PNG thumbnails are gone
 }
 
-const CTXMAP_BUCKETS: ReadonlyArray<readonly [string, string]> = [
-  ['static_slab', 'System prompt + tool docs'],
-  ['reminder', 'System-reminder blocks'],
-  ['tool_result_prose', 'Tool results — prose'],
-  ['tool_result_log', 'Tool results — logs'],
-  ['tool_result_json', 'Tool results — JSON'],
-  ['history', 'Older conversation turns'],
-];
+function ctxmapBuckets(locale: string): ReadonlyArray<readonly [string, string]> {
+  return [
+    ['static_slab', t('dash.ctxmap.bucketStaticSlab', locale)],
+    ['reminder', t('dash.ctxmap.bucketReminder', locale)],
+    ['tool_result_prose', t('dash.ctxmap.bucketToolResultProse', locale)],
+    ['tool_result_log', t('dash.ctxmap.bucketToolResultLog', locale)],
+    ['tool_result_json', t('dash.ctxmap.bucketToolResultJson', locale)],
+    ['history', t('dash.ctxmap.bucketHistory', locale)],
+  ];
+}
 
 /** Image-vs-text breakdown for one request. */
 export function renderContextMapFragment(
   c: ContextMapData | undefined,
   history: ContextMapData[] = [],
   notFound = false,
+  locale = 'en',
 ): string {
   const isLatest = c !== undefined && c.id === (history.at(-1)?.id ?? -1);
+  const detailsWord = t('dash.ctxmap.detailsWord', locale);
   if (notFound) {
-    return `<div class="ctxmap"><div class="empty-note">That request's breakdown isn't kept anymore — only the most recent requests are. Pick <strong>Details</strong> on a newer row.</div></div>`;
+    return `<div class="ctxmap"><div class="empty-note">${fmt(t('dash.ctxmap.evictedNote', locale), { details: detailsWord })}</div></div>`;
   }
   if (!c || (c.baselineTokens <= 0 && c.imageCount <= 0)) {
-    return `<div class="ctxmap"><div class="empty-note">Pick <strong>Details</strong> on a request to see exactly which parts became images and which stayed as text.</div></div>`;
+    return `<div class="ctxmap"><div class="empty-note">${fmt(t('dash.ctxmap.emptyNote', locale), { details: detailsWord })}</div></div>`;
   }
+  const CTXMAP_BUCKETS = ctxmapBuckets(locale);
   // Cache-aware billing-equivalent basis — identical to the recent row's
   // As-text / Sent / Saved/lost columns. These are not raw token counts; they apply
   // Anthropic's cache rates so create/read misses are visible in the comparison.
@@ -684,62 +706,76 @@ export function renderContextMapFragment(
     .join('');
 
   const ids = c.imageIds ?? [];
+  const pageWord = (n: number): string => t(n === 1 ? 'dash.common.page' : 'dash.common.pages', locale);
   const gallery = ids.length
-    ? `<div class="pages-title">${ids.length} image page${ids.length === 1 ? '' : 's'} sent to Claude — click one to read the exact text behind it:</div>` +
+    ? `<div class="pages-title">${fmt(t('dash.ctxmap.pagesTitle', locale), { n: String(ids.length), page: pageWord(ids.length) })}</div>` +
       `<div class="pages">` +
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="Click to read the source text behind page ${id}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt='page ${id} expired from buffer';" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="${escapeHtml(fmt(t('dash.ctxmap.pageAlt', locale), { n: String(id) }))}" loading="lazy" title="${escapeHtml(fmt(t('dash.ctxmap.pageTitle', locale), { n: String(id) }))}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt='${escapeHtml(fmt(t('dash.ctxmap.pageAltGone', locale), { n: String(id) }))}';" />`,
         )
         .join('') +
       `</div>`
     : c.restored && c.imageCount > 0
-      ? `<div class="pages-title">${c.imageCount} image page${c.imageCount === 1 ? '' : 's'} were sent — thumbnails expired when the proxy restarted. The breakdown above is reconstructed from the saved log.</div>`
+      ? `<div class="pages-title">${fmt(t('dash.ctxmap.pagesTitleRestored', locale), { n: String(c.imageCount), page: pageWord(c.imageCount) })}</div>`
       : '';
 
   // Did the TEXT baseline's prefix read warm this turn? This follows the actual
   // request's observed cache state: cache_read > 0 means warm, cache_read === 0
   // means cold. No wall-clock-only counterfactual is credited.
   const warm = showCompare && c.warm;
-  const textNoun = warm ? 'cached text' : 'text';
+  const textNoun = t(warm ? 'dash.ctxmap.textNounWarm' : 'dash.ctxmap.textNounCold', locale);
   // Raw count_tokens can grow (imaging bloated a short prompt), so say so rather
   // than rendering a nonsensical "shrank -36%".
-  const rawPhrase =
-    rawShrink >= 0 ? `Raw content shrank ${rawShrink}%.` : `Raw content grew ${-rawShrink}%.`;
+  const rawPhrase = fmt(t(rawShrink >= 0 ? 'dash.ctxmap.rawShrunk' : 'dash.ctxmap.rawGrew', locale), {
+    pct: String(Math.abs(rawShrink)),
+  });
   const headline = !showCompare
-    ? `<strong>${kFmt(c.actualInputEff || c.realInput)}</strong> billing-equivalent input tokens sent`
+    ? fmt(t('dash.ctxmap.headlineNoCompare', locale), {
+        tok: `<strong>${kFmt(c.actualInputEff || c.realInput)}</strong>`,
+      })
     : pct >= 0
-      ? `<span class="ctx-big">${pct}%</span> smaller — ${textNoun} would bill as <strong>${kFmt(base)}</strong> input tokens; images billed as <strong>${kFmt(real)}</strong>`
-      : `<span class="ctx-big">${-pct}%</span> bigger — images billed as <strong>${kFmt(real)}</strong> input tokens vs <strong>${kFmt(base)}</strong> for ${textNoun}`;
+      ? fmt(t('dash.ctxmap.headlineSmaller', locale), {
+          pctSpan: `<span class="ctx-big">${pct}%</span>`,
+          textNoun,
+          base: `<strong>${kFmt(base)}</strong>`,
+          real: `<strong>${kFmt(real)}</strong>`,
+        })
+      : fmt(t('dash.ctxmap.headlineBigger', locale), {
+          pctSpan: `<span class="ctx-big">${-pct}%</span>`,
+          textNoun,
+          base: `<strong>${kFmt(base)}</strong>`,
+          real: `<strong>${kFmt(real)}</strong>`,
+        });
   // Clarifying sub-line. It must match the actual request's cache state: claiming
   // a 0.1× read discount when cache_read===0 would count hypothetical cache as a
   // OmniGlyph effect, so cold rows price both paths cold.
   const subnote = !showCompare
-    ? 'Billed tokens count cache discounts (reads at 0.1×) — no trustworthy text baseline for this request yet.'
+    ? t('dash.ctxmap.subnoteNoBaseline', locale)
     : !warm
-      ? `No warm text cache this turn — the text counterfactual's prefix is priced at the 1.25× create rate (the same event the imaged path pays), identical basis to the Saved column. The gap is purely token count. ${rawPhrase}`
+      ? fmt(t('dash.ctxmap.subnoteCold', locale), { rawPhrase })
       : pct < 0 && rawShrink > 0
-          ? `Billed = after cache discounts (reads at 0.1×), same basis as the Saved column. The raw text is ${rawShrink}% smaller, but most of it would have been a cheap cache-read — so imaging it cost more.`
-          : `Billed = after cache discounts (reads at 0.1×), same basis as the Saved column. ${rawPhrase}`;
-  const title = isLatest ? 'Latest request' : 'Selected request';
+        ? fmt(t('dash.ctxmap.subnoteWarmLossCheapRead', locale), { rawShrink: String(rawShrink) })
+        : fmt(t('dash.ctxmap.subnoteWarmDefault', locale), { rawPhrase });
+  const title = t(isLatest ? 'dash.ctxmap.titleLatest' : 'dash.ctxmap.titleSelected', locale);
 
   return (
     `<div class="ctxmap">` +
     `<div class="ctx-headline"><span class="ctx-title">${title}</span> ${headline}</div>` +
     `<div class="split-note ctx-subnote">${subnote}</div>` +
-    `<div class="legend"><span class="tag tag-img">Became an image</span><span class="tag tag-txt">Stayed as text</span></div>` +
+    `<div class="legend"><span class="tag tag-img">${t('dash.ctxmap.legendImg', locale)}</span><span class="tag tag-txt">${t('dash.ctxmap.legendTxt', locale)}</span></div>` +
     `<div class="split">` +
     `<div class="split-col split-img">` +
-    `<div class="split-head">Compressed into images <span class="split-sum">${kFmt(totalImagedChars)} chars · ${c.imageCount} page${c.imageCount === 1 ? '' : 's'}</span></div>` +
-    (imgRows || `<div class="ctx-row muted-row">nothing imaged this request</div>`) +
-    `<div class="split-note">OmniGlyph can misread exact values inside images — treat these as gist, not byte-exact.</div>` +
+    `<div class="split-head">${t('dash.ctxmap.splitHeadImg', locale)} <span class="split-sum">${fmt(t('dash.ctxmap.splitSumImg', locale), { chars: kFmt(totalImagedChars), pages: `${c.imageCount} ${pageWord(c.imageCount)}` })}</span></div>` +
+    (imgRows || `<div class="ctx-row muted-row">${t('dash.ctxmap.nothingImaged', locale)}</div>`) +
+    `<div class="split-note">${t('dash.ctxmap.splitNoteImg', locale)}</div>` +
     `</div>` +
     `<div class="split-col split-txt">` +
-    `<div class="split-head">Kept as plain text <span class="split-sum">byte-exact</span></div>` +
-    `<div class="ctx-row"><span class="ctx-lbl">Your latest messages</span><span class="ctx-val">verbatim</span></div>` +
-    `<div class="ctx-row"><span class="ctx-lbl">Claude's reply (output)</span><span class="ctx-val">${kFmt(c.output)} tok</span></div>` +
-    `<div class="split-note">never imaged — safe for IDs, hashes and exact numbers.</div>` +
+    `<div class="split-head">${t('dash.ctxmap.splitHeadTxt', locale)} <span class="split-sum">${t('dash.ctxmap.splitSumTxt', locale)}</span></div>` +
+    `<div class="ctx-row"><span class="ctx-lbl">${t('dash.ctxmap.latestMessages', locale)}</span><span class="ctx-val">${t('dash.ctxmap.latestMessagesVal', locale)}</span></div>` +
+    `<div class="ctx-row"><span class="ctx-lbl">${t('dash.ctxmap.claudeReply', locale)}</span><span class="ctx-val">${fmt(t('dash.ctxmap.claudeReplyVal', locale), { tok: kFmt(c.output) })}</span></div>` +
+    `<div class="split-note">${t('dash.ctxmap.splitNoteTxt', locale)}</div>` +
     `</div>` +
     `</div>` +
     gallery +
@@ -778,7 +814,7 @@ function flowNode(
  *  response. The savings ribbon follows the hero's honesty rule — the
  *  cache-weighted pair (baseline_input_weighted vs actual_input_weighted)
  *  drives the headline, and a weighted net loss is shown as a loss. */
-export function renderFlowFragment(s: StatsPayload): string {
+export function renderFlowFragment(s: StatsPayload, locale = 'en'): string {
   const reqs = s.requests || 0;
   const imaged = s.compressed_requests || 0;
   const passthrough = s.passthrough || 0;
@@ -801,50 +837,81 @@ export function renderFlowFragment(s: StatsPayload): string {
   // End-anchored just left of the branch nodes (x=456) so the labels can
   // never clip under the node cards.
   const edgeLabels =
-    `<text class="fe-lbl fe-lbl-img" x="448" y="84" text-anchor="end">${kFmt(imaged)} imaged</text>` +
-    `<text class="fe-lbl fe-lbl-txt" x="448" y="252" text-anchor="end">${kFmt(passthrough)} passthrough</text>`;
+    `<text class="fe-lbl fe-lbl-img" x="448" y="84" text-anchor="end">${fmt(t('dash.flow.edgeImaged', locale), { n: kFmt(imaged) })}</text>` +
+    `<text class="fe-lbl fe-lbl-txt" x="448" y="252" text-anchor="end">${fmt(t('dash.flow.edgePassthrough', locale), { n: kFmt(passthrough) })}</text>`;
 
   const nodes =
-    flowNode(8, 121, 178, 78, 'fn-client', 'Claude Code', kFmt(reqs), 'requests through the proxy') +
+    flowNode(8, 121, 178, 78, 'fn-client', t('dash.flow.clientTitle', locale), kFmt(reqs), t('dash.flow.clientSub', locale)) +
     flowNode(
       232,
       121,
       178,
       78,
       enabled ? 'fn-gate' : 'fn-gate flow-off',
-      'Gate',
-      enabled ? 'ON' : 'OFF',
-      'billing math + model gate',
+      t('dash.flow.gateTitle', locale),
+      t(enabled ? 'dash.flow.gateOn' : 'dash.flow.gateOff', locale),
+      t('dash.flow.gateSub', locale),
     ) +
-    flowNode(456, 18, 178, 78, 'fn-render', 'Renderer', `${kFmt(imagedChars)} chars`, 'dense 1-bit PNG pages') +
-    flowNode(456, 224, 178, 78, 'fn-pass', 'Passthrough', 'byte-identical', 'unprofitable · recent turns') +
+    flowNode(
+      456,
+      18,
+      178,
+      78,
+      'fn-render',
+      t('dash.flow.rendererTitle', locale),
+      fmt(t('dash.flow.rendererValue', locale), { chars: kFmt(imagedChars) }),
+      t('dash.flow.rendererSub', locale),
+    ) +
+    flowNode(
+      456,
+      224,
+      178,
+      78,
+      'fn-pass',
+      t('dash.flow.passTitle', locale),
+      t('dash.flow.passValue', locale),
+      t('dash.flow.passSub', locale),
+    ) +
     flowNode(
       680,
       121,
       178,
       78,
       'fn-api',
-      'Anthropic API',
-      `${kFmt(real)} tok billed`,
-      `vs ${kFmt(base)} as text (weighted)`,
+      t('dash.flow.apiTitle', locale),
+      fmt(t('dash.flow.apiValue', locale), { real: kFmt(real) }),
+      fmt(t('dash.flow.apiSub', locale), { base: kFmt(base) }),
     ) +
-    flowNode(886, 121, 166, 78, 'fn-resp', 'Response', 'untouched', 'output is never compressed');
+    flowNode(
+      886,
+      121,
+      166,
+      78,
+      'fn-resp',
+      t('dash.flow.respTitle', locale),
+      t('dash.flow.respValue', locale),
+      t('dash.flow.respSub', locale),
+    );
 
   // Savings ribbon — same cache-weighted basis and loss-honesty as the hero.
   const showCompare = base > 0 && real > 0;
   const pct = showCompare ? Math.round((1 - real / base) * 100) : 0;
   const ribbon =
     reqs === 0
-      ? `<div class="flow-ribbon flow-wait">Waiting for the first request — point Claude Code at this proxy to see it flow.</div>`
+      ? `<div class="flow-ribbon flow-wait">${t('dash.flow.ribbonWaiting', locale)}</div>`
       : !showCompare
-        ? `<div class="flow-ribbon flow-wait">Measuring — no cache-weighted baseline yet.</div>`
+        ? `<div class="flow-ribbon flow-wait">${t('dash.flow.ribbonMeasuring', locale)}</div>`
         : pct >= 0
-          ? `<div class="flow-ribbon flow-pos"><strong>${pct}%</strong> fewer weighted input tokens · ${kFmt(s.saved_input_tokens || 0)} tok · <strong>$${(s.saved_usd || 0).toFixed(2)}</strong> saved</div>`
-          : `<div class="flow-ribbon flow-neg"><strong>${-pct}%</strong> more weighted input tokens than plain text so far — the gate keeps unprofitable requests as passthrough</div>`;
+          ? `<div class="flow-ribbon flow-pos">${fmt(t('dash.flow.ribbonPos', locale), {
+              pct: `<strong>${pct}%</strong>`,
+              tok: kFmt(s.saved_input_tokens || 0),
+              usd: `<strong>$${(s.saved_usd || 0).toFixed(2)}</strong>`,
+            })}</div>`
+          : `<div class="flow-ribbon flow-neg">${fmt(t('dash.flow.ribbonNeg', locale), { pct: `<strong>${-pct}%</strong>` })}</div>`;
 
   return (
     `<div class="flow-view">` +
-    `<svg viewBox="0 0 1060 320" role="img" aria-label="Request pipeline: client to gate to renderer or passthrough to Anthropic API to response">` +
+    `<svg viewBox="0 0 1060 320" role="img" aria-label="${escapeHtml(t('dash.flow.ariaLabel', locale))}">` +
     edges +
     edgeLabels +
     nodes +
@@ -862,17 +929,17 @@ function statusCls(status: number): string {
   return 'good';
 }
 
-export function renderRecentFragment(p: RecentPayload): string {
+export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
   const rows = (p.recent ?? []).slice().reverse();
   const body =
     rows.length === 0
-      ? `<tr><td colspan="10" class="empty-cell">No requests yet — they stream in here live.</td></tr>`
+      ? `<tr><td colspan="10" class="empty-cell">${t('dash.recent.empty', locale)}</td></tr>`
       : rows
           .map((e: RecentRow, i: number) => {
             const viewId = (e.img_ids ?? (e.img_id != null ? [e.img_id] : []))[0];
             const viewLink =
               viewId != null
-                ? `<a class="row-view" href="#" role="button" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">Details →</a>`
+                ? `<a class="row-view" href="#" role="button" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">${t('dash.common.details', locale)}</a>`
                 : `<span class="muted">—</span>`;
             const saved = e.session_saved_so_far_delta;
             // A loss that disappears when the newly written prefix is repriced at
@@ -886,7 +953,13 @@ export function renderRecentFragment(p: RecentPayload): string {
               cc > 0 &&
               saved + cc * (CACHE_CREATE_RATE - CACHE_READ_RATE) > 0;
             const createNote = createLoss
-              ? ` <span class="mk-create" title="Cache-create turn: this loss is the one-time ${CACHE_CREATE_RATE}× premium for writing ${numFmt(cc)} tokens to cache. Later turns re-read that prefix at ${CACHE_READ_RATE}×, which typically recoups it.">create</span>`
+              ? ` <span class="mk-create" title="${escapeHtml(
+                  fmt(t('dash.recent.createNoteTitle', locale), {
+                    rate: String(CACHE_CREATE_RATE),
+                    cc: numFmt(cc),
+                    readRate: String(CACHE_READ_RATE),
+                  }),
+                )}">${t('dash.recent.createNoteLabel', locale)}</span>`
               : '';
             const savedCell = saved == null
               ? `<td class="num muted">—</td>`
@@ -896,8 +969,8 @@ export function renderRecentFragment(p: RecentPayload): string {
                   ? `<td class="num neg">${numFmt(saved)}${createNote}</td>`
                   : `<td class="num">0</td>`;
             const imaged = e.cc_added
-              ? `<span class="badge badge-img">image</span>`
-              : `<span class="badge badge-txt">text</span>`;
+              ? `<span class="badge badge-img">${t('dash.recent.badgeImage', locale)}</span>`
+              : `<span class="badge badge-txt">${t('dash.recent.badgeText', locale)}</span>`;
             return (
               `<tr>` +
               `<td class="muted">${i + 1}</td>` +
@@ -916,15 +989,15 @@ export function renderRecentFragment(p: RecentPayload): string {
           .join('');
   return (
     `<table class="rtable"><thead><tr>` +
-    `<th scope="col">#</th>` +
-    `<th scope="col">Result</th>` +
-    `<th scope="col">Endpoint</th>` +
-    `<th scope="col">Model</th>` +
-    `<th scope="col" title="Was this request's context compressed into an image?">Sent as</th>` +
-    `<th scope="col" class="num" title="Tokens served from Claude's cache (cheap)">Cache hits</th>` +
-    `<th scope="col" class="num" title="Billing-equivalent input if kept as plain text, after cache create/read rates">As text</th>` +
-    `<th scope="col" class="num" title="Actual billing-equivalent input after imaging, after cache create/read rates">Sent</th>` +
-    `<th scope="col" class="num" title="As-text minus Sent; negative means imaging cost more">Saved/lost</th>` +
+    `<th scope="col">${t('dash.recent.colIndex', locale)}</th>` +
+    `<th scope="col">${t('dash.recent.colResult', locale)}</th>` +
+    `<th scope="col">${t('dash.recent.colEndpoint', locale)}</th>` +
+    `<th scope="col">${t('dash.recent.colModel', locale)}</th>` +
+    `<th scope="col" title="${escapeHtml(t('dash.recent.colSentAsTitle', locale))}">${t('dash.recent.colSentAs', locale)}</th>` +
+    `<th scope="col" class="num" title="${escapeHtml(t('dash.recent.colCacheHitsTitle', locale))}">${t('dash.recent.colCacheHits', locale)}</th>` +
+    `<th scope="col" class="num" title="${escapeHtml(t('dash.recent.colAsTextTitle', locale))}">${t('dash.recent.colAsText', locale)}</th>` +
+    `<th scope="col" class="num" title="${escapeHtml(t('dash.recent.colSentTitle', locale))}">${t('dash.recent.colSent', locale)}</th>` +
+    `<th scope="col" class="num" title="${escapeHtml(t('dash.recent.colSavedLostTitle', locale))}">${t('dash.recent.colSavedLost', locale)}</th>` +
     `<th scope="col"></th>` +
     `</tr></thead><tbody>${body}</tbody></table>`
   );
@@ -939,12 +1012,13 @@ export interface LatestFragmentInput {
   sourceText: string | null; // null = not captured
 }
 
-export function renderLatestFragment(inp: LatestFragmentInput): string {
+export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): string {
   const { payload, pin, showSource, sourceText } = inp;
   const hasPreview = payload.has_preview === true;
   const meta = payload.preview_meta ?? '';
   const imageIds = payload.image_ids ?? [];
   const pinnedEvicted = pin != null && !imageIds.includes(pin);
+  const renderedPageAlt = escapeHtml(t('dash.viewer.renderedPageAlt', locale));
 
   // Pinned id, or latest (cache-busted by meta).
   const imgSrc =
@@ -954,35 +1028,39 @@ export function renderLatestFragment(inp: LatestFragmentInput): string {
 
   const pinBar =
     pin != null
-      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">← back to latest</button><span class="mini-label">image #${pin}</span></div>`
+      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">${t('dash.viewer.backToLatest', locale)}</button><span class="mini-label">${fmt(t('dash.viewer.imageLabel', locale), { n: String(pin) })}</span></div>`
       : '';
 
   let main: string;
   if (pin != null && pinnedEvicted) {
-    main = `<div class="evicted">image #${pin} is no longer in the buffer</div>`;
+    main = `<div class="evicted">${fmt(t('dash.viewer.evicted', locale), { n: String(pin) })}</div>`;
   } else if (pin != null || hasPreview) {
     // When source pane is open the image appears inside the pairing — don't duplicate it.
-    main = showSource ? '' : `<div class="frame"><img src="${imgSrc}" alt="rendered page" /></div>`;
+    main = showSource ? '' : `<div class="frame"><img src="${imgSrc}" alt="${renderedPageAlt}" /></div>`;
   } else {
-    main = `<div class="empty-note">No images yet — they appear the instant OmniGlyph compresses a request.</div>`;
+    main = `<div class="empty-note">${t('dash.viewer.empty', locale)}</div>`;
   }
 
   const showBtn = pin != null ? !pinnedEvicted : hasPreview;
   const caption =
-    pin != null ? `image #${pin}` : meta ? `${escapeHtml(meta)} · top-left at native size` : '';
+    pin != null
+      ? fmt(t('dash.viewer.imageLabel', locale), { n: String(pin) })
+      : meta
+        ? fmt(t('dash.viewer.captionMeta', locale), { meta: escapeHtml(meta) })
+        : '';
   const srcBtn = showBtn
-    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${showSource ? 'hide source text' : 'show the text behind this image'}</button>`
+    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${t(showSource ? 'dash.viewer.hideSource' : 'dash.viewer.showSource', locale)}</button>`
     : '';
 
   let pane = '';
   if (showSource) {
     pane =
       sourceText == null
-        ? `<div class="evicted">source text wasn't captured for this image</div>`
+        ? `<div class="evicted">${t('dash.viewer.noSource', locale)}</div>`
         : `<div class="pairing">` +
-          `<div class="pair-col"><div class="pair-head pair-img">What Claude sees · image</div><div class="frame frame-sm"><img src="${imgSrc}" alt="rendered page" /></div></div>` +
-          `<div class="pair-mid">made from ↓</div>` +
-          `<div class="pair-col"><div class="pair-head pair-txt">The original text · byte-exact</div><pre class="src-pane">${escapeHtml(sourceText)}</pre></div>` +
+          `<div class="pair-col"><div class="pair-head pair-img">${t('dash.viewer.whatClaudeSees', locale)}</div><div class="frame frame-sm"><img src="${imgSrc}" alt="${renderedPageAlt}" /></div></div>` +
+          `<div class="pair-mid">${t('dash.viewer.madeFrom', locale)}</div>` +
+          `<div class="pair-col"><div class="pair-head pair-txt">${t('dash.viewer.originalText', locale)}</div><pre class="src-pane">${escapeHtml(sourceText)}</pre></div>` +
           `</div>`;
   }
 
@@ -993,7 +1071,7 @@ export function renderLatestFragment(inp: LatestFragmentInput): string {
 
 const TOP_N = 8;
 
-export function renderSessionsFragment(p: SessionsPayload): string {
+export function renderSessionsFragment(p: SessionsPayload, locale = 'en'): string {
   const all = p.sessions ?? [];
   const rows = [...all]
     .sort((a, b) => (b.tokensSavedEst ?? 0) - (a.tokensSavedEst ?? 0))
@@ -1006,8 +1084,9 @@ export function renderSessionsFragment(p: SessionsPayload): string {
   };
   const barPct = (v: number) => (max <= 0 || v <= 0 ? 0 : (v / max) * 100);
 
-  const status = `<div class="status">${all.length} session${all.length === 1 ? '' : 's'} tracked</div>`;
-  if (rows.length === 0) return status + `<div class="empty">No sessions yet.</div>`;
+  const sessionWord = t(all.length === 1 ? 'dash.common.session' : 'dash.common.sessions', locale);
+  const status = `<div class="status">${fmt(t('dash.sessions.tracked', locale), { n: String(all.length), word: sessionWord })}</div>`;
+  if (rows.length === 0) return status + `<div class="empty">${t('dash.sessions.empty', locale)}</div>`;
 
   const chart = rows
     .map((s) => {
@@ -1027,15 +1106,15 @@ export function renderSessionsFragment(p: SessionsPayload): string {
   return (
     status +
     `<div class="bars">${chart}</div>` +
-    `<div class="axis">tokens saved per session (cache-aware) · top ${rows.length} of ${all.length}</div>`
+    `<div class="axis">${fmt(t('dash.sessions.axis', locale), { shown: String(rows.length), total: String(all.length) })}</div>`
   );
 }
 
 // ---- full-history stats table --------------------------------------------
 
-export function renderStatsTableFragment(p: FullStatsPayload): string {
+export function renderStatsTableFragment(p: FullStatsPayload, locale = 'en'): string {
   if (p.error || !p.summary) {
-    return `<div class="status">${escapeHtml(p.error || 'no data')}</div><table class="dtable"><tbody></tbody></table>`;
+    return `<div class="status">${escapeHtml(p.error || t('dash.stats.noData', locale))}</div><table class="dtable"><tbody></tbody></table>`;
   }
   const s = p.summary;
   const totalIn = (s.inputTokensTotal || 0) + (s.cacheCreateTokensTotal || 0) + (s.cacheReadTokensTotal || 0);
@@ -1045,27 +1124,28 @@ export function renderStatsTableFragment(p: FullStatsPayload): string {
   const charRatio =
     s.origCharsTotal > 0 ? ((s.imageBytesTotal / s.origCharsTotal) * 100).toFixed(3) + 'x' : '-';
 
-  // NOTE: the literal word "requests" is asserted by tests.
+  // NOTE: the literal (English) word "requests" is asserted by tests — dash.stats.rowRequests's
+  // en value must stay exactly "requests".
   // Each row is a label/value pair, not a column header — the label is the
   // ROW's header (scope="row"), not a column one.
   const tr = (k: string, v: string) => `<tr><th scope="row">${k}</th><td class="num">${v}</td></tr>`;
   return (
-    `<div class="status">${numFmt(p.parsed)} events parsed from disk</div>` +
+    `<div class="status">${fmt(t('dash.stats.parsed', locale), { n: numFmt(p.parsed) })}</div>` +
     `<table class="dtable"><tbody>` +
-    tr('requests', numFmt(s.total)) +
-    tr('2xx / 4xx / 5xx', `${numFmt(s.ok2xx)} / ${numFmt(s.err4xx)} / ${numFmt(s.err5xx)}`) +
-    tr('compressed', numFmt(s.compressed)) +
-    tr('passthrough', numFmt(s.passthrough)) +
-    tr('input tokens', numFmt(s.inputTokensTotal)) +
-    tr('cache create', numFmt(s.cacheCreateTokensTotal)) +
-    tr('cache read', numFmt(s.cacheReadTokensTotal)) +
-    tr('cache hit (by tokens)', hitRateTok) +
-    tr('cache hit (by events)', hitRateEv) +
-    tr('original chars', numFmt(s.origCharsTotal)) +
-    tr('image bytes', numFmt(s.imageBytesTotal)) +
-    tr('bytes / char', charRatio) +
-    tr('latency p50 / p95', `${numFmt(s.durationP50)} / ${numFmt(s.durationP95)} ms`) +
-    tr('first-byte p50 / p95', `${numFmt(s.firstByteP50)} / ${numFmt(s.firstByteP95)} ms`) +
+    tr(t('dash.stats.rowRequests', locale), numFmt(s.total)) +
+    tr(t('dash.stats.rowStatusSplit', locale), `${numFmt(s.ok2xx)} / ${numFmt(s.err4xx)} / ${numFmt(s.err5xx)}`) +
+    tr(t('dash.stats.rowCompressed', locale), numFmt(s.compressed)) +
+    tr(t('dash.stats.rowPassthrough', locale), numFmt(s.passthrough)) +
+    tr(t('dash.stats.rowInputTokens', locale), numFmt(s.inputTokensTotal)) +
+    tr(t('dash.stats.rowCacheCreate', locale), numFmt(s.cacheCreateTokensTotal)) +
+    tr(t('dash.stats.rowCacheRead', locale), numFmt(s.cacheReadTokensTotal)) +
+    tr(t('dash.stats.rowCacheHitTokens', locale), hitRateTok) +
+    tr(t('dash.stats.rowCacheHitEvents', locale), hitRateEv) +
+    tr(t('dash.stats.rowOriginalChars', locale), numFmt(s.origCharsTotal)) +
+    tr(t('dash.stats.rowImageBytes', locale), numFmt(s.imageBytesTotal)) +
+    tr(t('dash.stats.rowBytesPerChar', locale), charRatio) +
+    tr(t('dash.stats.rowLatency', locale), `${numFmt(s.durationP50)} / ${numFmt(s.durationP95)} ms`) +
+    tr(t('dash.stats.rowFirstByte', locale), `${numFmt(s.firstByteP50)} / ${numFmt(s.firstByteP95)} ms`) +
     `</tbody></table>`
   );
 }
@@ -1090,8 +1170,8 @@ export interface BenchFragmentOpts {
   running: BenchRunnerState | null;
 }
 
-function renderBillingModelTable(models: BillingSweepAggregate['models']): string {
-  if (models.length === 0) return `<div class="empty">no probes recorded yet</div>`;
+function renderBillingModelTable(models: BillingSweepAggregate['models'], locale: string): string {
+  if (models.length === 0) return `<div class="empty">${t('dash.bench.noProbes', locale)}</div>`;
   const rows = models
     .map(
       (m) =>
@@ -1101,24 +1181,26 @@ function renderBillingModelTable(models: BillingSweepAggregate['models']): strin
     .join('');
   return (
     `<table class="dtable"><thead><tr>` +
-    `<th scope="col">model</th><th scope="col">probes</th><th scope="col">residual max</th><th scope="col">residual total</th>` +
+    `<th scope="col">${t('dash.bench.tableModel', locale)}</th><th scope="col">${t('dash.bench.tableProbes', locale)}</th>` +
+    `<th scope="col">${t('dash.bench.tableResidualMax', locale)}</th><th scope="col">${t('dash.bench.tableResidualTotal', locale)}</th>` +
     `</tr></thead>` +
     `<tbody>${rows}</tbody></table>`
   );
 }
 
-function renderDensityModelBars(models: DensityFrontierAggregate['models']): string {
-  if (models.length === 0) return `<div class="empty">no attempts recorded yet</div>`;
+function renderDensityModelBars(models: DensityFrontierAggregate['models'], locale: string): string {
+  if (models.length === 0) return `<div class="empty">${t('dash.bench.noAttempts', locale)}</div>`;
   // Newest experiments first — the historical sweeps sink to the bottom.
   const ordered = [...models].sort((a, b) => (b.lastDate ?? '').localeCompare(a.lastDate ?? ''));
   const rows = ordered
     .map((m) => {
       const pct = m.attempts > 0 ? (m.correct / m.attempts) * 100 : 0;
+      const lastDate = m.lastDate ?? t('dash.bench.lastRunNa', locale);
       return (
-        `<div class="bar-row" title="last run ${escapeHtml(m.lastDate ?? 'n/a')}">` +
+        `<div class="bar-row" title="${escapeHtml(fmt(t('dash.bench.lastRun', locale), { date: lastDate }))}">` +
         `<div class="bar-head"><code>${escapeHtml(m.model)}</code>` +
         `<span class="bar-config">${escapeHtml(m.config)}</span>` +
-        `<span class="bar-val">${m.correct}/${m.attempts} exact · ${m.abstained} abst.</span></div>` +
+        `<span class="bar-val">${fmt(t('dash.bench.attemptsSummary', locale), { correct: String(m.correct), attempts: String(m.attempts), abstained: String(m.abstained) })}</span></div>` +
         `<div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div>` +
         `</div>`
       );
@@ -1128,18 +1210,19 @@ function renderDensityModelBars(models: DensityFrontierAggregate['models']): str
   // reads with deliberately-overdense experiments and misstate both.
   return (
     `<div class="bars">${rows}</div>` +
-    `<div class="split-note">one row per (model · config) experiment — densities differ by design; the production-config numbers are the ones the gate enforces.</div>`
+    `<div class="split-note">${t('dash.bench.densitySplitNote', locale)}</div>`
   );
 }
 
 function benchRunButtons(
   harness: 'billing-sweep' | 'density-frontier',
   opts: BenchFragmentOpts,
+  locale: string,
 ): string {
   const dryDisabled = !opts.harnessAvailable || opts.running !== null ? ' disabled' : '';
   const liveDisabled = dryDisabled || !opts.canLive ? ' disabled' : '';
   const liveTitle = !opts.canLive
-    ? ' title="ANTHROPIC_API_KEY not set in this process — required for a live run"'
+    ? ` title="${escapeHtml(t('dash.bench.liveTitle', locale))}"`
     : '';
   // /api/bench/run answers JSON ({started} | an error body), not a fragment —
   // hx-swap="none" leaves the DOM alone on the response itself; the terminal
@@ -1151,29 +1234,29 @@ function benchRunButtons(
     `<div class="bench-actions">` +
     `<button type="button" id="bench-run-dry-${harness}" class="switch-btn bench-run-dry"${dryDisabled}` +
     ` hx-post="/api/bench/run" hx-swap="none"` +
-    ` hx-vals='{"harness":"${harness}","mode":"dry"}'>Run dry ($0)</button>` +
+    ` hx-vals='{"harness":"${harness}","mode":"dry"}'>${t('dash.bench.runDry', locale)}</button>` +
     `<button type="button" id="bench-run-live-${harness}" class="switch-btn bench-run-live"${liveDisabled}${liveTitle}` +
     ` hx-post="/api/bench/run" hx-swap="none"` +
     ` hx-vals='{"harness":"${harness}","mode":"live","confirm":true}'` +
-    ` hx-confirm="This calls the real provider API and can incur real cost. Results append to benchmarks/${harness}/results/. Continue?"` +
-    `>Run live</button>` +
+    ` hx-confirm="${escapeHtml(fmt(t('dash.bench.confirmLive', locale), { harness }))}"` +
+    `>${t('dash.bench.runLive', locale)}</button>` +
     `</div>`
   );
 }
 
-function renderBenchTerminal(running: BenchRunnerState): string {
+function renderBenchTerminal(running: BenchRunnerState, locale: string): string {
   const body = running.lines.length > 0
     ? running.lines.map((l) => escapeHtml(l)).join('\n')
-    : '(waiting for output…)';
+    : t('dash.bench.waitingOutput', locale);
   return (
     `<div class="card bench-term" id="bench-term">` +
     `<div class="term-bar">` +
     `<span class="term-dot term-dot-red"></span>` +
     `<span class="term-dot term-dot-yellow"></span>` +
     `<span class="term-dot term-dot-green"></span>` +
-    `<span class="term-title">${escapeHtml(running.harness ?? '')} — running…</span>` +
+    `<span class="term-title">${escapeHtml(fmt(t('dash.bench.running', locale), { harness: running.harness ?? '' }))}</span>` +
     `<button type="button" id="bench-cancel" class="switch-btn term-cancel" ` +
-    `hx-post="/api/bench/cancel" hx-swap="none">Cancel</button>` +
+    `hx-post="/api/bench/cancel" hx-swap="none">${t('dash.bench.cancel', locale)}</button>` +
     `</div>` +
     `<pre class="term-body">${body}</pre>` +
     `</div>`
@@ -1184,39 +1267,38 @@ function renderBenchTerminal(running: BenchRunnerState): string {
  *  never fabricated) plus, while a run is active, a live terminal. See
  *  src/dashboard/bench.ts for the parser this reads and the runner this
  *  starts/cancels. */
-export function renderBenchFragment(data: BenchFragmentData, opts: BenchFragmentOpts): string {
+export function renderBenchFragment(data: BenchFragmentData, opts: BenchFragmentOpts, locale = 'en'): string {
   const { billingSweep, densityFrontier } = data;
   const note = !opts.harnessAvailable
-    ? `<p class="bench-note bench-unavailable">Running these harnesses requires a full repository checkout — ` +
-      `the <code>benchmarks/</code> scripts aren't part of the npm package. Clone the repo and run them from the CLI instead.</p>`
+    ? `<p class="bench-note bench-unavailable">${t('dash.bench.harnessUnavailable', locale)}</p>`
     : '';
 
   const billingCard =
     `<div class="card bench-card">` +
     `<h3 class="card-head">billing-sweep</h3>` +
-    `<p class="bench-source">source: benchmarks/billing-sweep/results/</p>` +
+    `<p class="bench-source">${fmt(t('dash.bench.source', locale), { path: 'benchmarks/billing-sweep/results/' })}</p>` +
     `<div class="bench-agg">` +
-    `<div><span class="k">probes</span><span class="v">${billingSweep.totalProbes}</span></div>` +
-    `<div><span class="k">measured</span><span class="v">${billingSweep.measuredProbes}</span></div>` +
-    `<div><span class="k">residual max / total</span><span class="v">${billingSweep.residualMax} / ${billingSweep.residualTotal}</span></div>` +
+    `<div><span class="k">${t('dash.bench.kProbes', locale)}</span><span class="v">${billingSweep.totalProbes}</span></div>` +
+    `<div><span class="k">${t('dash.bench.kMeasured', locale)}</span><span class="v">${billingSweep.measuredProbes}</span></div>` +
+    `<div><span class="k">${t('dash.bench.kResidual', locale)}</span><span class="v">${billingSweep.residualMax} / ${billingSweep.residualTotal}</span></div>` +
     `</div>` +
-    renderBillingModelTable(billingSweep.models) +
-    benchRunButtons('billing-sweep', opts) +
+    renderBillingModelTable(billingSweep.models, locale) +
+    benchRunButtons('billing-sweep', opts, locale) +
     `</div>`;
 
   const densityCard =
     `<div class="card bench-card">` +
     `<h3 class="card-head">density-frontier</h3>` +
-    `<p class="bench-source">source: benchmarks/density-frontier/results/</p>` +
+    `<p class="bench-source">${fmt(t('dash.bench.source', locale), { path: 'benchmarks/density-frontier/results/' })}</p>` +
     `<div class="bench-agg">` +
-    `<div><span class="k">rows</span><span class="v">${densityFrontier.totalRows}</span></div>` +
-    `<div><span class="k">models</span><span class="v">${densityFrontier.models.length}</span></div>` +
+    `<div><span class="k">${t('dash.bench.kRows', locale)}</span><span class="v">${densityFrontier.totalRows}</span></div>` +
+    `<div><span class="k">${t('dash.bench.kModels', locale)}</span><span class="v">${densityFrontier.models.length}</span></div>` +
     `</div>` +
-    renderDensityModelBars(densityFrontier.models) +
-    benchRunButtons('density-frontier', opts) +
+    renderDensityModelBars(densityFrontier.models, locale) +
+    benchRunButtons('density-frontier', opts, locale) +
     `</div>`;
 
-  const terminal = opts.running ? renderBenchTerminal(opts.running) : '';
+  const terminal = opts.running ? renderBenchTerminal(opts.running, locale) : '';
 
   return `<div class="bench-grid">${billingCard}${densityCard}</div>${note}${terminal}`;
 }
@@ -1727,6 +1809,28 @@ const CSS = `
     .main { margin-left: 0; padding: 18px 16px 48px; }
   }
 
+  /* RTL (ar/fa/he/ur — see RTL_LOCALES in src/i18n/locales.ts): mirror the
+     fixed sidebar and its border/margin rather than relying on logical
+     properties everywhere, since the sidebar is position:fixed with a
+     physical inset. Nav item icon/label order flips for free (flex row
+     reverses with the ambient direction); only the geometry needs help. */
+  [dir="rtl"] .sidebar { inset: 0 0 0 auto; border-right: 0; border-left: 1px solid var(--border); }
+  [dir="rtl"] .main { margin-left: 0; margin-right: 220px; }
+  [dir="rtl"] .nav-item { border-left: 0; border-right: 3px solid transparent; }
+  [dir="rtl"] .nav-item.nav-active { border-left-color: transparent; border-right-color: var(--color-primary); }
+  [dir="rtl"] .skip-link { left: auto; right: -9999px; border-radius: 0 0 0 var(--radius-control); }
+  [dir="rtl"] .skip-link:focus { right: 0; left: auto; }
+  @media (max-width: 900px) {
+    [dir="rtl"] .sidebar { border-left: 0; border-bottom: 1px solid var(--border); }
+    [dir="rtl"] .main { margin-right: 0; }
+  }
+
+  /* language selector — styled like the other topbar controls */
+  .lang-select { background: var(--surface); color: var(--ink-2); border: 1px solid var(--border-strong);
+    padding: 5px 9px; cursor: pointer; border-radius: var(--radius-control); font: inherit; font-size: 12px;
+    font-weight: 600; box-shadow: var(--shadow); }
+  .lang-select:hover { border-color: var(--flame); color: var(--flame-ink); }
+
   /* benchmarks page (Phase 5) */
   .bench-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
   .bench-card { display: flex; flex-direction: column; gap: 10px; }
@@ -1881,14 +1985,23 @@ const GLUE_JS = `
 `;
 
 // Theme: light/dark via data-theme on <html>; saved in localStorage, defaults to system pref.
-const THEME_JS = `
+/** Theme toggle client script. The initial button label/aria-label is
+ *  server-rendered in the visitor's locale (renderTopbar); this generator
+ *  embeds the SAME two translated pairs as JS string literals so the client
+ *  toggle (ppTheme) keeps the label correct after a click, with no round-trip. */
+function themeJs(locale: string): string {
+  const dark = JSON.stringify(t('dash.theme.dark', locale));
+  const light = JSON.stringify(t('dash.theme.light', locale));
+  const switchToLight = JSON.stringify(t('dash.theme.switchToLight', locale));
+  const switchToDark = JSON.stringify(t('dash.theme.switchToDark', locale));
+  return `
   (function () {
     function apply(t) {
       document.documentElement.dataset.theme = t;
       var b = document.getElementById('theme-btn');
       if (b) {
-        b.textContent = t === 'dark' ? '☀️ Light' : '🌙 Dark';
-        b.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+        b.textContent = t === 'dark' ? ${light} : ${dark};
+        b.setAttribute('aria-label', t === 'dark' ? ${switchToLight} : ${switchToDark});
       }
     }
     window.ppTheme = function () {
@@ -1899,6 +2012,7 @@ const THEME_JS = `
     apply(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
   })();
 `;
+}
 
 /** Six server-rendered dashboard pages behind the sidebar shell. Structurally
  *  identical to (and must stay in sync with) DashboardPage in ../dashboard.ts —
@@ -1912,36 +2026,53 @@ export type DashboardPageId =
   | 'sessions'
   | 'history';
 
-const NAV: ReadonlyArray<{ page: DashboardPageId; href: string; icon: string; label: string }> = [
-  { page: 'overview', href: '/', icon: '🏠', label: 'Overview' },
-  { page: 'flow', href: '/flow', icon: '🔀', label: 'Live Flow' },
-  { page: 'telemetry', href: '/telemetry', icon: '📡', label: 'Telemetry' },
-  { page: 'benchmarks', href: '/benchmarks', icon: '📊', label: 'Benchmarks' },
-  { page: 'sessions', href: '/sessions', icon: '📁', label: 'Sessions' },
-  { page: 'history', href: '/history', icon: '🗂️', label: 'History' },
+const NAV: ReadonlyArray<{ page: DashboardPageId; href: string; icon: string; navKey: MessageKey }> = [
+  { page: 'overview', href: '/', icon: '🏠', navKey: 'dash.nav.overview' },
+  { page: 'flow', href: '/flow', icon: '🔀', navKey: 'dash.nav.flow' },
+  { page: 'telemetry', href: '/telemetry', icon: '📡', navKey: 'dash.nav.telemetry' },
+  { page: 'benchmarks', href: '/benchmarks', icon: '📊', navKey: 'dash.nav.benchmarks' },
+  { page: 'sessions', href: '/sessions', icon: '📁', navKey: 'dash.nav.sessions' },
+  { page: 'history', href: '/history', icon: '🗂️', navKey: 'dash.nav.history' },
 ];
 
-const PAGE_META: Record<DashboardPageId, { title: string; sub: string }> = {
-  overview: { title: 'Overview', sub: 'Live savings at a glance since this proxy started.' },
-  flow: { title: 'Live Flow', sub: 'How each request flows through the gate, live.' },
-  telemetry: { title: 'Telemetry', sub: 'Recent requests and what became an image vs stayed text.' },
-  benchmarks: { title: 'Benchmarks', sub: 'Billing-sweep and density-frontier receipts.' },
-  sessions: { title: 'Sessions', sub: 'Top sessions by tokens saved.' },
-  history: { title: 'History', sub: 'Every event on disk, aggregated.' },
+const PAGE_META: Record<DashboardPageId, { titleKey: MessageKey; subKey: MessageKey }> = {
+  overview: { titleKey: 'dash.page.overview.title', subKey: 'dash.page.overview.sub' },
+  flow: { titleKey: 'dash.page.flow.title', subKey: 'dash.page.flow.sub' },
+  telemetry: { titleKey: 'dash.page.telemetry.title', subKey: 'dash.page.telemetry.sub' },
+  benchmarks: { titleKey: 'dash.page.benchmarks.title', subKey: 'dash.page.benchmarks.sub' },
+  sessions: { titleKey: 'dash.page.sessions.title', subKey: 'dash.page.sessions.sub' },
+  history: { titleKey: 'dash.page.history.title', subKey: 'dash.page.history.sub' },
 };
 
-function renderSidebar(active: DashboardPageId): string {
+/** 42-option `<select>` (flag + native name), topbar-styled. `onchange` sets
+ *  the `omniglyph_lang` cookie (1 year) and reloads — the cookie is read
+ *  server-side on every request (see resolveDashLocale in src/i18n/index.ts),
+ *  so htmx's poll-driven fragments pick the new locale up for free. */
+function renderLangSelector(locale: string): string {
+  const options = DASH_LOCALES.map((l) => {
+    const selected = l.code === locale ? ' selected' : '';
+    return `<option value="${escapeHtml(l.code)}"${selected}>${escapeHtml(l.flag)} ${escapeHtml(l.native)}</option>`;
+  }).join('');
+  return (
+    `<select id="lang-select" class="lang-select" aria-label="${escapeHtml(t('dash.common.langSelectLabel', locale))}" ` +
+    `onchange="document.cookie='omniglyph_lang='+this.value+';path=/;max-age=31536000'; location.reload()">` +
+    options +
+    `</select>`
+  );
+}
+
+function renderSidebar(active: DashboardPageId, locale: string): string {
   const items = NAV.map((n) => {
     const isActive = n.page === active;
     const cls = 'nav-item' + (isActive ? ' nav-active' : '');
     const current = isActive ? ' aria-current="page"' : '';
     return (
       `<a class="${cls}" href="${n.href}"${current}>` +
-      `<span class="nav-icon">${n.icon}</span><span class="nav-label">${n.label}</span></a>`
+      `<span class="nav-icon">${n.icon}</span><span class="nav-label">${t(n.navKey, locale)}</span></a>`
     );
   }).join('');
   return (
-    `<nav class="sidebar" aria-label="Primary">` +
+    `<nav class="sidebar" aria-label="${escapeHtml(t('dash.nav.ariaLabel', locale))}">` +
     `<div class="sidebar-brand"><span class="flame-dot"></span><div class="wordmark">OmniGlyph</div></div>` +
     `<div class="sidebar-nav">${items}</div>` +
     `</nav>`
@@ -1950,20 +2081,21 @@ function renderSidebar(active: DashboardPageId): string {
 
 // Kill switch (#frag-toggle) lives here so it's reachable from every page, not
 // just Overview — it's the one control that has to stay one click away always.
-function renderTopbar(page: DashboardPageId): string {
+function renderTopbar(page: DashboardPageId, locale: string): string {
   const meta = PAGE_META[page];
   return (
     `<header class="topbar">` +
-    `<div class="page-heading"><h1 class="page-title">${meta.title}</h1><div class="page-sub">${meta.sub}</div></div>` +
+    `<div class="page-heading"><h1 class="page-title">${t(meta.titleKey, locale)}</h1><div class="page-sub">${t(meta.subKey, locale)}</div></div>` +
     `<div class="controls">` +
-    `<button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="Toggle dark mode" title="Toggle dark / light mode">🌙 Dark</button>` +
+    renderLangSelector(locale) +
+    `<button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="${escapeHtml(t('dash.theme.toggleAriaLabel', locale))}" title="${escapeHtml(t('dash.theme.toggleTitle', locale))}">${t('dash.theme.dark', locale)}</button>` +
     `<div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>` +
     `</div>` +
     `</header>`
   );
 }
 
-function renderPageBody(page: DashboardPageId): string {
+function renderPageBody(page: DashboardPageId, locale: string): string {
   switch (page) {
     case 'overview':
       // Mission Control (Phase 3): KPI row + savings sparkline on the left,
@@ -1974,24 +2106,24 @@ function renderPageBody(page: DashboardPageId): string {
       return (
         `<div id="frag-models" hx-get="/fragments/models" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>\n\n` +
         `<div id="frag-session" hx-get="/fragments/session-summary" hx-trigger="load, every 2s" hx-swap="innerHTML">\n` +
-        `  <div class="hero hero-empty"><div class="hero-headline">Connecting…</div></div>\n` +
+        `  <div class="hero hero-empty"><div class="hero-headline">${t('dash.hero.connecting', locale)}</div></div>\n` +
         `</div>\n\n` +
         `<div class="mission-grid">\n` +
         `  <div id="frag-kpis" hx-get="/fragments/kpis" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
         `  <div class="card feed-card">\n` +
-        `    <h3 class="card-head">Live feed</h3>\n` +
+        `    <h3 class="card-head">${t('dash.feed.title', locale)}</h3>\n` +
         `    <div id="frag-feed" hx-get="/fragments/feed" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
         `  </div>\n` +
         `</div>\n\n` +
         `<div class="section">\n` +
-        `  <h2 class="section-head">Lifetime totals <span class="section-sub">the full math, and the honesty receipts behind it</span></h2>\n` +
+        `  <h2 class="section-head">${t('dash.overview.lifetimeTitle', locale)} <span class="section-sub">${t('dash.overview.lifetimeSub', locale)}</span></h2>\n` +
         `  <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>\n` +
         `</div>`
       );
     case 'flow':
       return (
         `<section class="section">\n` +
-        `  <h2 class="section-head">Live pipeline <span class="section-sub">how each request flows through the gate</span></h2>\n` +
+        `  <h2 class="section-head">${t('dash.flow.sectionTitle', locale)} <span class="section-sub">${t('dash.flow.sectionSub', locale)}</span></h2>\n` +
         `  <div class="card">\n` +
         `    <div id="frag-flow" hx-get="/fragments/flow" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
         `  </div>\n` +
@@ -2010,17 +2142,17 @@ function renderPageBody(page: DashboardPageId): string {
         `  <div id="frag-odometer" hx-get="/fragments/odometer" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
         `</section>\n\n` +
         `<section class="section">\n` +
-        `  <h2 class="section-head">Timeline <span class="section-sub">live requests, newest first</span></h2>\n` +
+        `  <h2 class="section-head">${t('dash.timeline.title', locale)} <span class="section-sub">${t('dash.timeline.sub', locale)}</span></h2>\n` +
         `  <div class="card timeline-card">\n` +
         `    <div id="frag-timeline" hx-get="/fragments/timeline" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
         `  </div>\n` +
         `</section>\n\n` +
         `<section class="section">\n` +
-        `  <h2 class="section-head">What happened to your context <span class="section-sub">click a request to see image vs text</span></h2>\n` +
+        `  <h2 class="section-head">${t('dash.ctxmap.sectionTitle', locale)} <span class="section-sub">${t('dash.ctxmap.sectionSub', locale)}</span></h2>\n` +
         `  <div class="card">\n` +
-        `    <h3 class="card-head">Image vs text breakdown</h3>\n` +
+        `    <h3 class="card-head">${t('dash.ctxmap.cardTitle', locale)}</h3>\n` +
         `    <div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div>\n` +
-        `    <h3 class="card-head spaced">Image ↔ source inspector</h3>\n` +
+        `    <h3 class="card-head spaced">${t('dash.ctxmap.inspectorTitle', locale)}</h3>\n` +
         `    <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, pp-refresh" hx-swap="innerHTML"\n` +
         `         hx-vals='js:{pin: window.pp.pin == null ? "" : window.pp.pin, source: window.pp.src ? "1" : ""}'></div>\n` +
         `  </div>\n` +
@@ -2029,18 +2161,19 @@ function renderPageBody(page: DashboardPageId): string {
     case 'benchmarks':
       return (
         `<section class="section">\n` +
-        `  <h2 class="section-head">Benchmarks <span class="section-sub">billing-sweep + density-frontier — real receipts, live runs gated</span></h2>\n` +
+        `  <h2 class="section-head">${t('dash.bench.sectionTitle', locale)} <span class="section-sub">${t('dash.bench.sectionSub', locale)}</span></h2>\n` +
         `  <div id="frag-bench" hx-get="/fragments/bench" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML">\n` +
-        `    <div class="status">loading…</div>\n` +
+        `    <div class="status">${t('dash.bench.loading', locale)}</div>\n` +
         `  </div>\n` +
-        `  <p class="bench-note">Full methodology and measured receipts: ` +
-        `<a href="https://github.com/diegosouzapw/OmniGlyph/blob/main/docs/benchmarks/BENCHMARKS.md" target="_blank" rel="noopener">docs/benchmarks/BENCHMARKS.md</a>.</p>\n` +
+        `  <p class="bench-note">${fmt(t('dash.bench.docsIntro', locale), {
+          link: `<a href="https://github.com/diegosouzapw/OmniGlyph/blob/main/docs/benchmarks/BENCHMARKS.md" target="_blank" rel="noopener">docs/benchmarks/BENCHMARKS.md</a>`,
+        })}</p>\n` +
         `</section>`
       );
     case 'sessions':
       return (
         `<section class="section">\n` +
-        `  <h2 class="section-head">Top sessions <span class="section-sub">by tokens saved</span></h2>\n` +
+        `  <h2 class="section-head">${t('dash.sessions.sectionTitle', locale)} <span class="section-sub">${t('dash.sessions.sectionSub', locale)}</span></h2>\n` +
         `  <div class="card">\n` +
         `    <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>\n` +
         `  </div>\n` +
@@ -2049,7 +2182,7 @@ function renderPageBody(page: DashboardPageId): string {
     case 'history':
       return (
         `<section class="section">\n` +
-        `  <h2 class="section-head">Full history <span class="section-sub">every event on disk</span></h2>\n` +
+        `  <h2 class="section-head">${t('dash.stats.sectionTitle', locale)} <span class="section-sub">${t('dash.stats.sectionSub', locale)}</span></h2>\n` +
         `  <div class="card">\n` +
         `    <div id="frag-stats" hx-get="/fragments/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>\n` +
         `  </div>\n` +
@@ -2058,15 +2191,16 @@ function renderPageBody(page: DashboardPageId): string {
   }
 }
 
-export function renderPage(_port: number, page: DashboardPageId = 'overview'): string {
+export function renderPage(_port: number, page: DashboardPageId = 'overview', locale = 'en'): string {
   // hx-trigger="load, every Ns": paint on load then poll (2s live, 5s aggregates).
   const meta = PAGE_META[page];
+  const dir = RTL_LOCALES.includes(locale) ? ' dir="rtl"' : '';
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(locale)}"${dir}>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${meta.title} · OmniGlyph dashboard</title>
+<title>${t(meta.titleKey, locale)} · OmniGlyph dashboard</title>
 <link rel="icon" href="${FAVICON}" />
 <style>${CSS}</style>
 <script>
@@ -2082,28 +2216,28 @@ export function renderPage(_port: number, page: DashboardPageId = 'overview'): s
 </head>
 <body class="with-sidebar">
 
-<a class="skip-link" href="#main-content">Skip to content</a>
+<a class="skip-link" href="#main-content">${t('dash.common.skipToContent', locale)}</a>
 
-${renderSidebar(page)}
+${renderSidebar(page, locale)}
 
 <main class="main" id="main-content">
 
-${renderTopbar(page)}
+${renderTopbar(page, locale)}
 
-${renderPageBody(page)}
+${renderPageBody(page, locale)}
 
 </main>
 
 <div class="tray" x-data="{ toasts: [], next: 1 }"
      @pp-toast.window="const id = next++; toasts.push({ id, text: $event.detail.text }); setTimeout(() => toasts = toasts.filter(t => t.id !== id), 5000)">
   <template x-for="t in toasts" :key="t.id">
-    <div class="toast"><span x-text="t.text"></span><button type="button" @click="toasts = toasts.filter(x => x.id !== t.id)" aria-label="dismiss">&times;</button></div>
+    <div class="toast"><span x-text="t.text"></span><button type="button" @click="toasts = toasts.filter(x => x.id !== t.id)" aria-label="${escapeHtml(t('dash.common.dismiss', locale))}">&times;</button></div>
   </template>
 </div>
 
 <script>${HTMX_JS}</script>
 <script>${GLUE_JS}</script>
-<script>${THEME_JS}</script>
+<script>${themeJs(locale)}</script>
 <script>${ALPINE_JS}</script>
 </body>
 </html>`;

@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import en from './messages/en.json' with { type: 'json' };
+import { DASH_LOCALES } from './locales.js';
 
 export const MESSAGE_KEYS = Object.keys(en) as (keyof typeof en)[];
 export type MessageKey = (typeof MESSAGE_KEYS)[number];
@@ -72,4 +73,45 @@ export function resolveLocale(env: Record<string, string | undefined>): string {
 /** Look a message up in the locale's catalog, falling back to English. */
 export function t(key: MessageKey, locale: string): string {
   return catalogFor(locale)[key] ?? en[key];
+}
+
+/** `{name}` placeholder substitution — no dependency, just enough for the
+ *  dashboard's interpolated strings (counts, percentages, formatted $/tok).
+ *  Unknown placeholders are left as-is rather than throwing: a template
+ *  missing a var is a caller bug, but the dashboard must never 500 on it. */
+export function fmt(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole,
+  );
+}
+
+const DASH_LOCALE_CODES = new Set(DASH_LOCALES.map((l) => l.code));
+
+/** Extract `omniglyph_lang=<code>` from a raw `Cookie` header. */
+function cookieLocale(cookieHeader: string | undefined): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const name = part.slice(0, eq).trim();
+    if (name !== 'omniglyph_lang') continue;
+    const value = decodeURIComponent(part.slice(eq + 1).trim());
+    return value || null;
+  }
+  return null;
+}
+
+/** Resolve the dashboard's locale: a valid `omniglyph_lang` cookie wins
+ *  outright (even over env); a cookie present but naming a locale outside
+ *  the 42-locale catalog is treated as a bad request and falls back to
+ *  English directly (not to env — an operator's env shouldn't override an
+ *  explicit-but-wrong client choice); no cookie (or no `omniglyph_lang` key
+ *  in it) falls back to the CLI's own `resolveLocale(env)`. */
+export function resolveDashLocale(
+  cookieHeader: string | undefined,
+  env: Record<string, string | undefined>,
+): string {
+  const fromCookie = cookieLocale(cookieHeader);
+  if (fromCookie == null) return resolveLocale(env);
+  return DASH_LOCALE_CODES.has(fromCookie) ? fromCookie : 'en';
 }

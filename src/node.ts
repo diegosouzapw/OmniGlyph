@@ -33,7 +33,7 @@ import {
   type DashboardRoute,
 } from './dashboard.js';
 import { BenchRunner } from './dashboard/bench.js';
-import { resolveLocale, t } from './i18n/index.js';
+import { resolveLocale, resolveDashLocale, t } from './i18n/index.js';
 
 /** Repo root, resolved from THIS module's own location rather than
  *  process.cwd() (which is whatever directory the operator happened to run
@@ -300,10 +300,14 @@ async function dispatchDashboard(
   port: number,
 ): Promise<Response | undefined> {
   const method = req.method ?? 'GET';
+  // Dashboard-only locale: an explicit omniglyph_lang cookie (set by the lang
+  // selector) wins over env; no cookie falls back to the CLI's own
+  // resolveLocale(process.env) — the host already knows its own environment.
+  const locale = resolveDashLocale(req.headers.cookie, process.env);
   switch (route.kind) {
     case 'html':
       if (method !== 'GET') return undefined;
-      return dashboard.serveHtml(port, route.page);
+      return dashboard.serveHtml(port, route.page, locale);
     case 'stats':
       if (method !== 'GET') return undefined;
       return dashboard.serveStats();
@@ -355,7 +359,7 @@ async function dispatchDashboard(
           return new Response('bad request body', { status: 400 });
         }
         dashboard.handleCompressionToggle({ enabled });
-        return dashboard.serveFragment('toggle', url, port);
+        return dashboard.serveFragment('toggle', url, port, locale);
       }
       // /fragments/models POSTs one chip flip: {model, on}. Server mutates the
       // runtime compress scope and returns the re-rendered chip row.
@@ -377,10 +381,10 @@ async function dispatchDashboard(
           return new Response('bad request body', { status: 400 });
         }
         if (model) dashboard.handleModelsToggle(model, on);
-        return dashboard.serveFragment('models', url, port);
+        return dashboard.serveFragment('models', url, port, locale);
       }
       if (method !== 'GET') return undefined;
-      return dashboard.serveFragment(route.name, url, port);
+      return dashboard.serveFragment(route.name, url, port, locale);
     }
     case 'api-compression': {
       if (method !== 'POST') {

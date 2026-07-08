@@ -53,6 +53,7 @@ import {
   type SessionsPaths,
 } from './sessions.js';
 import { aggregateEventsFile, summaryToJson } from './stats.js';
+import { t } from './i18n/index.js';
 // Server-rendered UI (htmx + Alpine, vendored). No client bundle - the
 // fragments module renders finished HTML from the same payloads the JSON
 // endpoints serve.
@@ -1461,23 +1462,26 @@ export class DashboardState {
     );
   }
 
-  serveHtml(port: number, page: DashboardPage = 'overview'): Response {
-    return htmlResponse(renderPage(port, page));
+  serveHtml(port: number, page: DashboardPage = 'overview', locale = 'en'): Response {
+    return htmlResponse(renderPage(port, page, locale));
   }
 
   /** GET /fragments/<name> — server-rendered htmx fragments. Each one reuses
    *  the corresponding JSON endpoint's payload (via Response.json()) so the
-   *  HTML and JSON surfaces can't drift apart. */
-  async serveFragment(name: string, url: URL, port: number): Promise<Response> {
+   *  HTML and JSON surfaces can't drift apart. `locale` defaults to English
+   *  for back-compat with callers that predate i18n (tests, the legacy
+   *  /proxy-recent HTML). */
+  async serveFragment(name: string, url: URL, port: number, locale = 'en'): Promise<Response> {
     switch (name) {
       case 'toggle':
-        return htmlResponse(renderToggleFragment(this.compressionEnabled));
+        return htmlResponse(renderToggleFragment(this.compressionEnabled, locale));
       case 'models':
         return htmlResponse(
           renderModelsFragment(
             getAllowedModelBases(),
             getConfiguredModelBases(),
             this.compressionEnabled,
+            locale,
           ),
         );
       case 'context-map': {
@@ -1487,30 +1491,35 @@ export class DashboardState {
           // or never recorded (no usage on that completion), say so — don't
           // silently fall back to the latest request's data under its label.
           const found = this.contextHistory.find((h) => h.id === Number(reqParam));
-          return htmlResponse(renderContextMapFragment(found, this.contextHistory, !found));
+          return htmlResponse(renderContextMapFragment(found, this.contextHistory, !found, locale));
         }
         // No specific request → default to the latest.
         return htmlResponse(
-          renderContextMapFragment(this.contextHistory[this.contextHistory.length - 1], this.contextHistory),
+          renderContextMapFragment(
+            this.contextHistory[this.contextHistory.length - 1],
+            this.contextHistory,
+            false,
+            locale,
+          ),
         );
       }
       case 'session-summary': {
         // Lifetime hero — same cumulative payload as the header strip so the
         // headline and the "$ saved" tiles never disagree and it stops jumping.
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderSessionSummaryFragment(s));
+        return htmlResponse(renderSessionSummaryFragment(s, locale));
       }
       case 'header': {
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderHeaderFragment(s, port));
+        return htmlResponse(renderHeaderFragment(s, port, locale));
       }
       case 'flow': {
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderFlowFragment(s));
+        return htmlResponse(renderFlowFragment(s, locale));
       }
       case 'recent': {
         const r = (await this.serveRecent().json()) as RecentPayload;
-        return htmlResponse(renderRecentFragment(r));
+        return htmlResponse(renderRecentFragment(r, locale));
       }
       case 'latest': {
         const r = (await this.serveRecent().json()) as RecentPayload;
@@ -1526,18 +1535,18 @@ export class DashboardState {
               : this.images[this.images.length - 1];
           sourceText = entry?.sourceText ?? null;
         }
-        return htmlResponse(renderLatestFragment({ payload: r, pin, showSource, sourceText }));
+        return htmlResponse(renderLatestFragment({ payload: r, pin, showSource, sourceText }, locale));
       }
       case 'sessions': {
         const res = await this.serveSessionsJson();
-        if (!res.ok) return htmlResponse(`<div class="status">sessions unavailable</div>`);
+        if (!res.ok) return htmlResponse(`<div class="status">${t('dash.sessions.unavailable', locale)}</div>`);
         const p = (await res.json()) as SessionsPayload;
-        return htmlResponse(renderSessionsFragment(p));
+        return htmlResponse(renderSessionsFragment(p, locale));
       }
       case 'stats': {
         const res = await this.serveApiStats();
         const p = (await res.json()) as FullStatsPayload;
-        return htmlResponse(renderStatsTableFragment(p));
+        return htmlResponse(renderStatsTableFragment(p, locale));
       }
       case 'kpis': {
         const s = (await this.serveStats().json()) as StatsPayload;
@@ -1552,22 +1561,22 @@ export class DashboardState {
           const fp = (await fullRes.json()) as FullStatsPayload;
           full = fp.summary ?? null;
         }
-        return htmlResponse(renderKpisFragment(s, full, r));
+        return htmlResponse(renderKpisFragment(s, full, r, locale));
       }
       case 'feed': {
         const r = (await this.serveRecent().json()) as RecentPayload;
-        return htmlResponse(renderFeedFragment(r));
+        return htmlResponse(renderFeedFragment(r, locale));
       }
       case 'odometer': {
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderOdometerFragment(s));
+        return htmlResponse(renderOdometerFragment(s, locale));
       }
       case 'timeline': {
         const r = (await this.serveRecent().json()) as RecentPayload;
-        return htmlResponse(renderTimelineFragment(r));
+        return htmlResponse(renderTimelineFragment(r, locale));
       }
       case 'bench':
-        return htmlResponse(await this.renderBenchFragmentHtml());
+        return htmlResponse(await this.renderBenchFragmentHtml(locale));
       default:
         return new Response('unknown fragment', { status: 404 });
     }
@@ -1578,25 +1587,30 @@ export class DashboardState {
    *  configured runner (host built without a repo root) reads the same as
    *  "no results yet, harness unavailable" rather than 503ing the whole
    *  page; the benchmarks page still has value showing the docs link. */
-  private async renderBenchFragmentHtml(): Promise<string> {
+  private async renderBenchFragmentHtml(locale = 'en'): Promise<string> {
     const runner = this.getBenchRunner();
     if (!runner) {
       return renderBenchFragment(
         { billingSweep: parseBenchResults('', 'billing-sweep'), densityFrontier: parseBenchResults('', 'density-frontier') },
         { harnessAvailable: false, canLive: false, running: null },
+        locale,
       );
     }
     const results = await this.getBenchResults(runner.repoRoot);
     const state = runner.getState();
-    return renderBenchFragment(results, {
-      harnessAvailable: harnessScriptsExist(runner.repoRoot),
-      // Both harnesses require ANTHROPIC_API_KEY for a live run (see
-      // src/dashboard/bench.ts's defaultEnvKeyPresent for the receipts);
-      // checked once here rather than per-harness so the fragment and the
-      // runner's own gate in start() can never disagree.
-      canLive: defaultEnvKeyPresent('billing-sweep'),
-      running: state.running ? state : null,
-    });
+    return renderBenchFragment(
+      results,
+      {
+        harnessAvailable: harnessScriptsExist(runner.repoRoot),
+        // Both harnesses require ANTHROPIC_API_KEY for a live run (see
+        // src/dashboard/bench.ts's defaultEnvKeyPresent for the receipts);
+        // checked once here rather than per-harness so the fragment and the
+        // runner's own gate in start() can never disagree.
+        canLive: defaultEnvKeyPresent('billing-sweep'),
+        running: state.running ? state : null,
+      },
+      locale,
+    );
   }
 
   /** Cache the parsed benchmarks/{billing-sweep,density-frontier}/results/
