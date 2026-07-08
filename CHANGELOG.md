@@ -2,6 +2,16 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- **fix(factsheet):** capture transactional exact-token classes — email
+  addresses, IBAN-like account strings, and currency amounts (`$14,360`). They
+  join the protected tier-0 anchors (alongside SHAs, UUIDs, `CONST_IDS`, tickets,
+  flags, numbers) so they are never dropped from the exact-value factsheet.
+  (thanks @ousamabenyounes)
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.
