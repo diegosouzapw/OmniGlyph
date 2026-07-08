@@ -1,9 +1,36 @@
 # OmniGlyph — Misurazioni consolidate (2026-07-05)
 
+🌐 Tradotto: [tutte le lingue](../../../README.md)
+
 Tutto ciò che è stato MISURATO in questa sessione, con fonte e n; le
 ipotesi sono chiaramente separate alla fine. Riscontri:
 `benchmarks/billing-sweep/results/` e `benchmarks/density-frontier/results/`
 (JSONL per risposta).
+
+## TL;DR — l'intero risultato in due barre
+
+**Costo** — una pagina standard 1568×728 contiene 28.080 caratteri per un
+fisso di 1.460 token; lo stesso testo inviato grezzo costa ~10× di più:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Accuratezza** — ma solo dove il modello legge davvero la pagina. Il gate è
+fail-closed; solo la riga ✅ va in produzione:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Il resto di questo documento sono i riscontri dietro queste due barre.
 
 ## 1. Fatturazione Anthropic (count_tokens diretto, $0, 11 geometrie × 2 modelli)
 
@@ -183,3 +210,4 @@ Nota sui costi: le pagine parziali (l'ultima del corpus) fatturano male sotto
 il regime tile (altezza ridotta → unità di crop piccola → più tile) —
 riempire l'ultima pagina fino a 1152px di altezza è un'ottimizzazione
 obbligatoria se Gemini viene integrato.
+</content>

@@ -1,8 +1,40 @@
 # density-frontier — cost × accuracy per resolution
 
+🌐 అనువదించబడింది: [అన్ని భాషలు](../../../README.md)
+
 ప్రొవైడర్‌కు (Anthropic / OpenAI / Gemini), పేజీ జ్యామితికి, గ్లిఫ్
 సెల్‌కు, మరియు అట్లాస్ స్టైల్‌కు టెక్స్ట్→ఇమేజ్ రెండర్‌ల **కాస్ట్ మరియు
 చదవగలిగే స్థాయి మధ్య Pareto frontier**ను కొలిచే హార్నెస్.
+
+చౌకైన (సాంద్రమైన) పేజీలు టోకెన్‌కు ఎక్కువ అక్షరాలను మోస్తాయి కానీ
+చివరికి చదవగలిగేవిగా ఉండటం ఆగిపోతాయి. ఒక కాన్ఫిగ్ **రెండూ**
+నిలబడేచోట మాత్రమే ప్రొడక్షన్‌కు వెళ్లగలదు — కాస్ట్ తక్కువగా ఉండాలి
+*మరియు* మోడల్ ఇంకా దాన్ని పర్ఫెక్ట్‌గా చదవగలగాలి:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+ప్రతి సమాధానం మూడు ఫలితాలలో సరిగ్గా ఒకదానికి స్కోర్ చేయబడుతుంది —
+మధ్యలో ఉన్నదే గేట్‌ను నమ్మదగినదిగా చేస్తుంది:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+ఒక్క 🔴 అయినా ఇచ్చే కాన్ఫిగ్ ఎంత చౌకైనదైనా అనర్హమే.
 
 కేంద్ర అసమానత: బిల్లింగ్ స్వీప్ నుండి (2026-07-05,
 `benchmarks/billing-sweep/`), **కాస్ట్ ఆఫ్‌లైన్‌లో ఖచ్చితంగా
@@ -32,7 +64,7 @@
   నిజాయితీగల ఫెయిల్యూర్) / `silent_wrong` (ప్రమాదకరమైన మోడ్), డిస్ట్రాక్టర్
   ఫ్లాగ్‌తో సహా.
 
-## Running
+## రన్ చేయడం
 
 ```bash
 pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
@@ -45,7 +77,7 @@ ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
 సమాధానాలు `results/*.jsonl`లో ల్యాండ్ అవుతాయి (ప్రశ్నకు ఒక లైన్,
 ఆడిటింగ్ కోసం రా సమాధానంతో సహా).
 
-## Acceptance bar (inherited from upstream PRs #35/#36)
+## అంగీకార బార్ (upstream PRs #35/#36 నుండి వారసత్వంగా వచ్చింది)
 
 ఒక కాన్ఫిగ్ ప్రొడక్షన్ డిఫాల్ట్ అవుతుంది కేవలం: **gist == text
 baseline** మరియు **సున్నా నిశ్శబ్ద తప్పు ఎగ్జాక్ట్ స్ట్రింగ్‌లు**

@@ -1,8 +1,41 @@
 # density-frontier — chi phí × độ chính xác theo độ phân giải
 
+🌐 Đã dịch: [tất cả ngôn ngữ](../../../README.md)
+
 Bộ khung đo **biên Pareto giữa chi phí và khả năng đọc** của các bản
 render văn bản→hình ảnh, theo từng nhà cung cấp (Anthropic / OpenAI /
 Gemini), hình học trang, ô glyph, và style atlas.
+
+Các trang rẻ hơn (dày đặc hơn) chuyên chở nhiều ký tự trên mỗi token hơn
+nhưng rốt cuộc sẽ không còn đọc được nữa. Một cấu hình chỉ được phép lên
+sản xuất khi **cả hai** điều kiện đều đúng — chi phí thấp *và* mô hình
+vẫn đọc nó hoàn hảo:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Mỗi câu trả lời được chấm vào đúng một trong ba kết quả — kết quả ở giữa
+là thứ khiến cổng chặn này đáng tin cậy:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Một cấu hình chỉ cần tạo ra một 🔴 duy nhất cũng bị loại, bất kể rẻ đến
+đâu.
 
 Sự bất đối xứng trung tâm: kể từ billing sweep (2026-07-05,
 `benchmarks/billing-sweep/`), **chi phí có thể dự đoán chính xác offline**
@@ -32,10 +65,10 @@ trên Gemini (`gemini-cost.ts`). Chỉ **độ chính xác đọc** cần đến
 ## Chạy
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # bảng chi phí, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needle+3 gist × cấu hình × trial
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Cấu hình cụ thể: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.
@@ -51,8 +84,7 @@ Một cấu hình chỉ trở thành giá trị mặc định sản xuất nếu
 tra nhanh khả năng đọc của trang lớn trước khi bật tier độ phân giải
 cao.
 
-## `--via-omniroute` — end-to-end qua OmniRoute (P3: chứng minh không
-thoái lui)
+## `--via-omniroute` — end-to-end qua OmniRoute (P3: chứng minh không thoái lui)
 
 Các tầng vận chuyển ở trên render văn bản→PNG **trong bộ khung** và gửi
 hình ảnh. `--via-omniroute` làm điều ngược lại, đó chính là đường dẫn sản
@@ -80,7 +112,7 @@ các trang.
 
 ```bash
 OMNIROUTE_URL=http://localhost:20128 \
-OMNIROUTE_API_KEY=<khóa-omniroute-của-bạn> \
+OMNIROUTE_API_KEY=<your-omniroute-key> \
   pnpm exec tsx benchmarks/density-frontier/run.ts \
     --via-omniroute --configs anthropic-std-5x8-1bit --trials 2
 ```

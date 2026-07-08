@@ -1,8 +1,39 @@
 # density-frontier — 해상도별 비용 × 정확도
 
+🌐 번역: [모든 언어](../../../README.md)
+
 프로바이더(Anthropic / OpenAI / Gemini), 페이지 기하 구조, 글리프 셀,
 아틀라스 스타일별로 텍스트→이미지 렌더의 **비용과 가독성 사이의 파레토
 프론티어**를 측정하는 하네스입니다.
+
+더 저렴한(더 밀도 높은) 페이지는 토큰당 더 많은 문자를 담지만, 결국에는
+읽을 수 없게 됩니다. 구성은 **둘 다** 성립할 때만 출시가 허용됩니다 —
+비용이 낮고 *그리고* 모델이 여전히 완벽하게 읽을 때:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+모든 답변은 정확히 세 가지 결과 중 하나로 채점됩니다 — 게이트를 신뢰할
+수 있게 만드는 것은 가운데 항목입니다:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+🔴가 단 하나라도 나오는 구성은 아무리 저렴해도 실격입니다.
 
 핵심 비대칭성: billing sweep(2026-07-05,
 `benchmarks/billing-sweep/`) 이후로 **비용은 오프라인에서 정확히 예측
@@ -11,7 +42,7 @@
 (`src/core/openai.ts`), Gemini는 타일/media_resolution
 (`gemini-cost.ts`). 오직 **판독 정확도**만 API가 필요합니다.
 
-## Design
+## 설계
 
 - **코퍼스** (`corpus.ts`): 밀도 높은 로그/JSON 형태의 필러 + 혼동 가능성
   매트릭스가 실패할 것이라고 말하는 클래스에서 심어진 니들(12자 hex,
@@ -28,7 +59,7 @@
   `correct` / `abstained`(ILEGIVEL 센티널 — 정직한 실패) /
   `silent_wrong`(위험한 모드), 방해 요소 플래그 포함.
 
-## Running
+## 실행
 
 ```bash
 pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
@@ -41,7 +72,7 @@ ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
 답변은 `results/*.jsonl`에 남습니다(질문당 한 줄, 감사를 위한 원본
 답변 포함).
 
-## Acceptance bar (업스트림 PR #35/#36에서 계승됨)
+## 승인 기준 (업스트림 PR #35/#36에서 계승됨)
 
 구성이 프로덕션 기본값이 되려면: **gist == 텍스트 베이스라인** 그리고
 **은밀한 오답 정확 문자열 0건** 그리고 **양(positive)의 절감**이

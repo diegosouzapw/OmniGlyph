@@ -1,8 +1,40 @@
 # density-frontier — náklady × přesnost podle rozlišení
 
+🌐 Přeloženo: [všechny jazyky](../../../README.md)
+
 Harness, který měří **Paretovu hranici mezi náklady a čitelností** renderů
 text→obrázek, podle poskytovatele (Anthropic / OpenAI / Gemini), geometrie
 stránky, buňky glyfu a stylu atlasu.
+
+Levnější (hustší) stránky nesou více znaků na token, ale nakonec přestanou
+být čitelné. Konfigurace smí do produkce pouze tam, kde platí **obojí** —
+náklady jsou nízké *a zároveň* je model stále čte bezchybně:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Každá odpověď je ohodnocena přesně jedním ze tří výsledků — prostřední je
+ten, díky kterému je gate důvěryhodný:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Konfigurace, která vyprodukuje byť jen jedno 🔴, je diskvalifikována bez
+ohledu na to, jak je levná.
 
 Centrální asymetrie: od billing sweep (2026-07-05,
 `benchmarks/billing-sweep/`) je **náklad přesně predikovatelný offline** —
@@ -31,10 +63,10 @@ na Gemini (`gemini-cost.ts`). Pouze **přesnost čtení** potřebuje API.
 ## Spuštění
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # tabulka nákladů, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 jehel+3 gist × konfigurace × pokus
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Konkrétní konfigurace: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.

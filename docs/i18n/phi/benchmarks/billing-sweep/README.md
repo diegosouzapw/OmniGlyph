@@ -1,5 +1,25 @@
 # Sweep ng vision-billing ng Anthropic
 
+🌐 Isinalin: [lahat ng wika](../../../README.md)
+
+**Bakit ito umiiral:** ligtas lamang ang profitability gate kung *eksakto*
+ang tantiya ng gastos. Ang isang formula na may kaunting pagkakamali ay
+maaaring mag-convert ng mga block na mas mahal pa nga. Kaya pinipin ng sweep
+na ito ang formula sa tunay na numero ng API bago ito ipadala — hanggang
+**zero residual**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Libreng `count_tokens` sweep na nagpapasya sa dalawang bukas na tanong sa
 geometry:
 
@@ -25,8 +45,8 @@ ang API sa patch billing.
 ## Pagpapatakbo
 
 ```bash
-pnpm run build                              # kailangan ang dist/ (tulad ng lahat ng eval)
-node benchmarks/billing-sweep/run.mjs --dry-run   # mga prediksyon lamang, walang key, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus
@@ -57,3 +77,4 @@ matematika ng prediksyon sa `formulas.mjs`, na naka-pin ng
   page geometry kada tier (mga pahinang klase 1928×1928 para sa Fable/Opus
   4.8/Sonnet 5, 1568×728 para sa standard), na sinasalamin kung paano
   pinapanatili na ng GPT path ang sarili nitong `GPT_MAX_HEIGHT_PX`.
+</content>

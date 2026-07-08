@@ -1,8 +1,37 @@
 # OmniGlyph — Pinagsama-samang mga sukatan (2026-07-05)
 
+🌐 Isinalin: [lahat ng wika](../../../README.md)
+
 Lahat ng SINUKAT sa sesyong ito, na may pinagmulan at n; malinaw na
 pinaghiwalay ang mga hypothesis sa dulo. Mga resibo: `benchmarks/billing-sweep/results/` at
 `benchmarks/density-frontier/results/` (JSONL kada sagot).
+
+## TL;DR — ang buong resulta sa dalawang bar
+
+**Gastos** — isang standard na pahinang 1568×728 ay may dalang 28,080 chars
+para sa flat na 1,460 tokens; ang parehong text na ipinadala nang hilaw ay
+gumagastos ng ~10× pa:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Katumpakan** — ngunit doon lamang mahusay na nababasa ng modelo ang
+pahina. Fail-closed ang gate; ang row na ✅ lamang ang naipapadala:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Ang natitira sa dokumentong ito ang mga resibo sa likod ng dalawang bar na
+iyon.
 
 ## 1. Billing ng Anthropic (direktang count_tokens, $0, 11 geometry × 2 modelo)
 

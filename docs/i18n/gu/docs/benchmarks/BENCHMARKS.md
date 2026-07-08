@@ -1,8 +1,35 @@
 # OmniGlyph — એકીકૃત measurements (2026-07-05)
 
+🌐 અનુવાદિત: [બધી ભાષાઓ](../../../README.md)
+
 આ session માં બધું MEASURED, source અને n સાથે; hypotheses અંતે સ્પષ્ટ
 રીતે અલગ. રસીદ: `benchmarks/billing-sweep/results/` અને
 `benchmarks/density-frontier/results/` (પ્રતિ-જવાબ JSONL).
+
+## TL;DR — બે bars માં આખું પરિણામ
+
+**Cost** — એક standard 1568×728 page 28,080 chars ને flat 1,460 tokens
+માટે ધરાવે છે; એ જ text raw મોકલવામાં ~10× વધુ ખર્ચ થાય છે:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Accuracy** — પણ ફક્ત ત્યાં જ જ્યાં model ખરેખર page વાંચે છે. Gate
+fail-closed છે; ફક્ત ✅ row ship થાય છે:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+આ document નો બાકીનો ભાગ એ બે bars પાછળની રસીદો છે.
 
 ## 1. Anthropic billing (direct count_tokens, $0, 11 geometries × 2 models)
 

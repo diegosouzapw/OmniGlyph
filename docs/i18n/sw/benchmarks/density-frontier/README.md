@@ -1,8 +1,41 @@
 # density-frontier — gharama × usahihi kwa kila ubora
 
+🌐 Imetafsiriwa: [lugha zote](../../../README.md)
+
 Mfumo unaopima **mpaka wa Pareto kati ya gharama na usomekaji** wa uchoraji
 wa maandishi-kwenda-picha, kwa kila mtoa huduma (Anthropic / OpenAI /
 Gemini), jiometri ya ukurasa, seli ya glyph, na mtindo wa atlasi.
+
+Kurasa za bei nafuu (mnene zaidi) hubeba herufi zaidi kwa kila token lakini
+hatimaye huacha kusomeka. Mpangilio unaruhusiwa kusafirishwa tu pale
+**vyote viwili** vinapotimia — gharama ni ya chini *na* muundo bado
+unaisoma kikamilifu:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Kila jibu hupimwa likawe mojawapo kati ya matokeo matatu kamili — lile la
+katikati ndilo linalofanya lango liaminike:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Mpangilio unaozalisha hata 🔴 moja unadondoshwa, haijalishi ni wa bei nafuu
+kiasi gani.
 
 Ulinganifu mkuu: tangu uchunguzi wa bili (2026-07-05,
 `benchmarks/billing-sweep/`), **gharama inaweza kutabiriwa kwa usahihi nje
@@ -34,10 +67,10 @@ ya mtandao** — vipande vya pikseli 28 + 4/kizuizi kwenye Anthropic
 ## Kuendesha
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # jedwali la gharama, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # sindano ~9+mfano 3 × mpangilio × jaribio
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Mipangilio mahususi: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.
@@ -52,8 +85,7 @@ wa maandishi** NA **hitilafu sifuri za kimya za mfuatano sahihi** NA
 dhidi ya `anthropic-hires-5x8-aa` kwenye Fable — ukaguzi wa haraka wa
 usomekaji wa ukurasa mkubwa kabla ya kuwasha ngazi ya ubora wa juu.
 
-## `--via-omniroute` — e2e kupitia OmniRoute (P3: uthibitisho wa
-kutoharibika)
+## `--via-omniroute` — e2e kupitia OmniRoute (P3: uthibitisho wa kutoharibika)
 
 Usafirishaji hapo juu huchora maandishi→PNG **ndani ya mfumo** na kutuma
 picha. `--via-omniroute` hufanya kinyume, ambayo ndiyo njia ya uzalishaji:
@@ -79,7 +111,7 @@ Masharti ya awali (ya uendeshaji):
 
 ```bash
 OMNIROUTE_URL=http://localhost:20128 \
-OMNIROUTE_API_KEY=<funguo-yako-ya-omniroute> \
+OMNIROUTE_API_KEY=<your-omniroute-key> \
   pnpm exec tsx benchmarks/density-frontier/run.ts \
     --via-omniroute --configs anthropic-std-5x8-1bit --trials 2
 ```

@@ -1,8 +1,35 @@
 # OmniGlyph — Medições consolidadas (2026-07-05)
 
+🌐 Traduzido: [todos os idiomas](../../../README.md)
+
 Tudo MEDIDO nesta sessão, com fonte e n; hipóteses claramente separadas no
 final. Comprovantes: `benchmarks/billing-sweep/results/` e
 `benchmarks/density-frontier/results/` (JSONL por resposta).
+
+## TL;DR — o resultado inteiro em duas barras
+
+**Custo** — uma página padrão 1568×728 carrega 28.080 caracteres por um
+fixo de 1.460 tokens; o mesmo texto enviado bruto custa ~10× mais:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Precisão** — mas só onde o modelo de fato lê a página. O gate é
+fail-closed; só a linha ✅ vai para produção:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+O resto deste documento são os comprovantes por trás dessas duas barras.
 
 ## 1. Cobrança da Anthropic (count_tokens direto, $0, 11 geometrias × 2 modelos)
 

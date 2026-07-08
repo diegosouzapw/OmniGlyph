@@ -1,8 +1,35 @@
 # OmniGlyph — Konsolidovaná měření (2026-07-05)
 
+🌐 Přeloženo: [všechny jazyky](../../../README.md)
+
 Vše ZMĚŘENÉ v této relaci, se zdrojem a n; hypotézy jasně oddělené na konci.
 Doklady: `benchmarks/billing-sweep/results/` a
 `benchmarks/density-frontier/results/` (JSONL na odpověď).
+
+## TL;DR — celý výsledek ve dvou pruzích
+
+**Náklady** — jedna standardní stránka 1568×728 nese 28 080 znaků za fixních
+1 460 tokenů; stejný text odeslaný surově stojí ~10× víc:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Přesnost** — ale pouze tam, kde model stránku skutečně čte. Gate je
+fail-closed; odesílá se pouze řádek ✅:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Zbytek tohoto dokumentu jsou doklady za těmito dvěma pruhy.
 
 ## 1. Billing Anthropic (přímý count_tokens, $0, 11 geometrií × 2 modely)
 

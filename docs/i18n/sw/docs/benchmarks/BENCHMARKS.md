@@ -1,8 +1,36 @@
 # OmniGlyph — Vipimo vilivyoratibiwa (2026-07-05)
 
+🌐 Imetafsiriwa: [lugha zote](../../../README.md)
+
 Kila kitu KILICHOPIMWA katika kikao hiki, pamoja na chanzo na n; nadharia
 zimetenganishwa wazi mwishoni. Risiti: `benchmarks/billing-sweep/results/`
 na `benchmarks/density-frontier/results/` (JSONL kwa kila jibu).
+
+## TL;DR — matokeo yote katika baa mbili
+
+**Gharama** — ukurasa mmoja wa kawaida wa 1568×728 hubeba herufi 28,080 kwa
+token 1,460 tambarare; maandishi yaleyale yakiwa yametumwa ghafi
+yanagharimu ~mara 10 zaidi:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Usahihi** — lakini tu pale muundo unaposoma ukurasa kwa kweli. Lango ni
+la kufunga-kushindwa; safu ya ✅ pekee ndiyo inayosafirishwa:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Sehemu iliyobaki ya waraka huu ni risiti nyuma ya baa hizo mbili.
 
 ## 1. Bili ya Anthropic (count_tokens ya moja kwa moja, $0, jiometri 11 × miundo 2)
 

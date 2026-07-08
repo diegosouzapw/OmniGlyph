@@ -1,8 +1,39 @@
 # density-frontier — प्रति रिझोल्यूशन खर्च × अचूकता
 
+🌐 भाषांतरित: [सर्व भाषा](../../../README.md)
+
 एक हार्नेस जो text→image रेंडर्सच्या **खर्च आणि वाचनीयता यांच्यातील Pareto
 frontier** मोजतो, प्रति प्रदाता (Anthropic / OpenAI / Gemini), पान भूमिती,
 glyph cell, आणि atlas शैलीनुसार.
+
+स्वस्त (अधिक घन) पाने प्रति टोकन जास्त अक्षरे वाहून नेतात पण शेवटी वाचनीय
+राहत नाहीत. एखादा कॉन्फिग तेव्हाच शिप करण्याची परवानगी मिळते जेव्हा **दोन्ही**
+अटी पूर्ण होतात — खर्च कमी *आणि* मॉडेल तरीही ते परिपूर्ण वाचते:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+प्रत्येक उत्तराला तीन निकालांपैकी नेमके एका निकालात स्कोअर केले जाते — मधला
+निकाल आहे जो गेटला विश्वासार्ह बनवतो:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+एकही 🔴 तयार करणारा कॉन्फिग अपात्र ठरतो, तो कितीही स्वस्त असला तरी.
 
 मध्यवर्ती असममितता: billing sweep (2026-07-05, `benchmarks/billing-sweep/`)
 पासून, **खर्च ऑफलाइन अगदी अचूक अंदाजयोग्य आहे** — Anthropic वर 28 px patches

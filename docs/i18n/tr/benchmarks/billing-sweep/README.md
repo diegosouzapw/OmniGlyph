@@ -1,5 +1,24 @@
 # Anthropic görüntü-faturalama sweep'i
 
+🌐 Çeviri: [tüm diller](../../../README.md)
+
+**Neden var:** kârlılık kapısı yalnızca maliyet tahmini *tam* olduğunda
+güvenlidir. Az bile olsa yanlış bir formül, aslında daha pahalıya mal olan
+blokları dönüştürebilir. Bu yüzden bu sweep, formülü üretime çıkmadan önce
+API'nin gerçek rakamlarına sabitler — **sıfır kalıntıya** kadar.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 İki açık geometri sorusuna karar veren ücretsiz `count_tokens` sweep'i:
 
 1. **Formül** — API, `ceil(w/28) × ceil(h/28)` parça (güncel dokümanlar) mı
@@ -23,8 +42,8 @@ faturalamasına geçmiş olabileceğini ima ediyor.
 ## Çalıştırma
 
 ```bash
-pnpm run build                              # dist/ ön koşulu (tüm eval'lar gibi)
-node benchmarks/billing-sweep/run.mjs --dry-run   # yalnızca tahminler, anahtar yok, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

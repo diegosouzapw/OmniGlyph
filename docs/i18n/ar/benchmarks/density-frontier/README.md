@@ -1,8 +1,39 @@
 # density-frontier — التكلفة × الدقة لكل مستوى دقة
 
+🌐 مُترجَم: [كل اللغات](../../../README.md)
+
 حزمة تقيس **حدود باريتو بين التكلفة والوضوح** لرندرات نص←صورة، لكل
 مزوّد (Anthropic / OpenAI / Gemini)، هندسة الصفحة، خلية الرمز، ونمط
 الأطلس.
+
+الصفحات الأرخص (الأكثف) تحمل أحرفًا أكثر لكل رمز لكنها في النهاية تتوقف عن
+كونها مقروءة. لا يُسمَح لإعداد بالشحن إلا حيث يتحقق **الشرطان معًا** — التكلفة
+منخفضة *و* لا يزال النموذج يقرأه بشكل مثالي:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+كل إجابة تُصنَّف في واحدة من ثلاث نتائج بالضبط — الوسطى هي ما يجعل البوّابة
+موثوقة:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+الإعداد الذي يُنتج ولو 🔴 واحدة يُستبعَد، مهما كان رخيصًا.
 
 عدم التماثل المركزي: منذ مسح الفوترة (2026-07-05،
 `benchmarks/billing-sweep/`)، **التكلفة قابلة للتنبؤ بدقة دون اتصال** — رقاقات
@@ -30,10 +61,10 @@ Gemini (`gemini-cost.ts`). فقط **دقة القراءة** تحتاج الـ AP
 ## التشغيل
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # جدول التكلفة، $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 ألغاز+3 جوهر × إعداد × محاولة
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 إعدادات محدَّدة: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.

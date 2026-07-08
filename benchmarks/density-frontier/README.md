@@ -1,8 +1,39 @@
 # density-frontier — cost × accuracy per resolution
 
+🌐 Translated: [all languages](../../docs/i18n/README.md)
+
 Harness that measures the **Pareto frontier between cost and legibility** of the
 text→image renders, per provider (Anthropic / OpenAI / Gemini), page geometry,
 glyph cell, and atlas style.
+
+Cheaper (denser) pages carry more chars per token but eventually stop being
+readable. A config is only allowed to ship where **both** hold — cost is low
+*and* the model still reads it perfectly:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Every answer is scored into exactly one of three outcomes — the middle one is
+what makes the gate trustworthy:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+A config that produces even one 🔴 is disqualified, no matter how cheap.
 
 The central asymmetry: since the billing sweep (2026-07-05,
 `benchmarks/billing-sweep/`), **cost is exactly predictable offline** — 28 px

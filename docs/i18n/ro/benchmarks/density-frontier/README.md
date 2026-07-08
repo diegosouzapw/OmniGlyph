@@ -1,8 +1,41 @@
 # density-frontier — cost × precizie per rezoluție
 
+🌐 Tradus: [toate limbile](../../../README.md)
+
 Harness care măsoară **frontiera Pareto dintre cost și lizibilitate** a
 render-urilor text→imagine, per furnizor (Anthropic / OpenAI / Gemini),
 geometrie de pagină, celulă de glif și stil de atlas.
+
+Paginile mai ieftine (mai dense) transportă mai multe caractere per token,
+dar la un moment dat devin ilizibile. O configurație are voie să ajungă în
+producție doar acolo unde **ambele** condiții se țin — costul este scăzut
+*și* modelul încă o citește perfect:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Fiecare răspuns este punctat în exact unul dintre trei rezultate — cel din
+mijloc este cel care face gate-ul demn de încredere:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+O configurație care produce chiar și un singur 🔴 este descalificată,
+indiferent cât de ieftină este.
 
 Asimetria centrală: de la sweep-ul de facturare (2026-07-05,
 `benchmarks/billing-sweep/`), **costul este exact predictibil offline** —
@@ -30,10 +63,10 @@ pe Gemini (`gemini-cost.ts`). Doar **precizia de citire** are nevoie de API.
 ## Rulare
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # tabel de cost, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needle-uri+3 gist × config × probă
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Configurații specifice: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.
@@ -73,7 +106,7 @@ Prerechizite (operaționale):
 
 ```bash
 OMNIROUTE_URL=http://localhost:20128 \
-OMNIROUTE_API_KEY=<cheia-dumneavoastra-omniroute> \
+OMNIROUTE_API_KEY=<your-omniroute-key> \
   pnpm exec tsx benchmarks/density-frontier/run.ts \
     --via-omniroute --configs anthropic-std-5x8-1bit --trials 2
 ```

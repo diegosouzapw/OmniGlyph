@@ -1,8 +1,35 @@
 # OmniGlyph — Skonsolidowane pomiary (2026-07-05)
 
+🌐 Przetłumaczono: [wszystkie języki](../../../README.md)
+
 Wszystko ZMIERZONE w tej sesji, ze źródłem i n; hipotezy wyraźnie oddzielone
 na końcu. Dowody: `benchmarks/billing-sweep/results/` i
 `benchmarks/density-frontier/results/` (JSONL per odpowiedź).
+
+## TL;DR — cały wynik w dwóch paskach
+
+**Koszt** — jedna standardowa strona 1568×728 mieści 28 080 znaków za
+płaskie 1460 tokenów; ten sam tekst wysłany surowo kosztuje ~10× więcej:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Dokładność** — ale tylko tam, gdzie model faktycznie odczytuje stronę.
+Bramka zamyka się w razie awarii; wysyłany jest tylko wiersz ✅:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Reszta tego dokumentu to dowody stojące za tymi dwoma paskami.
 
 ## 1. Rozliczenia Anthropic (bezpośrednie count_tokens, $0, 11 geometrii × 2 modele)
 

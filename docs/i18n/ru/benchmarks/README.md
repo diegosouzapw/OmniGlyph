@@ -1,9 +1,46 @@
 # Бенчмарки
 
+🌐 Переведено: [все языки](../../README.md)
+
 Каждая цифра, заявленная OmniGlyph, происходит из одного из двух наборов
 ниже — перезапускаемых, детерминированных где это возможно, с сырыми
 подтверждениями по каждому ответу в `*/results/*.jsonl`. Консолидированный
 анализ: [docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+
+## Как работает экономия (в одной картинке)
+
+Провайдеры тарифицируют **текст по токену**, а **изображение — по его
+размерам** — а не по тому, сколько текста в него упаковано. Одна
+стандартная страница стоит фиксированную сумму независимо от плотности
+текста:
+
+```
+                         ┌─────────────────────────────────────────────┐
+28,080 characters   →    │  one 1568 × 728 PNG page   =  1,460 tokens   │
+of dense context         └─────────────────────────────────────────────┘
+                                          the SAME 1,460 whether the page
+                                          holds 200 chars or 28,080
+```
+
+Один и тот же контекст, тарифицируемый двумя способами:
+
+```
+as dense TEXT    ██████████████████████████████████████████████  ~14,040 tokens
+as ONE IMAGE     █████                                              1,460 tokens
+                                                                    ▼
+                                                              ~10× fewer tokens
+```
+
+Почему изображение выигрывает — символов, переносимых на токен:
+
+```
+image (dense page)  ███████████████████████████████████████  19.2 chars/token
+dense text          ████                                       ~2  chars/token
+```
+
+OmniGlyph выполняет эту замену только тогда, когда точная математика
+говорит, что она выигрывает, и только для моделей, доказавших способность
+читать страницу. Два набора ниже доказывают каждую из половин.
 
 ## 1. `billing-sweep/` — сколько на самом деле стоит изображение?
 
@@ -14,12 +51,21 @@
 **Результат (2026-07-05): модель патчей совпадает с НУЛЕВОЙ невязкой на
 каждой пробе** — тарифицируется как `⌈w/28⌉ × ⌈h/28⌉` после ресайза по тиру,
 плюс фиксированные +3/+4 токена на блок изображения. Продакшн-страница
-(1568×728) стоит ровно 1 460 токенов и несёт 28 080 символов ≈ **19.2
+(1568×728) стоит ровно 1,460 токенов и несёт 28,080 символов ≈ **19.2
 символа/токен** против ~2 символов/токен как плотный текст.
 
+```
+the page as the patch grid the API actually bills:
+
+  ⌈1568 / 28⌉ = 56 patches wide
+  ⌈ 728 / 28⌉ = 26 patches tall
+  ───────────────────────────────
+  56 × 26  = 1,456  + 4 per-block  =  1,460 tokens   (flat, WYSIWYG)
+```
+
 ```bash
-node benchmarks/billing-sweep/run.mjs --dry-run          # только прогнозы, $0
-ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # живой sweep, всё ещё $0 (count_tokens бесплатен)
+node benchmarks/billing-sweep/run.mjs --dry-run          # predictions only, $0
+ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # live sweep, still $0 (count_tokens is free)
 ```
 
 ## 2. `density-frontier/` — умеет ли модель ДЕЙСТВИТЕЛЬНО читать это?
@@ -43,15 +89,30 @@ ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # живой sweep
 | GPT-5.5 · strip 768px (оба атласа) | 0/60 | + ~в 40× инфляция output-токенов по сравнению со своим же текстовым контролем (30/30, 62 токена) |
 | Gemini 2.5-flash (частично, квота) | 0/26 | конфабулирует вместо того, чтобы воздержаться |
 
+Точность чтения на взгляд — это и есть fail-closed гейт модели, изображённый:
+
+```
+Fable 5 · 1-bit page (prod)   ██████████████████████████████  30/30  ✅ approved
+Opus 4.8 · 10×16 (safe mode)  ████████████████████████░░░░░░  ~24/30 ⚠️ opt-in
+Fable 5 · high-res 1928²      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+GPT-5.5 · 768px strip         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/60   ⛔ blocked
+Gemini 2.5-flash              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/26   ⛔ confabulates
+```
+
+Отгружается только плечо ✅. Всё, что читается плохо, блокируется *с
+подтверждением*, а трёхзначная оценка означает, что модель, ошибающаяся
+вслепую (`silent_wrong`), считается хуже, чем модель, честно
+воздерживающаяся (`ILEGIVEL`).
+
 Три транспорта: прямой API (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GEMINI_API_KEY`),
-OpenRouter (`OPENROUTER_API_KEY`) и `--via-cli` (подписка Claude Code — $0).
-Предупреждение, извлечённое на собственном опыте: посредники (OpenRouter,
+OpenRouter (`OPENROUTER_API_KEY`) и `--via-cli` (подписка Claude Code —
+$0). Предупреждение, извлечённое на собственном опыте: посредники (OpenRouter,
 инструмент Read у CLI) ресемплируют крупные изображения; авторитетны для
 читаемости только результаты прямого API.
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # таблица стоимости, $0
-pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # через подписку, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # cost table, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # via subscription, $0
 ANTHROPIC_API_KEY=... pnpm exec tsx benchmarks/density-frontier/run.ts --configs anthropic-std-5x8-1bit
 ```
 

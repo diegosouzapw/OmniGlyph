@@ -1,5 +1,24 @@
 # Sweep billing visi Anthropic
 
+🌐 Diterjemahkan: [semua bahasa](../../../README.md)
+
+**Kenapa ini ada:** gate profitabilitas hanya aman jika estimasi biayanya
+*eksak*. Formula yang meleset sedikit saja akan mengonversi blok yang
+sebenarnya lebih mahal. Jadi sweep ini mengunci formula ke angka nyata API
+sebelum dirilis — sampai ke **residual nol**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Sweep `count_tokens` gratis yang memutuskan dua pertanyaan geometri terbuka:
 
 1. **Formula** — apakah API menagih patch `ceil(w/28) × ceil(h/28)` (dokumentasi

@@ -1,8 +1,40 @@
 # density-frontier — resolution દીઠ cost × accuracy
 
+🌐 અનુવાદિત: [બધી ભાષાઓ](../../../README.md)
+
 Harness જે text→image renders ના **cost અને legibility વચ્ચેના Pareto
 frontier** ને માપે છે, provider (Anthropic / OpenAI / Gemini), page
 geometry, glyph cell, અને atlas style દીઠ.
+
+સસ્તા (ઘટ્ટ) pages token દીઠ વધુ chars લઈ જાય છે પણ છેવટે વાંચી ન શકાય
+તેવા બની જાય છે. એક config ફક્ત ત્યાં જ ship કરવાની પરવાનગી છે જ્યાં
+**બંને** સાચા હોય — cost ઓછો હોય *અને* model તેને હજુ પણ perfectly વાંચે:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+દરેક answer ને બરાબર ત્રણમાંથી એક outcome માં score કરવામાં આવે છે —
+વચ્ચેનું એ છે જે gate ને trustworthy બનાવે છે:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+એક config જે એક પણ 🔴 ઉત્પન્ન કરે છે તે disqualified થાય છે, ભલે તે
+ગમે તેટલું સસ્તું હોય.
 
 કેન્દ્રીય asymmetry: billing sweep (2026-07-05, `benchmarks/billing-sweep/`)
 થી, **cost offline exactly predictable છે** — Anthropic પર 28 px patches

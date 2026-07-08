@@ -1,5 +1,25 @@
 # Anthropic vizuális-számlázási sweep
 
+🌐 Fordítva: [minden nyelv](../../../README.md)
+
+**Miért létezik:** a profitabilitási kapu csak akkor biztonságos, ha a
+költségbecslés *pontos*. Egy kicsit is elcsúszó képlet olyan blokkokat is
+átalakítana, amelyek valójában többe kerülnek. Ezért ez a sweep az API
+valós számaihoz rögzíti a képletet, mielőtt élesbe kerül — **nulla
+maradékig**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Ingyenes `count_tokens` sweep, amely két nyitott geometriai kérdést dönt el:
 
 1. **Képlet** — az API a `ceil(w/28) × ceil(h/28)` patch-eket számlázza-e
@@ -8,7 +28,7 @@ Ingyenes `count_tokens` sweep, amely két nyitott geometriai kérdést dönt el:
 2. **Szint** — a `claude-fable-5` megkapja-e a nagyfelbontású plafonokat
    (hosszú él ≤ 2576 px, ≤ 4784 vizuális token)? A `page-old-1928x1928`
    sor a döntő: ≈ **4761** mért érték high-res WYSIWYG-et jelent (a régi
-   nagy oldal ~3,3×-szal több karaktert hordoz képenként, mint a mai
+   nagy oldal ~3.3× több karaktert hordoz képenként, mint a mai
    1568×728, ugyanakkora karakter/token mellett); ≈ **1521** standard-szintű
    resample-t jelentene, és az 1568×728 marad helyes.
 

@@ -1,5 +1,24 @@
 # Ujian pengebilan visi Anthropic
 
+🌐 Diterjemahkan: [semua bahasa](../../../README.md)
+
+**Sebab ia wujud:** get keberuntungan hanya selamat jika anggaran kos itu
+*tepat*. Formula yang tersasar sedikit sahaja boleh menukar blok yang
+sebenarnya kos lebih tinggi. Justeru ujian ini mengunci formula kepada
+angka sebenar API sebelum ia dilancarkan — kepada **baki sifar**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Ujian `count_tokens` percuma yang menyelesaikan dua soalan geometri
 terbuka:
 
@@ -25,8 +44,8 @@ pengebilan patch.
 ## Jalankan
 
 ```bash
-pnpm run build                              # dist/ prasyarat (seperti semua ujian)
-node benchmarks/billing-sweep/run.mjs --dry-run   # ramalan sahaja, tiada kunci, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

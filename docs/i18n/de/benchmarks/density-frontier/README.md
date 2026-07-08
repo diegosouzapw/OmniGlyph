@@ -1,8 +1,41 @@
 # density-frontier — Kosten × Genauigkeit pro Auflösung
 
+🌐 Übersetzt: [alle Sprachen](../../../README.md)
+
 Harness, der die **Pareto-Front zwischen Kosten und Lesbarkeit** der
 Text-zu-Bild-Renderings misst, pro Anbieter (Anthropic / OpenAI / Gemini),
 Seitengeometrie, Glyphenzelle und Atlas-Stil.
+
+Günstigere (dichtere) Seiten tragen mehr Zeichen pro Token, hören aber
+irgendwann auf, lesbar zu sein. Eine Konfiguration darf nur dann
+ausgeliefert werden, wenn **beides** zutrifft — die Kosten sind niedrig
+*und* das Modell liest sie weiterhin perfekt:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Jede Antwort wird in genau eines von drei Ergebnissen eingestuft — das
+mittlere ist das, was das Gate vertrauenswürdig macht:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Eine Konfiguration, die auch nur ein einziges 🔴 produziert, ist
+disqualifiziert, egal wie günstig sie ist.
 
 Die zentrale Asymmetrie: seit dem Billing-Sweep (2026-07-05,
 `benchmarks/billing-sweep/`) ist **Kosten offline exakt vorhersagbar** —

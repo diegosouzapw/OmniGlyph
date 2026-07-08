@@ -1,8 +1,41 @@
 # density-frontier — gastos × katumpakan kada resolution
 
+🌐 Isinalin: [lahat ng wika](../../../README.md)
+
 Harness na sumusukat sa **Pareto frontier sa pagitan ng gastos at legibility**
 ng text→image renders, kada provider (Anthropic / OpenAI / Gemini), page
 geometry, glyph cell, at atlas style.
+
+Ang mga mas murang (mas siksik) na pahina ay may dalang mas maraming chars
+kada token ngunit sa huli ay hindi na nababasa. Isang config lamang ang
+pinapayagang ipadala kung **pareho** itong totoo — mababa ang gastos *at*
+mahusay pa ring nababasa ito ng modelo:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Bawat sagot ay isinisiskor sa isa lamang sa tatlong resulta — ang gitna ang
+siyang nagpapagana ng tiwala sa gate:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Ang isang config na may kahit isang 🔴 ay diskuwalipikado, gaano man ito
+kamura.
 
 Ang sentral na asymmetry: mula sa billing sweep (2026-07-05,
 `benchmarks/billing-sweep/`), **eksaktong mahuhulaan ang gastos offline** —
@@ -34,7 +67,7 @@ pagbasa** lamang ang nangangailangan ng API.
 ## Pagpapatakbo
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # talahanayan ng gastos, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
   pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
@@ -95,3 +128,4 @@ hindi pumasa ang body sa mga fail-closed gate).
 Mga test para sa mga purong bahagi: `tests/density-frontier.test.ts`
 (kasama ang `buildOmnirouteRequest` at `parseCompressionSavings` mula sa
 via-omniroute na transport).
+</content>

@@ -1,8 +1,35 @@
 # OmniGlyph — Geconsolideerde metingen (2026-07-05)
 
+🌐 Vertaald: [alle talen](../../../README.md)
+
 Alles GEMETEN in deze sessie, met bron en n; hypothesen zijn duidelijk
 gescheiden aan het einde. Bewijzen: `benchmarks/billing-sweep/results/` en
 `benchmarks/density-frontier/results/` (JSONL per antwoord).
+
+## TL;DR — het hele resultaat in twee balken
+
+**Kosten** — één standaard 1568×728-pagina bevat 28,080 tekens voor een
+vaste prijs van 1,460 tokens; dezelfde tekst rauw verstuurd kost ~10× meer:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Nauwkeurigheid** — maar alleen waar het model de pagina daadwerkelijk
+leest. De poort is fail-closed; alleen de ✅-rij gaat naar productie:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+De rest van dit document zijn de bewijzen achter die twee balken.
 
 ## 1. Anthropic-billing (directe count_tokens, $0, 11 geometrieën × 2 modellen)
 
@@ -27,7 +54,7 @@ model-tier (Fable/Mythos/Opus 4.8/4.7/Sonnet 5 = high-res); `cols` 313→312.
 
 ## 2. Leesnauwkeurigheid (density-frontier, hex/camelCase/cijfer-needles + afleiders)
 
-### Fable 5 2×2-matrix — via CLI/abonnement, n=30/arm, zelfde corpus (~16,6k tekens)
+### Fable 5 2×2-matrix — via CLI/abonnement, n=30/arm, zelfde corpus (~16.6k tekens)
 
 | pagina × atlas | exact | onthoudingen (ILEGIVEL) | stille fouten |
 |---|---:|---:|---:|
@@ -49,7 +76,7 @@ TOEGEPAST: `DENSE_RENDER_STYLE` → `aa:false` (commit 9a25585).
 | standaard · 5×8-cel | 0/30 | 30 | 0 |
 
 → Opus-knik bevestigd met onze eigen n (upstream mat 95% bij 10×16 met
-n=20). "Opus safe mode" is haalbaar: 10×16 op de grote pagina ≈ 1,7 tekens
+n=20). "Opus safe mode" is haalbaar: 10×16 op de grote pagina ≈ 1.7 tekens
 per image-token op het harness-corpus.
 
 ### Via OpenRouter (zelfde corpus/vragen) — niet conclusief voor leesbaarheid
@@ -74,33 +101,33 @@ per image-token op het harness-corpus.
 
 | provider · pagina | tokens/pagina | tekens/pagina | **tekens/token** | status |
 |---|---:|---:|---:|---|
-| Anthropic std 1568×728 (alle modellen) | 1460 | 28.080 | **19,2** | gemeten |
-| Anthropic hi-res 1928×1928 (Fable/Opus4.8/Sonnet5) | 4765 | 92.160 | **19,3** (3,3× minder afbeeldingen) | billing gemeten; leesbaarheid in afwachting (H1) |
-| GPT-5 (tile) strip 768×2048 | 1190 | ~38.760 | **32,6** | geauditeerde documentatie |
-| GPT-5.4/5.5 (patch, original) tot 1568×5984 | ~9.163 | ~233k | **25,4** | documentatie; leesbaarheid ongetest |
-| gpt-4o-mini | 48.169/strip | — | **0,8 — NOOIT als afbeelding** | documentatie (bug D2 opgelost) |
-| Gemini tile 1533×1152 (native crop-eenheid 768) | 1032 | 43.615 | **42,3 ← beste gedocumenteerd** | documentatie; leesbaarheid ongetest |
-| Gemini 3 media_resolution:low 1148×1152 | 280 | 32.604 | **116 (indien leesbaar)** | hypothese H6 |
+| Anthropic std 1568×728 (alle modellen) | 1460 | 28,080 | **19.2** | gemeten |
+| Anthropic hi-res 1928×1928 (Fable/Opus4.8/Sonnet5) | 4765 | 92,160 | **19.3** (3.3× minder afbeeldingen) | billing gemeten; leesbaarheid in afwachting (H1) |
+| GPT-5 (tile) strip 768×2048 | 1190 | ~38,760 | **32.6** | geauditeerde documentatie |
+| GPT-5.4/5.5 (patch, original) tot 1568×5984 | ~9,163 | ~233k | **25.4** | documentatie; leesbaarheid ongetest |
+| gpt-4o-mini | 48,169/strip | — | **0.8 — NOOIT als afbeelding** | documentatie (bug D2 opgelost) |
+| Gemini tile 1533×1152 (native crop-eenheid 768) | 1032 | 43,615 | **42.3 ← beste gedocumenteerd** | documentatie; leesbaarheid ongetest |
+| Gemini 3 media_resolution:low 1148×1152 | 280 | 32,604 | **116 (indien leesbaar)** | hypothese H6 |
 
 ## 4. Gevonden en opgeloste bugs (audit tegen officiële documentatie)
 
 | id | bug | impact | commit |
 |---|---|---|---|
 | D2 | gpt-4o-mini viel in de standaardtegel 85/170 (werkelijk: 2833/5667) | kosten ~33× onderschat — **omgekeerde poort** | e6bc75f |
-| D1 | o4-mini-multiplier 1,62 (werkelijk 1,72) | −5,8% | e6bc75f |
+| D1 | o4-mini-multiplier 1.62 (werkelijk 1.72) | −5.8% | e6bc75f |
 | D3 | gpt-5.1/5.2/5.3(+codex) met cap 10000 (werkelijk 1536, geen original) | zou breken bij grotere pagina's | e6bc75f |
 | D4 | gpt-5-codex-mini in het tile-regime (werkelijk: patch 1536) | ≥+23% onderschat | e6bc75f |
 | D5 | detail:'original' hardcoded voor elk model (bestaat alleen in 5.4+) | buiten contract | e6bc75f |
 | #44 | description-stub geïnjecteerd in typed tools → 400 + stille fallback | besparingen op nul zonder signaal | 0f66e32 |
 | AA | AA-atlas in productie tegen het "eval-only"-commentaar in | −17pp leesvaardigheid op Fable | 9a25585 |
-| — | slab cols 313 (1573px) → 0,997× resample + extra patchkolom | gefixt naar 312 | baseline |
+| — | slab cols 313 (1573px) → 0.997× resample + extra patchkolom | gefixt naar 312 | baseline |
 
 ## 5. Open hypothesen (wat het kost om elk af te sluiten)
 
 | id | hypothese | huidig bewijs | beslissende test | kosten |
 |---|---|---|---|---|
 | H1 | De 1928²-pagina leest ≥ standaard op de directe API (WYSIWYG bewezen in billing) | billing 4764 zonder resample; 1-bit leest al 67% zelfs gedegradeerd | directe A/B std vs hi-res (1-bit) | ~US$4 API |
-| H2 | hi-res + 1-bit op de directe API ≈ 100% met 3,3× minder afbeeldingen | H1 + 2×2-matrix | zelfde als H1 | zelfde |
+| H2 | hi-res + 1-bit op de directe API ≈ 100% met 3.3× minder afbeeldingen | H1 + 2×2-matrix | zelfde als H1 | zelfde |
 | H3 | De Read van de CLI en OpenRouter schalen afbeeldingen >1568/2000px terug | 5×8 sterft en 10×16 overleeft OP DEZELFDE pagina | één 1928²-pagina met 20×32-glyfen per transport | ~US$0 (CLI) |
 | H4 | Weigering hangt af van framing (agent-leest-een-bestand ≈ 0% vs raw API ≈ 100%) | transportvergelijking hierboven | formulering-A/B op het echte proxypad | laag |
 | H5 | Gemini tile 1533×1152 leesbaar bij 5×8 (42 tekens/tok) | geen | density-frontier met GEMINI_API_KEY | ~gratis (free tier) |
@@ -132,7 +159,7 @@ per image-token op het harness-corpus.
 OORDEEL: de 1928²-pagina van de high-res-tier wordt WYSIWYG GEFACTUREERD
 (4764 tok, sweep) maar de ENCODER ontvangt niet de volledige resolutie —
 1-2/30 gelezen, met single-glyph-verwisselfouten (6→8, a→4), de signatuur
-van een interne resample. **Billing ≠ encoder-input → valkuil: 3,3× de
+van een interne resample. **Billing ≠ encoder-input → valkuil: 3.3× de
 kosten, slechtere leesbaarheid.** TOEGEPAST: pageGeometryForTier()
 teruggedraaid — beide tiers renderen 1568×728; tier-infra behouden (exacte
 billing blijft geldig en de toekomstige retune is 1 regel). H3
@@ -145,12 +172,12 @@ beide transporten (77-87%).
 
 | arm | verbatim | gist | output/antwoord |
 |---|---:|---:|---:|
-| strip 768×2048 5×8 AA | 0/30 (18 onth, 5 gefilterd, 7 fouten) | 0/3 | 2.639 tok |
-| strip 5×8 1-bit | 0/30 (15 onth, 5 gefilterd, 10 fouten) | 1/3 | 2.383 tok |
+| strip 768×2048 5×8 AA | 0/30 (18 onth, 5 gefilterd, 7 fouten) | 0/3 | 2,639 tok |
+| strip 5×8 1-bit | 0/30 (15 onth, 5 gefilterd, 10 fouten) | 1/3 | 2,383 tok |
 | TEKST (controle) | **30/30** | **3/3** | **62 tok** |
 
 GPT-5.5 kan geen 5×8-glyfen lezen (0/60; zelfs de gist overleeft niet) en
-laat de completion ~40× oplopen bij de poging ze te ontcijferen (2,4-2,7k
+laat de completion ~40× oplopen bij de poging ze te ontcijferen (2.4-2.7k
 reasoning-tokens per vraag) — de promptbesparingen worden opgeslokt door de
 output. De perfecte tekstcontrole bewijst dat het corpus/de vragen deugdelijk
 zijn. Bevestigt en kwantificeert de 5.5-opt-in; gpt-5.6 (standaard) blijft
@@ -173,7 +200,7 @@ ERGER dan die van GPT (stille confabulatie in plaats van onthouding) —
 Gemini zou extra waarborgen in de proxy nodig hebben. Nog af te sluiten:
 opnieuw draaien met betaald quotum of op een andere dag, en gemini-2.5-pro
 testen (flash is de zwakste lezer in de familie). De native-tile-pagina
-heeft nog steeds de beste GEDOCUMENTEERDE ratio (42,3 tekens/token); het is
+heeft nog steeds de beste GEDOCUMENTEERDE ratio (42.3 tekens/token); het is
 de leesbaarheid die in twijfel staat.
 
 Kostennotitie: gedeeltelijke pagina's (de laatste van het corpus) worden

@@ -1,8 +1,40 @@
 # density-frontier — kostnad × nøyaktighet per oppløsning
 
+🌐 Oversatt: [alle språk](../../../README.md)
+
 Rigg som måler **Pareto-fronten mellom kostnad og lesbarhet** for
 tekst→bilde-rendringene, per leverandør (Anthropic / OpenAI / Gemini),
 sidegeometri, glyffcelle og atlasstil.
+
+Billigere (tettere) sider bærer flere tegn per token, men slutter til
+slutt å være lesbare. En konfigurasjon får kun sendes der **begge** deler
+stemmer — kostnaden er lav *og* modellen leser den fortsatt perfekt:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Hvert svar scores til nøyaktig ett av tre utfall — det midterste er det som
+gjør porten troverdig:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+En konfigurasjon som produserer selv én 🔴, er diskvalifisert, uansett hvor
+billig den er.
 
 Den sentrale asymmetrien: siden faktureringssveipen (2026-07-05,
 `benchmarks/billing-sweep/`) er **kostnaden eksakt forutsigbar offline** —

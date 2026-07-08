@@ -1,8 +1,35 @@
 # OmniGlyph — Konsolidasiya edilmiş ölçmələr (2026-07-05)
 
+🌐 Tərcümə: [bütün dillər](../../../README.md)
+
 Bu sessiyada ÖLÇÜLMÜŞ hər şey, mənbə və n ilə; hipotezlər sonda aydın şəkildə
 ayrılıb. Qəbzlər: `benchmarks/billing-sweep/results/` və
 `benchmarks/density-frontier/results/` (cavab başına JSONL).
+
+## TL;DR — iki zolaqda bütün nəticə
+
+**Xərc** — bir standart 1568×728 səhifə 28,080 simvolu sabit 1,460 tokenlə
+daşıyır; eyni mətn xam göndəriləndə ~10× baha başa gəlir:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Dəqiqlik** — amma yalnız model səhifəni əslində oxuduqda. Qapı fail-closed-dır;
+yalnız ✅ sətri istehsalata çıxır:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Bu sənədin qalanı həmin iki zolağın arxasındakı qəbzlərdir.
 
 ## 1. Anthropic billinqi (birbaşa count_tokens, $0, 11 geometriya × 2 model)
 

@@ -1,8 +1,35 @@
 # OmniGlyph —— 彙整測量結果(2026-07-05)
 
+🌐 已翻譯:[所有語言](../../../README.md)
+
 本工作階段中**已測量**的所有內容,均附來源與 n 值;假設則清楚地
 獨立列在最後。憑證:`benchmarks/billing-sweep/results/` 與
 `benchmarks/density-frontier/results/`(逐條回答的 JSONL)。
+
+## TL;DR——兩張長條圖看懂全部結果
+
+**成本**——一張標準 1568×728 頁面可承載 28,080 字元,固定花費
+1,460 token;同樣的文字若以原始文字傳送,成本約高出 10 倍:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**準確率**——但前提是模型真的能讀懂頁面。此門控為失敗即關閉;
+只有 ✅ 這一列會上線:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+本文件其餘部分就是支撐這兩條長條圖背後的憑證。
 
 ## 1. Anthropic 計費(直接 count_tokens,$0,11 種幾何結構 × 2 個模型)
 

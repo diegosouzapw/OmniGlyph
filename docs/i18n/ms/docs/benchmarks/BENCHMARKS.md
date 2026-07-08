@@ -1,8 +1,35 @@
 # OmniGlyph — Pengukuran konsolidasi (2026-07-05)
 
+🌐 Diterjemahkan: [semua bahasa](../../../README.md)
+
 Segala yang DIUKUR dalam sesi ini, dengan sumber dan n; hipotesis diasingkan
 dengan jelas di penghujung. Resit: `benchmarks/billing-sweep/results/` dan
 `benchmarks/density-frontier/results/` (JSONL setiap jawapan).
+
+## TL;DR — keseluruhan hasil dalam dua bar
+
+**Kos** — satu halaman standard 1568×728 membawa 28,080 aksara untuk
+1,460 token tetap; teks yang sama dihantar mentah berkos ~10× lebih:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Ketepatan** — tetapi hanya di mana model benar-benar membaca halaman
+itu. Get ini bersifat gagal-tertutup; hanya baris ✅ yang dilancarkan:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Selebihnya dokumen ini ialah resit di sebalik kedua-dua bar itu.
 
 ## 1. Pengebilan Anthropic (count_tokens terus, $0, 11 geometri × 2 model)
 

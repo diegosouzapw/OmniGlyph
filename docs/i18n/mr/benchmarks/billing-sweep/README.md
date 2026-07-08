@@ -1,5 +1,24 @@
 # Anthropic vision-billing sweep
 
+🌐 भाषांतरित: [सर्व भाषा](../../../README.md)
+
+**हे का अस्तित्वात आहे:** profitability gate तेव्हाच सुरक्षित असते जेव्हा खर्च
+अंदाज *अचूक* असतो. थोडासा चुकीचा सूत्र अशा ब्लॉक्सचे रूपांतर करेल जे प्रत्यक्षात
+जास्त खर्च करतात. म्हणून हा sweep सूत्राला API च्या खऱ्या आकड्यांशी शिपिंगपूर्वी
+पिन करतो — **शून्य अवशेषा**पर्यंत.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 मोफत `count_tokens` sweep जो दोन खुल्या भूमिती प्रश्नांचा निर्णय घेतो:
 
 1. **सूत्र** — API `ceil(w/28) × ceil(h/28)` patches (सध्याचे docs) बिल

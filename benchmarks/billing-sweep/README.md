@@ -1,5 +1,24 @@
 # Anthropic vision-billing sweep
 
+🌐 Translated: [all languages](../../docs/i18n/README.md)
+
+**Why it exists:** the profitability gate is only safe if the cost estimate is
+*exact*. A formula that is off by a little would convert blocks that actually
+cost more. So this sweep pins the formula to the API's real numbers before it
+ships — to **zero residual**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Free `count_tokens` sweep that decides two open geometry questions:
 
 1. **Formula** — does the API bill `ceil(w/28) × ceil(h/28)` patches (current

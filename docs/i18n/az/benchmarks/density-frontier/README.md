@@ -1,8 +1,39 @@
 # density-frontier — çözünürlük üzrə xərc × dəqiqlik
 
+🌐 Tərcümə: [bütün dillər](../../../README.md)
+
 Provayder (Anthropic / OpenAI / Gemini), səhifə geometriyası, qlif xanası və atlas
 üslubu üzrə mətn→şəkil render-lərinin **xərc ilə oxunaqlılıq arasındakı Pareto
 sərhədini** ölçən hərnəs.
+
+Daha ucuz (daha sıx) səhifələr token başına daha çox simvol daşıyır, amma nəticədə
+oxunmaz olur. Bir konfiqurasiya yalnız **hər ikisi** doğru olduqda buraxılışa
+icazə alır — xərc aşağıdır *və* model onu hələ də mükəmməl oxuyur:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Hər cavab dəqiq üç nəticədən birinə hesablanır — ortadakı nəticə qapını
+etibarlı edən budur:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Nə qədər ucuz olsa da, bir dənə belə 🔴 verən konfiqurasiya diskvalifikasiya olunur.
 
 Mərkəzi asimmetriya: billinq sweep-indən bəri (2026-07-05,
 `benchmarks/billing-sweep/`), **xərc oflayn tam dəqiqliklə proqnozlaşdırılabilir**

@@ -1,5 +1,24 @@
 # Sweep účtovania vízie Anthropic
 
+🌐 Preložené: [všetky jazyky](../../../README.md)
+
+**Prečo existuje:** brána ziskovosti je bezpečná iba vtedy, ak je odhad
+nákladov *presný*. Vzorec, ktorý je o čosi mimo, by konvertoval bloky, ktoré
+v skutočnosti stoja viac. Preto tento sweep pripína vzorec k skutočným
+číslam API pred nasadením — na **nulové rezíduum**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Bezplatný sweep `count_tokens`, ktorý rozhoduje dve otvorené otázky
 geometrie:
 
@@ -25,8 +44,8 @@ patch účtovanie.
 ## Spustenie
 
 ```bash
-pnpm run build                              # predpoklad dist/ (ako pri všetkých evaluáciách)
-node benchmarks/billing-sweep/run.mjs --dry-run   # iba predikcie, bez kľúča, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

@@ -1,8 +1,39 @@
 # density-frontier — עלות × דיוק לכל רזולוציה
 
+🌐 Translated: [all languages](../../../README.md)
+
 רתמה שמודדת את **חזית הפארטו בין עלות לקריאוּת** של
 הרינדורים טקסט→תמונה, לכל ספק (Anthropic / OpenAI / Gemini), גאומטריית עמוד,
 תא גליף, וסגנון אטלס.
+
+עמודים זולים יותר (צפופים יותר) נושאים יותר תווים לטוקן אבל בשלב מסוים
+מפסיקים להיות קריאים. תצורה מותרת לשחרור רק כש**שניהם** מתקיימים — העלות נמוכה
+*וגם* המודל עדיין קורא אותה בשלמות:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+כל תשובה מנוקדת לאחת משלוש תוצאות בדיוק — האמצעית היא
+זו שהופכת את השער לאמין:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+תצורה שמפיקה אפילו 🔴 אחד נפסלת, לא משנה כמה היא זולה.
 
 האסימטריה המרכזית: מאז billing sweep (2026-07-05,
 `benchmarks/billing-sweep/`), **העלות ניתנת לחיזוי מדויק אופליין** — טלאים

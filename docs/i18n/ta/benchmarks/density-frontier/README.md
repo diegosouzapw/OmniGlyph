@@ -1,8 +1,41 @@
 # density-frontier — resolutionக்கு cost × accuracy
 
+🌐 Translated: [all languages](../../../README.md)
+
 Providerஒன்றுக்கு (Anthropic / OpenAI / Gemini), page geometry, glyph cell,
 மற்றும் atlas style வாரியாக text→image rendersஇன் **cost மற்றும் legibilityக்கு
 இடையேயான Pareto frontierஐ** measure செய்யும் harness.
+
+மலிவான (அடர்த்தியான) pages tokenஒன்றுக்கு அதிக chars எடுத்துச் செல்கின்றன,
+ஆனால் இறுதியில் readable ஆக இருப்பதை நிறுத்திவிடுகின்றன. **இரண்டும்** உண்மையாக
+இருக்கும் இடத்தில் மட்டுமே ஒரு config shipஆக அனுமதிக்கப்படுகிறது — cost குறைவு
+*மற்றும்* மாடல் இன்னும் அதை perfectஆகப் படிக்கிறது:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+ஒவ்வொரு answerஉம் மூன்று outcomesஇல் சரியாக ஒன்றாக score செய்யப்படுகிறது —
+gateஐ நம்பகமானதாக ஆக்குவது middle ஒன்று:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+எவ்வளவு மலிவாக இருந்தாலும், ஒரு 🔴வையாவது உருவாக்கும் config disqualify
+செய்யப்படுகிறது.
 
 மையமான asymmetry: billing sweepலிருந்து (2026-07-05,
 `benchmarks/billing-sweep/`), **cost offline ஆக exactஆக predictable ஆகும்** —

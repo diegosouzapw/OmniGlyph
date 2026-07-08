@@ -1,5 +1,24 @@
 # Sweep di fatturazione visione Anthropic
 
+🌐 Tradotto: [tutte le lingue](../../../README.md)
+
+**Perché esiste:** il gate di redditività è sicuro solo se la stima di costo
+è *esatta*. Una formula anche leggermente sbagliata convertirebbe blocchi
+che in realtà costano di più. Quindi questo sweep fissa la formula ai numeri
+reali dell'API prima che vada in produzione — a **residuo zero**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Sweep gratuito `count_tokens` che decide due domande aperte sulla
 geometria:
 
@@ -57,3 +76,4 @@ delle previsioni vive in `formulas.mjs`, fissata da
   pagina per livello (pagine della classe 1928×1928 per Fable/Opus
   4.8/Sonnet 5, 1568×728 per standard), rispecchiando come il percorso
   GPT già mantiene il proprio `GPT_MAX_HEIGHT_PX`.
+</content>

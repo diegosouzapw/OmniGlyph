@@ -1,9 +1,45 @@
 # Benchmarks
 
+🌐 Traducido: [todos los idiomas](../../README.md)
+
 Cada número que OmniGlyph afirma proviene de uno de los dos harnesses de
 abajo — re-ejecutables, deterministas donde es posible, con comprobantes
 crudos por respuesta en `*/results/*.jsonl`. Análisis consolidado:
 [docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+
+## Cómo funciona el ahorro (en una imagen)
+
+Los proveedores facturan **el texto por token**, pero facturan una **imagen
+por sus dimensiones** — no por cuánto texto lleva empacado adentro. Una
+página estándar tiene un costo plano sin importar qué tan denso sea el texto:
+
+```
+                         ┌─────────────────────────────────────────────┐
+28,080 characters   →    │  one 1568 × 728 PNG page   =  1,460 tokens   │
+of dense context         └─────────────────────────────────────────────┘
+                                          the SAME 1,460 whether the page
+                                          holds 200 chars or 28,080
+```
+
+El mismo contexto, facturado de dos formas:
+
+```
+as dense TEXT    ██████████████████████████████████████████████  ~14,040 tokens
+as ONE IMAGE     █████                                              1,460 tokens
+                                                                    ▼
+                                                              ~10× fewer tokens
+```
+
+Por qué gana la imagen — caracteres transportados por token:
+
+```
+image (dense page)  ███████████████████████████████████████  19.2 chars/token
+dense text          ████                                       ~2  chars/token
+```
+
+OmniGlyph solo hace este cambio cuando la matemática exacta dice que gana, y
+solo para modelos comprobados que leen la página. Los dos harnesses de abajo
+prueban cada mitad.
 
 ## 1. `billing-sweep/` — ¿qué cuesta realmente una imagen?
 
@@ -16,6 +52,15 @@ cada prueba** — se factura `⌈w/28⌉ × ⌈h/28⌉` tras el resize por tier,
 una sobrecarga fija de +3/+4 tokens por bloque de imagen. La página de
 producción (1568×728) cuesta exactamente 1,460 tokens y lleva 28,080 chars
 ≈ **19.2 chars/token** vs ~2 chars/token como texto denso.
+
+```
+the page as the patch grid the API actually bills:
+
+  ⌈1568 / 28⌉ = 56 patches wide
+  ⌈ 728 / 28⌉ = 26 patches tall
+  ───────────────────────────────
+  56 × 26  = 1,456  + 4 per-block  =  1,460 tokens   (flat, WYSIWYG)
+```
 
 ```bash
 node benchmarks/billing-sweep/run.mjs --dry-run          # solo predicciones, $0
@@ -43,6 +88,22 @@ silenciosa, no solo se cuenta como error. La puntuación es determinista
 | Opus 4.8 · glifos 10×16 | 23–26/30 | el modo seguro opcional |
 | GPT-5.5 · strip de 768px (ambos atlas) | 0/60 | + ~40× de inflación de tokens de output vs su propio control de texto (30/30, 62 tok) |
 | Gemini 2.5-flash (parcial, cuota) | 0/26 | confabula en vez de abstenerse |
+
+Precisión de lectura de un vistazo — esta **es** el gate fail-closed de
+modelo, dibujado:
+
+```
+Fable 5 · 1-bit page (prod)   ██████████████████████████████  30/30  ✅ approved
+Opus 4.8 · 10×16 (safe mode)  ████████████████████████░░░░░░  ~24/30 ⚠️ opt-in
+Fable 5 · high-res 1928²      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+GPT-5.5 · 768px strip         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/60   ⛔ blocked
+Gemini 2.5-flash              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/26   ⛔ confabulates
+```
+
+Solo el brazo ✅ se envía a producción. Cualquier cosa que lea mal queda
+bloqueada *con comprobante*, y la puntuación de tres vías significa que un
+modelo que adivina mal (`silent_wrong`) se trata como peor que uno que se
+abstiene honestamente (`ILEGIVEL`).
 
 Tres transportes: API directa (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GEMINI_API_KEY`),
 OpenRouter (`OPENROUTER_API_KEY`), y `--via-cli` (una suscripción de Claude

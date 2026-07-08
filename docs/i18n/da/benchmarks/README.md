@@ -1,8 +1,44 @@
 # Benchmarks
 
+🌐 Translated: [all languages](../../README.md)
+
 Hvert tal, OmniGlyph påstår, kommer fra et af de to rammeværker nedenfor —
 kan genkøres, deterministisk hvor muligt, med rå per-svar-dokumentation i
 `*/results/*.jsonl`. Konsolideret analyse: [docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+
+## Sådan virker besparelsen (i ét billede)
+
+Udbydere afregner **tekst per token**, men afregner et **billede efter dets
+dimensioner** — ikke efter hvor meget tekst der er pakket ind i det. Én
+standardside er en flad omkostning, uanset hvor tæt teksten er:
+
+```
+                         ┌─────────────────────────────────────────────┐
+28,080 characters   →    │  one 1568 × 728 PNG page   =  1,460 tokens   │
+of dense context         └─────────────────────────────────────────────┘
+                                          the SAME 1,460 whether the page
+                                          holds 200 chars or 28,080
+```
+
+Samme kontekst, afregnet på to måder:
+
+```
+as dense TEXT    ██████████████████████████████████████████████  ~14,040 tokens
+as ONE IMAGE     █████                                              1,460 tokens
+                                                                    ▼
+                                                              ~10× fewer tokens
+```
+
+Hvorfor billedet vinder — tegn båret per token:
+
+```
+image (dense page)  ███████████████████████████████████████  19.2 chars/token
+dense text          ████                                       ~2  chars/token
+```
+
+OmniGlyph laver kun dette bytte, når den præcise matematik siger, det vinder,
+og kun for modeller, der er bevist at kunne læse siden. De to rammeværker
+nedenfor beviser hver sin halvdel.
 
 ## 1. `billing-sweep/` — hvad koster et billede egentlig?
 
@@ -14,6 +50,15 @@ geometrier på 2 modeller × 2 opløsningstiers.
 — afregnet = `⌈w/28⌉ × ⌈h/28⌉` efter tier-resize, plus et fast +3/+4 tokens per
 billedblok. Produktionssiden (1568×728) koster nøjagtigt 1.460 tokens og
 rummer 28.080 tegn ≈ **19,2 tegn/token** mod ~2 tegn/token som tæt tekst.
+
+```
+the page as the patch grid the API actually bills:
+
+  ⌈1568 / 28⌉ = 56 patches wide
+  ⌈ 728 / 28⌉ = 26 patches tall
+  ───────────────────────────────
+  56 × 26  = 1,456  + 4 per-block  =  1,460 tokens   (flat, WYSIWYG)
+```
 
 ```bash
 node benchmarks/billing-sweep/run.mjs --dry-run          # predictions only, $0
@@ -39,6 +84,20 @@ dommer): `correct` / `abstained` (ærligt `ILEGIVEL`) / `silent_wrong` / `no_ans
 | Opus 4.8 · 10×16-glyffer | 23–26/30 | den valgfri sikre tilstand |
 | GPT-5.5 · 768px-strimmel (begge atlasser) | 0/60 | + ~40× output-token-opblæsning mod dens egen tekstkontrol (30/30, 62 tok) |
 | Gemini 2.5-flash (delvis, kvote) | 0/26 | konfabulerer i stedet for at afstå |
+
+Læsenøjagtighed på ét blik — dette **er** det fejlsikre model-gate, tegnet op:
+
+```
+Fable 5 · 1-bit page (prod)   ██████████████████████████████  30/30  ✅ approved
+Opus 4.8 · 10×16 (safe mode)  ████████████████████████░░░░░░  ~24/30 ⚠️ opt-in
+Fable 5 · high-res 1928²      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+GPT-5.5 · 768px strip         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/60   ⛔ blocked
+Gemini 2.5-flash              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/26   ⛔ confabulates
+```
+
+Kun ✅-armen sendes i produktion. Alt, der læser dårligt, blokeres *med en
+dokumentation*, og tresidet scoring betyder, at en model, der gætter forkert
+(`silent_wrong`), behandles som værre end en, der ærligt afstår (`ILEGIVEL`).
 
 Tre transporter: direkte API (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GEMINI_API_KEY`),
 OpenRouter (`OPENROUTER_API_KEY`) og `--via-cli` (et Claude Code-abonnement —

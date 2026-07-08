@@ -1,5 +1,24 @@
 # Anthropic visnings-faktureringssveip
 
+🌐 Oversatt: [alle språk](../../../README.md)
+
+**Hvorfor den finnes:** lønnsomhetsporten er kun trygg hvis
+kostnadsestimatet er *eksakt*. En formel som bommer litt, ville transformert
+blokker som faktisk koster mer. Så denne sveipen fester formelen til
+API-ets reelle tall før den lanseres i produksjon — til **null avvik**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Gratis `count_tokens`-sveip som avgjør to åpne geometrispørsmål:
 
 1. **Formel** — fakturerer API-et `ceil(w/28) × ceil(h/28)`-patcher (nåværende
@@ -8,7 +27,7 @@ Gratis `count_tokens`-sveip som avgjør to åpne geometrispørsmål:
 2. **Nivå** — får `claude-fable-5` høyoppløsningstakene (lang kant
    ≤ 2576 px, ≤ 4784 visuelle tokens)? `page-old-1928x1928`-raden er
    avgjørende: ≈ **4761** målt betyr høyoppløsning WYSIWYG (den gamle store
-   siden bærer ~3,3× flere tegn per bilde enn dagens 1568×728, ved samme
+   siden bærer ~3.3× flere tegn per bilde enn dagens 1568×728, ved samme
    tegn/token); ≈ **1521** betyr standardnivå-resampling, og 1568×728
    forblir korrekt.
 

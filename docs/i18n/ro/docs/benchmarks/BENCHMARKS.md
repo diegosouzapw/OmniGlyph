@@ -1,8 +1,35 @@
 # OmniGlyph — Măsurători consolidate (2026-07-05)
 
+🌐 Tradus: [toate limbile](../../../README.md)
+
 Tot ce a fost MĂSURAT în această sesiune, cu sursă și n; ipotezele clar
 separate la sfârșit. Dovezi: `benchmarks/billing-sweep/results/` și
 `benchmarks/density-frontier/results/` (JSONL per răspuns).
+
+## TL;DR — întregul rezultat în două bare
+
+**Cost** — o pagină standard 1568×728 conține 28,080 caractere pentru un
+cost fix de 1,460 tokeni; același text trimis brut costă ~10× mai mult:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Precizie** — dar doar acolo unde modelul chiar citește pagina. Gate-ul
+este fail-closed; doar rândul ✅ ajunge în producție:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Restul acestui document sunt dovezile din spatele acestor două bare.
 
 ## 1. Facturare Anthropic (count_tokens direct, $0, 11 geometrii × 2 modele)
 

@@ -1,5 +1,25 @@
 # Anthropic vision-billing sweep
 
+🌐 Переведено: [все языки](../../../README.md)
+
+**Зачем он нужен:** гейт прибыльности безопасен только в том случае, если
+оценка стоимости *точна*. Формула, ошибающаяся хоть немного, будет
+конвертировать блоки, которые на самом деле стоят дороже. Поэтому этот sweep
+привязывает формулу к реальным цифрам API перед тем, как она попадёт в
+продакшн — до **нулевой невязки**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Бесплатный sweep `count_tokens`, который решает два открытых вопроса
 геометрии:
 

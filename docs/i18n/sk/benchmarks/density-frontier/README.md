@@ -1,8 +1,40 @@
 # density-frontier — náklady × presnosť podľa rozlíšenia
 
+🌐 Preložené: [všetky jazyky](../../../README.md)
+
 Harness, ktorý meria **Paretovu hranicu medzi nákladmi a čitateľnosťou**
 renderov text→obrázok, na poskytovateľa (Anthropic / OpenAI / Gemini),
 geometriu stránky, bunku glyfu a štýl atlasu.
+
+Lacnejšie (hustejšie) stránky nesú viac znakov na token, ale v určitom bode
+prestávajú byť čitateľné. Konfigurácia smie ísť do produkcie iba tam, kde
+platí **oboje** — náklady sú nízke *a* model ju stále číta dokonale:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Každá odpoveď sa ohodnotí presne na jeden z troch výsledkov — prostredný z
+nich je ten, ktorý robí bránu dôveryhodnou:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Konfigurácia, ktorá vyprodukuje čo i len jeden 🔴, je diskvalifikovaná, bez
+ohľadu na to, aká je lacná.
 
 Centrálna asymetria: od billing sweepu (2026-07-05,
 `benchmarks/billing-sweep/`) sú **náklady presne predikovateľné offline**
@@ -32,10 +64,10 @@ dlaždice/media_resolution na Gemini (`gemini-cost.ts`). Iba **presnosť
 ## Spustenie
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # tabuľka nákladov, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 ihiel+3 gist × konfigurácia × pokus
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Konkrétne konfigurácie: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.
@@ -75,7 +107,7 @@ Predpoklady (prevádzkové):
 
 ```bash
 OMNIROUTE_URL=http://localhost:20128 \
-OMNIROUTE_API_KEY=<váš-omniroute-kľúč> \
+OMNIROUTE_API_KEY=<your-omniroute-key> \
   pnpm exec tsx benchmarks/density-frontier/run.ts \
     --via-omniroute --configs anthropic-std-5x8-1bit --trials 2
 ```

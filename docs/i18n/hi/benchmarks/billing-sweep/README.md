@@ -1,5 +1,24 @@
 # Anthropic विज़न-बिलिंग स्वीप
 
+🌐 अनुवादित: [सभी भाषाएँ](../../../README.md)
+
+**यह क्यों मौजूद है:** प्रॉफ़िटेबिलिटी गेट तभी सुरक्षित है जब लागत अनुमान
+*सटीक* हो। थोड़ा भी चूका हुआ फ़ॉर्मूला ऐसे ब्लॉकों को बदल देगा जिनकी असल
+लागत ज़्यादा होती है। इसलिए यह स्वीप शिप होने से पहले फ़ॉर्मूले को API के
+वास्तविक आँकड़ों पर पिन करता है — **शून्य अवशिष्ट** तक।
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 मुफ़्त `count_tokens` स्वीप जो दो खुले ज्यामिति प्रश्नों का फ़ैसला करता है:
 
 1. **फ़ॉर्मूला** — क्या API `ceil(w/28) × ceil(h/28)` पैच का बिल लगाता है

@@ -1,8 +1,41 @@
 # density-frontier — kustannus × tarkkuus resoluutiota kohti
 
+🌐 Käännetty: [kaikki kielet](../../../README.md)
+
 Työkalu, joka mittaa teksti→kuva-renderöintien **kustannuksen ja
 luettavuuden Pareto-rintaman** palveluntarjoajittain (Anthropic / OpenAI /
 Gemini), sivugeometrioittain, glyfisoluittain ja atlastyyleittäin.
+
+Halvemmat (tiheämmät) sivut kantavat enemmän merkkejä per tokeni, mutta
+lakkaavat lopulta olemasta luettavissa. Konfiguraatio saa mennä tuotantoon
+vain, kun **molemmat** pitävät paikkansa — kustannus on matala *ja* malli
+lukee sen silti täydellisesti:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Jokainen vastaus pisteytetään täsmälleen yhteen kolmesta lopputulemasta —
+keskimmäinen on se, joka tekee portista luotettavan:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Konfiguraatio, joka tuottaa yhdenkin 🔴:n, on diskvalifioitu, riippumatta
+siitä, kuinka halpa se on.
 
 Keskeinen epäsymmetria: laskutuspyyhkäisyn jälkeen (2026-07-05,
 `benchmarks/billing-sweep/`), **kustannus on tarkasti ennustettavissa

@@ -1,5 +1,25 @@
 # Anthropic vision-afregnings-sweep
 
+🌐 Translated: [all languages](../../../README.md)
+
+**Hvorfor det findes:** rentabilitetsspærringen er kun sikker, hvis
+omkostningsestimatet er *præcist*. En formel, der er en lille smule ved
+siden af, ville konvertere blokke, der faktisk koster mere. Så dette sweep
+fastlåser formlen til API'ets reelle tal, før det sendes i produktion — til
+**nul resterende afvigelse**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Gratis `count_tokens`-sweep, der afgør to åbne geometrispørgsmål:
 
 1. **Formel** — afregner API'et `ceil(w/28) × ceil(h/28)`-patches (nuværende

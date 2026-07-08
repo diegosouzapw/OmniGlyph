@@ -1,4 +1,24 @@
-# Billing sweep tính phí vision Anthropic
+# Anthropic vision-billing sweep
+
+🌐 Đã dịch: [tất cả ngôn ngữ](../../../README.md)
+
+**Vì sao nó tồn tại:** cổng chặn khả năng sinh lời chỉ an toàn nếu ước
+tính chi phí *chính xác*. Một công thức lệch dù chỉ một chút cũng sẽ
+chuyển đổi các khối thực ra tốn kém hơn. Vì vậy sweep này ghim công thức
+vào các con số thật của API trước khi nó lên sản xuất — đến **độ dư
+bằng không**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
 
 Sweep `count_tokens` miễn phí quyết định hai câu hỏi hình học còn mở:
 
@@ -8,7 +28,7 @@ Sweep `count_tokens` miễn phí quyết định hai câu hỏi hình học còn
 2. **Tier** — `claude-fable-5` có nhận được giới hạn độ phân giải cao
    (cạnh dài ≤ 2576 px, ≤ 4784 token thị giác) không? Hàng
    `page-old-1928x1928` là hàng quyết định: ≈ **4761** đo được nghĩa là
-   độ phân giải cao WYSIWYG (trang lớn cũ chứa ~3,3× nhiều ký tự hơn mỗi
+   độ phân giải cao WYSIWYG (trang lớn cũ chứa ~3.3× nhiều ký tự hơn mỗi
    hình ảnh so với trang 1568×728 hiện tại, ở cùng tỷ lệ ký tự/token); ≈
    **1521** nghĩa là resample tier tiêu chuẩn, và 1568×728 vẫn đúng.
 
@@ -22,8 +42,8 @@ trang hiện tại ở 1460 token: gần với 1456 của công thức patch hơ
 ## Chạy
 
 ```bash
-pnpm run build                              # tiền đề dist/ (như mọi eval)
-node benchmarks/billing-sweep/run.mjs --dry-run   # chỉ dự đoán, không cần khóa, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

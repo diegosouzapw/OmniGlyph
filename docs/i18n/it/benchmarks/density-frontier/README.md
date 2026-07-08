@@ -1,8 +1,41 @@
 # density-frontier — costo × accuratezza per risoluzione
 
+🌐 Tradotto: [tutte le lingue](../../../README.md)
+
 Banco di prova che misura la **frontiera di Pareto tra costo e
 leggibilità** dei render testo→immagine, per provider (Anthropic / OpenAI /
 Gemini), geometria di pagina, cella dei glifi, e stile dell'atlas.
+
+Le pagine più economiche (dense) trasportano più caratteri per token ma a
+un certo punto smettono di essere leggibili. Una configurazione può andare
+in produzione solo dove valgono **entrambe** le condizioni — il costo è
+basso *e* il modello legge ancora perfettamente:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Ogni risposta viene valutata in esattamente uno dei tre esiti — quello
+centrale è ciò che rende il gate affidabile:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Una configurazione che produce anche un solo 🔴 viene squalificata, per
+quanto economica.
 
 L'asimmetria centrale: dallo sweep di fatturazione (2026-07-05,
 `benchmarks/billing-sweep/`), **il costo è esattamente prevedibile
@@ -96,3 +129,4 @@ superato i gate fail-closed).
 Test per le parti pure: `tests/density-frontier.test.ts` (include
 `buildOmnirouteRequest` e `parseCompressionSavings` dal trasporto
 via-omniroute).
+</content>

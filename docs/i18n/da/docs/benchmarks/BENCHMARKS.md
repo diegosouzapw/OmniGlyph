@@ -1,8 +1,35 @@
 # OmniGlyph — Konsoliderede målinger (2026-07-05)
 
+🌐 Translated: [all languages](../../../README.md)
+
 Alt MÅLT i denne session, med kilde og n; hypoteser klart adskilt til sidst.
 Dokumentation: `benchmarks/billing-sweep/results/` og
 `benchmarks/density-frontier/results/` (JSONL per svar).
+
+## TL;DR — hele resultatet i to søjler
+
+**Omkostning** — én standard 1568×728-side rummer 28.080 tegn for en flad
+1.460 tokens; den samme tekst sendt rå koster ~10× mere:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Nøjagtighed** — men kun hvor modellen rent faktisk læser siden. Spærringen
+er fejlsikker; kun ✅-rækken sendes i produktion:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Resten af dette dokument er dokumentationen bag de to søjler.
 
 ## 1. Anthropic-afregning (direkte count_tokens, $0, 11 geometrier × 2 modeller)
 

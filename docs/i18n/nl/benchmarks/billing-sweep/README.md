@@ -1,5 +1,25 @@
 # Anthropic vision-billing sweep
 
+🌐 Vertaald: [alle talen](../../../README.md)
+
+**Waarom het bestaat:** de winstgevendheidspoort is alleen veilig als de
+kostenschatting *exact* is. Een formule die een klein beetje afwijkt, zou
+blokken converteren die eigenlijk meer kosten. Deze sweep pint de formule
+daarom vast aan de echte cijfers van de API voordat hij naar productie gaat
+— tot **residu nul**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Gratis `count_tokens`-sweep die twee open geometrievragen beslecht:
 
 1. **Formule** — factureert de API `ceil(w/28) × ceil(h/28)` patches
@@ -8,7 +28,7 @@ Gratis `count_tokens`-sweep die twee open geometrievragen beslecht:
 2. **Tier** — krijgt `claude-fable-5` de high-resolution-caps (lange rand
    ≤ 2576 px, ≤ 4784 visuele tokens)? De `page-old-1928x1928`-rij is de
    beslisser: ≈ **4761** gemeten betekent high-res WYSIWYG (de oude grote
-   pagina bevat ~3,3× meer tekens per afbeelding dan de huidige 1568×728,
+   pagina bevat ~3.3× meer tekens per afbeelding dan de huidige 1568×728,
    bij dezelfde tekens/token); ≈ **1521** betekent resample naar
    standaardtier, en 1568×728 blijft correct.
 
@@ -23,8 +43,8 @@ patch-billing.
 ## Uitvoeren
 
 ```bash
-pnpm run build                              # dist/-vereiste (zoals alle evals)
-node benchmarks/billing-sweep/run.mjs --dry-run   # alleen voorspellingen, geen sleutel, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

@@ -1,8 +1,35 @@
 # OmniGlyph — Konsolidierte Messungen (2026-07-05)
 
+🌐 Übersetzt: [alle Sprachen](../../../README.md)
+
 Alles GEMESSEN in dieser Sitzung, mit Quelle und n; Hypothesen am Ende klar
 getrennt aufgeführt. Belege: `benchmarks/billing-sweep/results/` und
 `benchmarks/density-frontier/results/` (JSONL pro Antwort).
+
+## TL;DR — das gesamte Ergebnis in zwei Balken
+
+**Kosten** — eine Standardseite von 1568×728 fasst 28.080 Zeichen für
+pauschal 1.460 Tokens; derselbe Text roh gesendet kostet ~10× mehr:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Genauigkeit** — aber nur dort, wo das Modell die Seite tatsächlich liest.
+Das Gate ist fail-closed; nur die ✅-Zeile geht in Produktion:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Der Rest dieses Dokuments sind die Belege hinter diesen beiden Balken.
 
 ## 1. Anthropic-Billing (direktes count_tokens, $0, 11 Geometrien × 2 Modelle)
 

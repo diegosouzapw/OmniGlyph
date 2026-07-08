@@ -1,8 +1,41 @@
 # density-frontier — biaya × akurasi per resolusi
 
+🌐 Diterjemahkan: [semua bahasa](../../../README.md)
+
 Harness yang mengukur **frontier Pareto antara biaya dan keterbacaan** dari
 render teks→gambar, per provider (Anthropic / OpenAI / Gemini), geometri
 halaman, sel glyph, dan style atlas.
+
+Halaman yang lebih murah (lebih padat) membawa lebih banyak karakter per
+token tapi pada titik tertentu berhenti bisa dibaca. Sebuah konfigurasi hanya
+boleh dirilis jika **keduanya** terpenuhi — biaya rendah *dan* model masih
+membacanya dengan sempurna:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Setiap jawaban dinilai ke dalam tepat satu dari tiga hasil — hasil yang di
+tengah itulah yang membuat gate ini bisa dipercaya:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Sebuah konfigurasi yang menghasilkan meski hanya satu 🔴 langsung
+didiskualifikasi, sehemat apa pun biayanya.
 
 Asimetri utamanya: sejak sweep billing (2026-07-05,
 `benchmarks/billing-sweep/`), **biaya dapat diprediksi secara eksak

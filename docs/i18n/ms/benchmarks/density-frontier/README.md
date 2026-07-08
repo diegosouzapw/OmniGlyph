@@ -1,8 +1,41 @@
 # density-frontier — kos × ketepatan setiap resolusi
 
+🌐 Diterjemahkan: [semua bahasa](../../../README.md)
+
 Harness yang mengukur **sempadan Pareto antara kos dan kebolehbacaan** bagi
 render teks→imej, setiap penyedia (Anthropic / OpenAI / Gemini), geometri
 halaman, sel glif, dan gaya atlas.
+
+Halaman yang lebih murah (lebih padat) membawa lebih banyak aksara setiap
+token tetapi akhirnya berhenti boleh dibaca. Konfigurasi hanya dibenarkan
+dilancarkan apabila **kedua-duanya** dipenuhi — kos rendah *dan* model
+masih membacanya dengan sempurna:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Setiap jawapan diskor ke dalam tepat satu daripada tiga hasil — hasil
+yang di tengah itulah yang menjadikan get ini boleh dipercayai:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Konfigurasi yang menghasilkan walaupun satu 🔴 terus didiskualifikasi,
+tidak kira semurah mana pun.
 
 Ketidaksimetrian utama: sejak ujian pengebilan (2026-07-05,
 `benchmarks/billing-sweep/`), **kos boleh diramal secara tepat luar
@@ -32,10 +65,10 @@ talian** — patch 28 px + 4/blok pada Anthropic
 ## Menjalankan
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # jadual kos, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needle+3 gist × konfigurasi × ujian
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Konfigurasi khusus: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.

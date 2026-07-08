@@ -1,8 +1,41 @@
 # density-frontier — custo × precisão por resolução
 
+🌐 Traduzido: [todos os idiomas](../../../README.md)
+
 Conjunto que mede a **fronteira de Pareto entre custo e legibilidade** dos
 renders texto→imagem, por fornecedor (Anthropic / OpenAI / Gemini),
 geometria de página, célula de glifo e estilo de atlas.
+
+Páginas mais baratas (mais densas) transportam mais caracteres por token mas,
+a certa altura, deixam de ser legíveis. Uma configuração só pode ir para
+produção onde **ambas** as condições se verificam — o custo é baixo *e* o
+modelo continua a lê-la na perfeição:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Cada resposta é pontuada em exatamente um de três resultados — o do meio é o
+que torna o gate digno de confiança:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Uma configuração que produza mesmo que seja um único 🔴 é desqualificada, por
+mais barata que seja.
 
 A assimetria central: desde o sweep de faturação (2026-07-05,
 `benchmarks/billing-sweep/`), **o custo é exatamente previsível offline** —
@@ -33,10 +66,10 @@ no Gemini (`gemini-cost.ts`). Só a **precisão de leitura** precisa da API.
 ## Executar
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # tabela de custos, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 agulhas+3 gist × configuração × tentativa
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Configurações específicas: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.
@@ -77,7 +110,7 @@ Pré-requisitos (operacionais):
 
 ```bash
 OMNIROUTE_URL=http://localhost:20128 \
-OMNIROUTE_API_KEY=<a-sua-chave-omniroute> \
+OMNIROUTE_API_KEY=<your-omniroute-key> \
   pnpm exec tsx benchmarks/density-frontier/run.ts \
     --via-omniroute --configs anthropic-std-5x8-1bit --trials 2
 ```
@@ -85,9 +118,9 @@ OMNIROUTE_API_KEY=<a-sua-chave-omniroute> \
 Cada resposta regista `omnirouteSavings: { originalTokens, compressedTokens, savingsPercent }`
 (a partir do cabeçalho de resposta `X-OmniRoute-Compression`) no JSONL; a
 linha da tabela mostra quantas respostas voltaram comprimidas + a poupança
-mediana. **Barra P3**: as mesmas acertos de verbatim/gist que a rota direta
+mediana. **Barra P3**: os mesmos acertos de verbatim/gist que a rota direta
 (não degradação) **com** `omnirouteSavings` não nulo (provando que aconteceu
-um render, não uma leitura de texto bruto). Se aparecer "did NOT compress",
+um render, não uma leitura de texto bruto). Se aparecer `did NOT compress`,
 o motor não está ativado no OmniRoute (ou o corpo não passou pelos gates
 fail-closed).
 

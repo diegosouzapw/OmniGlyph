@@ -1,5 +1,24 @@
 # Anthropic vision-billing sweep
 
+🌐 แปลแล้ว: [ทุกภาษา](../../../README.md)
+
+**เหตุผลที่มีอยู่:** เกทด้านความสามารถในการทำกำไรจะปลอดภัยได้ก็ต่อเมื่อ
+การประมาณต้นทุน *เป๊ะ* เท่านั้น สูตรที่คลาดเคลื่อนไปเพียงเล็กน้อยจะทำให้
+บล็อกที่จริงแล้วมีต้นทุนสูงกว่าถูกแปลงไปด้วย ดังนั้นการ sweep นี้จึงยึดสูตร
+กับตัวเลขจริงของ API ก่อนนำไปใช้งานจริง — ให้เหลือ **ค่าคลาดเคลื่อนเป็นศูนย์**
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 การ sweep แบบฟรีด้วย `count_tokens` ที่ตัดสินคำถามด้านรูปทรงที่ยังเปิดอยู่สองข้อ:
 
 1. **สูตร** — API คิดค่าใช้จ่ายเป็นแพตช์ `ceil(w/28) × ceil(h/28)` (เอกสารปัจจุบัน)
@@ -21,14 +40,14 @@ Fable 5 ซึ่งเอกสารด้านการมองเห็น
 ## การรัน
 
 ```bash
-pnpm run build                              # เงื่อนไขเบื้องต้นของ dist/ (เหมือน eval ทุกตัว)
-node benchmarks/billing-sweep/run.mjs --dry-run   # การคาดการณ์เท่านั้น, ไม่ต้องมีคีย์, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus
 ```
 
-ต้องยิงตรงไปที่ API — ห้ามผ่านพร็อกซี OmniGlyph เด็ดขาด เพราะจะแปลง
+ต้องยิงตรงไปที่ API **โดยตรง** — ห้ามผ่านพร็อกซี OmniGlyph เด็ดขาด เพราะจะแปลง
 body `count_tokens` ใช้ฟรี; การ sweep แบบเต็มทำประมาณ 25 คำขอ
 
 ## การอ่านผลลัพธ์

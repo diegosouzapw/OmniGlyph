@@ -1,9 +1,47 @@
 # Benchmarks
 
+🌐 Isinalin: [lahat ng wika](../../README.md)
+
 Bawat numerong sinasabi ng OmniGlyph ay nagmula sa isa sa dalawang harness sa
 ibaba — maaaring paulit-ulit na patakbuhin, deterministic kung saan
 posible, na may hilaw na resibo kada sagot sa `*/results/*.jsonl`.
 Pinagsama-samang pagsusuri: [docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+
+## Paano gumagana ang savings (sa isang larawan)
+
+Sinisingil ng mga provider ang **text kada token**, ngunit sinisingil ang
+isang **imahe ayon sa dimensyon nito** — hindi ayon sa dami ng text na
+nakasiksik dito. Flat na gastos ang isang standard na pahina anuman ang
+siksik nito ang text:
+
+```
+                         ┌─────────────────────────────────────────────┐
+28,080 characters   →    │  one 1568 × 728 PNG page   =  1,460 tokens   │
+of dense context         └─────────────────────────────────────────────┘
+                                          the SAME 1,460 whether the page
+                                          holds 200 chars or 28,080
+```
+
+Ang parehong konteksto, sinisingil sa dalawang paraan:
+
+```
+as dense TEXT    ██████████████████████████████████████████████  ~14,040 tokens
+as ONE IMAGE     █████                                              1,460 tokens
+                                                                    ▼
+                                                              ~10× fewer tokens
+```
+
+Bakit nananalo ang imahe — mga character na dala kada token:
+
+```
+image (dense page)  ███████████████████████████████████████  19.2 chars/token
+dense text          ████                                       ~2  chars/token
+```
+
+Ginagawa lamang ng OmniGlyph ang swap na ito kapag sinasabi ng eksaktong
+matematika na mananalo ito, at para lamang sa mga modelong napatunayang
+kayang basahin ang pahina. Pinapatunayan ng dalawang harness sa ibaba ang
+bawat kalahati.
 
 ## 1. `billing-sweep/` — magkano ba talaga ang gastos ng isang imahe?
 
@@ -17,9 +55,18 @@ tier, dagdag ang fixed na +3/+4 tokens kada image block. Ang production page
 (1568×728) ay tumatakbo nang eksaktong 1,460 tokens at may dalang 28,080
 chars ≈ **19.2 chars/token** kumpara sa ~2 chars/token bilang siksik na text.
 
+```
+the page as the patch grid the API actually bills:
+
+  ⌈1568 / 28⌉ = 56 patches wide
+  ⌈ 728 / 28⌉ = 26 patches tall
+  ───────────────────────────────
+  56 × 26  = 1,456  + 4 per-block  =  1,460 tokens   (flat, WYSIWYG)
+```
+
 ```bash
-node benchmarks/billing-sweep/run.mjs --dry-run          # mga prediksyon lamang, $0
-ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # live sweep, $0 pa rin (libre ang count_tokens)
+node benchmarks/billing-sweep/run.mjs --dry-run          # predictions only, $0
+ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # live sweep, still $0 (count_tokens is free)
 ```
 
 ## 2. `density-frontier/` — kaya bang basahin ito ng modelo?
@@ -43,6 +90,22 @@ mali. Deterministic ang scoring (walang LLM judge): `correct` / `abstained`
 | GPT-5.5 · 768px strip (parehong atlas) | 0/60 | + ~40× na output-token inflation kumpara sa sarili nitong text control (30/30, 62 tok) |
 | Gemini 2.5-flash (bahagya, quota) | 0/26 | nagko-confabulate sa halip na umatras |
 
+Katumpakan ng pagbasa sa isang tingin — ito **mismo** ang fail-closed model
+gate, iginuhit:
+
+```
+Fable 5 · 1-bit page (prod)   ██████████████████████████████  30/30  ✅ approved
+Opus 4.8 · 10×16 (safe mode)  ████████████████████████░░░░░░  ~24/30 ⚠️ opt-in
+Fable 5 · high-res 1928²      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+GPT-5.5 · 768px strip         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/60   ⛔ blocked
+Gemini 2.5-flash              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/26   ⛔ confabulates
+```
+
+Ang arm na ✅ lamang ang naipapadala. Anumang mahinang bumasa ay hinaharang
+*na may resibo*, at ang three-way score ay nangangahulugang ang isang
+modelong nagkakamali sa hula (`silent_wrong`) ay itinuturing na mas masama
+kaysa sa isang tapat na umaatras (`ILEGIVEL`).
+
 Tatlong transport: direct API (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GEMINI_API_KEY`),
 OpenRouter (`OPENROUTER_API_KEY`), at `--via-cli` (isang subscription ng
 Claude Code — $0). Babala na natutunan sa mahirap na paraan: ang mga
@@ -51,8 +114,8 @@ malalaking imahe; ang mga resulta ng direct API lamang ang authoritative
 para sa legibility.
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # talahanayan ng gastos, $0
-pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # sa pamamagitan ng subscription, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # cost table, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # via subscription, $0
 ANTHROPIC_API_KEY=... pnpm exec tsx benchmarks/density-frontier/run.ts --configs anthropic-std-5x8-1bit
 ```
 
@@ -60,3 +123,4 @@ Mga unit test na nagpipin sa mga purong bahagi (corpus, scoring, mga formula
 ng gastos): `tests/billing-sweep-formulas.test.ts`, `tests/density-frontier.test.ts`,
 `tests/anthropic-vision.test.ts`, `tests/gemini-profiles.test.ts`,
 `tests/gpt-billing-audit.test.ts`.
+</content>

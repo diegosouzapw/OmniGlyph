@@ -1,5 +1,23 @@
 # Anthropic 視覺計費掃描
 
+🌐 已翻譯:[所有語言](../../../README.md)
+
+**存在的理由:** 唯有成本估算是**精確**的,獲利性門控才安全。若公式
+稍有偏差,就可能誤將實際成本更高的區塊也轉換掉。因此這項掃描會在
+上線前,把公式釘死在 API 的真實數字上——做到**殘差為零**。
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 免費的 `count_tokens` 掃描,用來裁定兩個懸而未決的幾何結構問題:
 
 1. **公式**——API 是按 `ceil(w/28) × ceil(h/28)` 分塊計費(目前文件所述),

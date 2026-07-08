@@ -1,5 +1,23 @@
 # Anthropicビジョン課金スイープ
 
+🌐 翻訳: [すべての言語](../../../README.md)
+
+**存在理由:** 収益性ゲートは、コスト見積もりが*厳密*である場合にのみ安全である。
+式が少しでもズレていると、実際にはより高くつくブロックまで変換してしまう。そのため
+このスイープは、出荷前に式をAPIの実際の数値に固定する — **残差ZERO**まで。
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 2つの未解決なジオメトリの問いを決着させる、無料の`count_tokens`スイープ。
 
 1. **式** — APIは`ceil(w/28) × ceil(h/28)`パッチ（現行ドキュメント）で課金するのか、

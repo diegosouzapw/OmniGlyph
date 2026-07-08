@@ -1,5 +1,25 @@
 # Sweep rozliczeń wizji Anthropic
 
+🌐 Przetłumaczono: [wszystkie języki](../../../README.md)
+
+**Dlaczego istnieje:** bramka rentowności jest bezpieczna tylko wtedy, gdy
+szacunek kosztu jest *dokładny*. Wzór, który myli się choćby odrobinę,
+przekształciłby bloki, które w rzeczywistości kosztują więcej. Dlatego ten
+sweep przypina wzór do rzeczywistych liczb API, zanim ten trafi do produkcji
+— do **zerowej reszty**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Darmowy sweep `count_tokens`, który rozstrzyga dwa otwarte pytania
 geometryczne:
 

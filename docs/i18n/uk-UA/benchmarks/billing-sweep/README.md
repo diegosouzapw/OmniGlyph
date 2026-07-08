@@ -1,5 +1,24 @@
 # Sweep тарифікації зору Anthropic
 
+🌐 Перекладено: [усі мови](../../../README.md)
+
+**Чому це існує:** гейт рентабельності безпечний лише тоді, коли оцінка
+вартості *точна*. Формула з невеликим відхиленням конвертувала б блоки, які
+насправді коштують дорожче. Тож цей sweep фіксує формулу до реальних чисел
+API перед виходом у продакшн — до **нульового залишку**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Безкоштовний sweep `count_tokens`, що вирішує два відкритих питання
 геометрії:
 
@@ -9,9 +28,9 @@
 2. **Тариф** — чи отримує `claude-fable-5` ліміти високої роздільності
    (довга сторона ≤ 2576 px, ≤ 4784 візуальних токенів)? Рядок
    `page-old-1928x1928` — вирішальний: ≈ **4761** виміряних означає
-   high-res WYSIWYG (стара велика сторінка несе ~у 3,3× більше символів на
-   зображення, ніж сьогоднішня 1568×728, за того самого символи/токен
-   співвідношення); ≈ **1521** означає resample стандартного тарифу, і
+   high-res WYSIWYG (стара велика сторінка несе ~3.3× більше символів на
+   зображення, ніж сьогоднішня 1568×728, за того самого співвідношення
+   символи/токен); ≈ **1521** означає resample стандартного тарифу, і
    1568×728 лишається коректною.
 
 Контекст: sweep 2026-07-01, що стояв за поточною сторінкою 1568×728 (аудит
@@ -25,8 +44,8 @@
 ## Запуск
 
 ```bash
-pnpm run build                              # передумова dist/ (як і всі evals)
-node benchmarks/billing-sweep/run.mjs --dry-run   # лише прогнози, без ключа, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

@@ -1,5 +1,25 @@
 # Anthropic vision-laskutuspyyhkäisy
 
+🌐 Käännetty: [kaikki kielet](../../../README.md)
+
+**Miksi tämä on olemassa:** kannattavuusportti on turvallinen vain, jos
+kustannusarvio on *tarkka*. Kaava, joka on hieman pielessä, muuntaisi
+lohkoja, jotka todellisuudessa maksavat enemmän. Siksi tämä pyyhkäisy
+kiinnittää kaavan API:n todellisiin lukuihin ennen julkaisua — **nollaan
+residuaaliin** asti.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Ilmainen `count_tokens`-pyyhkäisy, joka ratkaisee kaksi avointa
 geometriakysymystä:
 
@@ -9,7 +29,7 @@ geometriakysymystä:
 2. **Taso** — saako `claude-fable-5` korkearesoluutiotason katot (pitkä sivu
    ≤ 2576 px, ≤ 4784 visuaalista tokenia)? `page-old-1928x1928`-rivi on
    ratkaisija: ≈ **4761** mitattua tarkoittaa high-res WYSIWYG:iä (vanha suuri
-   sivu sisältää ~3,3× enemmän merkkejä per kuva kuin nykyinen 1568×728,
+   sivu sisältää ~3.3× enemmän merkkejä per kuva kuin nykyinen 1568×728,
    samalla merkkiä/tokeni-suhteella); ≈ **1521** tarkoittaa standarditason
    uudelleennäytteistystä, ja 1568×728 pysyy oikeana.
 

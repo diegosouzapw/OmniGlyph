@@ -1,8 +1,41 @@
 # density-frontier — költség × pontosság felbontásonként
 
+🌐 Fordítva: [minden nyelv](../../../README.md)
+
 Harness, amely a szöveg→kép renderelések **költség és olvashatóság közötti
 Pareto-frontját** méri, szolgáltatónként (Anthropic / OpenAI / Gemini),
 oldalgeometriánként, glifcellánként és atlaszstílusonként.
+
+Az olcsóbb (sűrűbb) oldalak több karaktert hordoznak tokenenként, de egy
+ponton túl már nem olvashatók. Egy konfig csak ott mehet élesbe, ahol
+**mindkettő** teljesül — a költség alacsony, *és* a modell még mindig
+tökéletesen olvassa:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Minden válasz pontosan a három kimenet egyikébe kerül besorolásra — a
+középső teszi megbízhatóvá a kaput:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Egy olyan konfig, amely akár egyetlen 🔴-t is termel, kizárásra kerül,
+bármilyen olcsó is legyen.
 
 A központi aszimmetria: a billing sweep óta (2026-07-05,
 `benchmarks/billing-sweep/`) **a költség offline pontosan előrejelezhető**

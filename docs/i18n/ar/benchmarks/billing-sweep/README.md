@@ -1,5 +1,23 @@
 # مسح فوترة الرؤية لـ Anthropic
 
+🌐 مُترجَم: [كل اللغات](../../../README.md)
+
+**سبب وجوده:** بوّابة الربحية آمنة فقط إذا كان تقدير التكلفة *دقيقًا*. معادلة
+منحرفة ولو قليلًا كانت ستحوّل كتلًا تكلّف فعليًا أكثر. لذا يثبّت هذا المسح
+المعادلة على الأرقام الحقيقية للـ API قبل الشحن — إلى **انحراف صفري**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 مسح `count_tokens` المجاني الذي يحسم سؤالي هندسة مفتوحين:
 
 1. **المعادلة** — هل تحاسب الـ API رقاقات `ceil(w/28) × ceil(h/28)` (المستندات
@@ -21,8 +39,8 @@ Fable 5، الذي تضعه مستندات الرؤية في مستوى الدق
 ## التشغيل
 
 ```bash
-pnpm run build                              # dist/ شرط مسبق (كباقي التقييمات)
-node benchmarks/billing-sweep/run.mjs --dry-run   # تنبؤات فقط، بلا مفتاح، $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

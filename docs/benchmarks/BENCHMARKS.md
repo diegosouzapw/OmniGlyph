@@ -1,8 +1,35 @@
 # OmniGlyph — Consolidated measurements (2026-07-05)
 
+🌐 Translated: [all languages](../i18n/README.md)
+
 Everything MEASURED in this session, with source and n; hypotheses clearly
 separated at the end. Receipts: `benchmarks/billing-sweep/results/` and
 `benchmarks/density-frontier/results/` (JSONL per answer).
+
+## TL;DR — the whole result in two bars
+
+**Cost** — one standard 1568×728 page holds 28,080 chars for a flat 1,460
+tokens; the same text sent raw costs ~10× more:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Accuracy** — but only where the model actually reads the page. The gate is
+fail-closed; only the ✅ row ships:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+The rest of this document is the receipts behind those two bars.
 
 ## 1. Anthropic billing (direct count_tokens, $0, 11 geometries × 2 models)
 

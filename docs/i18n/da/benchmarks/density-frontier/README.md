@@ -1,8 +1,41 @@
 # density-frontier — omkostning × nøjagtighed per opløsning
 
+🌐 Translated: [all languages](../../../README.md)
+
 Rammeværk, der måler **Pareto-fronten mellem omkostning og læsbarhed** af
 tekst→billede-renderingerne, per udbyder (Anthropic / OpenAI / Gemini), sidegeometri,
 glyf-celle og atlas-stil.
+
+Billigere (tættere) sider bærer flere tegn per token, men holder på et
+tidspunkt op med at være læsbare. En konfiguration må kun sendes i produktion,
+hvor **begge** dele holder — omkostningen er lav *og* modellen læser den
+stadig perfekt:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Hvert svar scores til nøjagtigt ét af tre udfald — det midterste er det, der
+gør spærringen troværdig:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+En konfiguration, der producerer bare ét 🔴, er diskvalificeret, uanset hvor
+billig den er.
 
 Den centrale asymmetri: siden afregnings-sweepet (2026-07-05,
 `benchmarks/billing-sweep/`), er **omkostning præcist forudsigelig offline** — 28 px-
@@ -52,7 +85,7 @@ læsbarhedsstikprøven af den store side, før hi-res-tieret aktiveres.
 Transporterne ovenfor renderer tekst→PNG **i rammeværket** og sender billederne.
 `--via-omniroute` gør det modsatte, hvilket er produktionsstien: den sender
 den **tætte tekst** til en kørende OmniRoute-instans, lader `omniglyph`-
-**motoren rendere** siderne og videresende dem til Anthropic, og måler læsningerne + 
+**motoren rendere** siderne og videresende dem til Anthropic, og måler læsningerne +
 besparelserne. Hvis læsningerne forbliver de samme som på den direkte rute **og**
 OmniRoute rapporterer komprimering, er det bevist, at OmniRoutes render+forward
 **ikke degraderer** siderne.

@@ -1,5 +1,24 @@
 # Sweep за таксуване на визия при Anthropic
 
+🌐 Translated: [all languages](../../../README.md)
+
+**Защо съществува:** вратата за печалба е безопасна само ако оценката на цената е
+*точна*. Формула, отклонена дори малко, би преобразувала блокове, които всъщност
+струват повече. Затова този sweep закотвя формулата към реалните числа на API-то преди да
+влезе в производство — до **нулев остатък**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Безплатен sweep с `count_tokens`, който решава два отворени въпроса за геометрията:
 
 1. **Формула** — таксува ли API-то `ceil(w/28) × ceil(h/28)` пача (текуща
@@ -21,8 +40,8 @@ Fable 5, който документацията за визия поставя 
 ## Изпълнение
 
 ```bash
-pnpm run build                              # предпоставка dist/ (както при всички evals)
-node benchmarks/billing-sweep/run.mjs --dry-run   # само прогнози, без ключ, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

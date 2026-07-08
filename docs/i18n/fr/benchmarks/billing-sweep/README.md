@@ -1,4 +1,24 @@
-# Sondage de facturation vision Anthropic
+# Anthropic vision-billing sweep
+
+🌐 Traduit : [toutes les langues](../../../README.md)
+
+**Pourquoi il existe :** le portail de rentabilité n'est sûr que si
+l'estimation de coût est *exacte*. Une formule légèrement décalée
+convertirait des blocs qui coûtent en réalité plus cher. Ce sondage épingle
+donc la formule aux chiffres réels de l'API avant sa mise en production —
+jusqu'à un **résidu zéro**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
 
 Sondage `count_tokens` gratuit qui tranche deux questions ouvertes de
 géométrie :
@@ -9,7 +29,7 @@ géométrie :
 2. **Palier** — `claude-fable-5` obtient-il les plafonds haute résolution
    (grand côté ≤ 2576 px, ≤ 4784 tokens visuels) ? La ligne
    `page-old-1928x1928` est décisive : ≈ **4761** mesuré signifie WYSIWYG
-   haute résolution (l'ancienne grande page transporte ~3,3× plus de
+   haute résolution (l'ancienne grande page transporte ~3.3× plus de
    caractères par image qu'aujourd'hui avec 1568×728, au même ratio
    caractères/token) ; ≈ **1521** signifie rééchantillonnage de palier
    standard, et 1568×728 reste correct.

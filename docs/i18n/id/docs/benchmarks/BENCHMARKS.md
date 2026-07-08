@@ -1,8 +1,36 @@
 # OmniGlyph — Konsolidasi pengukuran (2026-07-05)
 
+🌐 Diterjemahkan: [semua bahasa](../../../README.md)
+
 Semua yang TERUKUR dalam sesi ini, dengan sumber dan n; hipotesis dipisahkan
 dengan jelas di bagian akhir. Bukti: `benchmarks/billing-sweep/results/` dan
 `benchmarks/density-frontier/results/` (JSONL per jawaban).
+
+## TL;DR — seluruh hasil dalam dua batang
+
+**Biaya** — satu halaman standard 1568×728 memuat 28.080 karakter untuk
+biaya flat 1.460 token; teks yang sama dikirim mentah biayanya ~10× lebih
+mahal:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Akurasi** — tetapi hanya di mana model benar-benar membaca halamannya.
+Gate-nya fail-closed; hanya baris ✅ yang dirilis:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Sisa dokumen ini adalah bukti di balik kedua batang tersebut.
 
 ## 1. Billing Anthropic (count_tokens langsung, $0, 11 geometri × 2 model)
 

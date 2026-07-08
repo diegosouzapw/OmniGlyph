@@ -1,9 +1,45 @@
 # Benchmarky
 
+🌐 Preložené: [všetky jazyky](../../README.md)
+
 Každé číslo, ktoré OmniGlyph tvrdí, pochádza z jedného z dvoch harnessov
 nižšie — opätovne spustiteľných, kde je to možné deterministických, so
 surovými dôkazmi na odpoveď v `*/results/*.jsonl`. Konsolidovaná analýza:
 [docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+
+## Ako fungujú úspory (na jednom obrázku)
+
+Poskytovatelia účtujú **text po tokene**, ale účtujú **obrázok podľa jeho
+rozmerov** — nie podľa toho, koľko textu je do neho napchaté. Jedna
+štandardná stránka je fixný náklad bez ohľadu na to, aký hustý je text:
+
+```
+                         ┌─────────────────────────────────────────────┐
+28,080 characters   →    │  one 1568 × 728 PNG page   =  1,460 tokens   │
+of dense context         └─────────────────────────────────────────────┘
+                                          the SAME 1,460 whether the page
+                                          holds 200 chars or 28,080
+```
+
+Ten istý kontext, účtovaný dvoma spôsobmi:
+
+```
+as dense TEXT    ██████████████████████████████████████████████  ~14,040 tokens
+as ONE IMAGE     █████                                              1,460 tokens
+                                                                    ▼
+                                                              ~10× fewer tokens
+```
+
+Prečo obrázok vyhráva — znaky prenesené na token:
+
+```
+image (dense page)  ███████████████████████████████████████  19.2 chars/token
+dense text          ████                                       ~2  chars/token
+```
+
+OmniGlyph robí túto zámenu iba vtedy, keď presná matematika hovorí, že
+vyhráva, a iba pre modely, ktoré preukázateľne vedia stránku prečítať. Dva
+harnesse nižšie dokazujú každú polovicu.
 
 ## 1. `billing-sweep/` — koľko naozaj stojí obrázok?
 
@@ -17,9 +53,18 @@ sondovými geometriami na 2 modeloch × 2 úrovniach rozlíšenia.
 1 460 tokenov a nesie 28 080 znakov ≈ **19,2 znaku/token** oproti ~2
 znakom/token ako hustý text.
 
+```
+the page as the patch grid the API actually bills:
+
+  ⌈1568 / 28⌉ = 56 patches wide
+  ⌈ 728 / 28⌉ = 26 patches tall
+  ───────────────────────────────
+  56 × 26  = 1,456  + 4 per-block  =  1,460 tokens   (flat, WYSIWYG)
+```
+
 ```bash
-node benchmarks/billing-sweep/run.mjs --dry-run          # iba predikcie, $0
-ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # živý sweep, stále $0 (count_tokens je zadarmo)
+node benchmarks/billing-sweep/run.mjs --dry-run          # predictions only, $0
+ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # live sweep, still $0 (count_tokens is free)
 ```
 
 ## 2. `density-frontier/` — dokáže to model naozaj PREČÍTAŤ?
@@ -43,6 +88,21 @@ je deterministické (žiadny LLM rozhodca): `correct` / `abstained` (čestné
 | GPT-5.5 · 768px pás (oba atlasy) | 0/60 | + ~40× nafúknutie výstupných tokenov oproti vlastnej textovej kontrole (30/30, 62 tok) |
 | Gemini 2.5-flash (čiastočné, kvóta) | 0/26 | konfabuluje namiesto zdržania sa |
 
+Presnosť čítania na jeden pohľad — toto **je** fail-closed brána modelu, nakreslená:
+
+```
+Fable 5 · 1-bit page (prod)   ██████████████████████████████  30/30  ✅ approved
+Opus 4.8 · 10×16 (safe mode)  ████████████████████████░░░░░░  ~24/30 ⚠️ opt-in
+Fable 5 · high-res 1928²      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+GPT-5.5 · 768px strip         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/60   ⛔ blocked
+Gemini 2.5-flash              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/26   ⛔ confabulates
+```
+
+Do produkcie ide iba rameno ✅. Čokoľvek, čo sa číta zle, je blokované *s
+dôkazom*, a trojcestné skóre znamená, že model, ktorý háda nesprávne
+(`silent_wrong`), sa považuje za horší než ten, ktorý sa čestne zdrží
+(`ILEGIVEL`).
+
 Tri transporty: priame API (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GEMINI_API_KEY`),
 OpenRouter (`OPENROUTER_API_KEY`) a `--via-cli` (predplatiteľská session
 Claude Code — $0). Poučenie získané tvrdou cestou: sprostredkovatelia
@@ -50,8 +110,8 @@ Claude Code — $0). Poučenie získané tvrdou cestou: sprostredkovatelia
 priameho API sú smerodajné pre čitateľnosť.
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # tabuľka nákladov, $0
-pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # cez subscription, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # cost table, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # via subscription, $0
 ANTHROPIC_API_KEY=... pnpm exec tsx benchmarks/density-frontier/run.ts --configs anthropic-std-5x8-1bit
 ```
 

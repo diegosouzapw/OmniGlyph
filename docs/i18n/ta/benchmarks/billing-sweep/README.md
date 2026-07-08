@@ -1,5 +1,24 @@
 # Anthropic vision-billing sweep
 
+🌐 Translated: [all languages](../../../README.md)
+
+**இது ஏன் உள்ளது:** cost estimate *exact*ஆக இருந்தால் மட்டுமே profitability
+gate பாதுகாப்பானது. சிறிதளவு off ஆன ஒரு formula உண்மையில் அதிகமாக செலவாகும்
+blocksஐ convert செய்யும். எனவே இந்த sweep, formulaவை ship செய்வதற்கு முன்
+APIஇன் real numbersஉடன் pin செய்கிறது — **zero residual**க்கு.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 இரண்டு திறந்த geometry கேள்விகளை தீர்மானிக்கும் இலவச `count_tokens` sweep:
 
 1. **Formula** — API `ceil(w/28) × ceil(h/28)` patches (தற்போதைய docs) அல்லது

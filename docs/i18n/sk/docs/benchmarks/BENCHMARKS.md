@@ -1,8 +1,35 @@
 # OmniGlyph — Konsolidované merania (2026-07-05)
 
+🌐 Preložené: [všetky jazyky](../../../README.md)
+
 Všetko NAMERANÉ v tejto session, so zdrojom a n; hypotézy jasne oddelené
 na konci. Dôkazy: `benchmarks/billing-sweep/results/` a
 `benchmarks/density-frontier/results/` (JSONL na odpoveď).
+
+## TL;DR — celý výsledok v dvoch stĺpcoch
+
+**Náklady** — jedna štandardná stránka 1568×728 nesie 28 080 znakov za
+fixných 1 460 tokenov; ten istý text poslaný surovo stojí ~10× viac:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Presnosť** — ale iba tam, kde model naozaj stránku prečíta. Brána je
+fail-closed; do produkcie ide iba riadok ✅:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+Zvyšok tohto dokumentu sú dôkazy za týmito dvoma stĺpcami.
 
 ## 1. Účtovanie Anthropic (priamy count_tokens, $0, 11 geometrií × 2 modely)
 

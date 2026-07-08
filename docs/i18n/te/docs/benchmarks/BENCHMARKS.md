@@ -1,10 +1,38 @@
 # OmniGlyph — Consolidated measurements (2026-07-05)
 
+🌐 అనువదించబడింది: [అన్ని భాషలు](../../../README.md)
+
 ఈ సెషన్‌లో MEASURED అయిన ప్రతిదీ, సోర్స్ మరియు nతో సహా; పరికల్పనలు
 చివర్లో స్పష్టంగా వేరు చేయబడ్డాయి. రసీదులు: `benchmarks/billing-sweep/results/`
 మరియు `benchmarks/density-frontier/results/` (సమాధానానికి JSONL).
 
-## 1. Anthropic billing (direct count_tokens, $0, 11 geometries × 2 models)
+## TL;DR — రెండు బార్‌లలో మొత్తం ఫలితం
+
+**కాస్ట్** — ఒక స్టాండర్డ్ 1568×728 పేజీ 28,080 అక్షరాలను ఫ్లాట్
+1,460 టోకెన్‌లకు మోస్తుంది; అదే టెక్స్ట్ రా రూపంలో పంపితే ~10×
+ఎక్కువ ఖర్చవుతుంది:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**ఖచ్చితత్వం** — కానీ మోడల్ నిజంగా పేజీని చదివేచోట మాత్రమే. గేట్
+fail-closed; కేవలం ✅ రో మాత్రమే ప్రొడక్షన్‌కు వెళుతుంది:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+ఈ డాక్యుమెంట్‌లో మిగిలినది ఈ రెండు బార్‌ల వెనుక ఉన్న రసీదులు.
+
+## 1. Anthropic బిల్లింగ్ (direct count_tokens, $0, 11 geometries × 2 models)
 
 నిర్ధారించిన ఫార్ములా: `tokens = ceil(w/28) × ceil(h/28)` టైర్‌కు రీసైజ్
 తర్వాత, **+3/బ్లాక్ (Fable 5) / +4/బ్లాక్ (Sonnet 4.5)** — అన్ని రోలలోనూ
@@ -27,9 +55,9 @@
 మోడల్‌కు టైర్ (Fable/Mythos/Opus 4.8/4.7/Sonnet 5 = high-res); `cols`
 313→312.
 
-## 2. Reading accuracy (density-frontier, hex/camelCase/digit needles + distractors)
+## 2. రీడింగ్ ఖచ్చితత్వం (density-frontier, hex/camelCase/digit needles + distractors)
 
-### Fable 5 2×2 matrix — via CLI/subscription, n=30/arm, same corpus (~16.6k chars)
+### Fable 5 2×2 మ్యాట్రిక్స్ — via CLI/subscription, n=30/arm, same corpus (~16.6k chars)
 
 | page × atlas | exact | abstentions (ILEGIVEL) | silent errors |
 |---|---:|---:|---:|
@@ -54,7 +82,7 @@
 వద్ద 95% కొలిచింది). "Opus safe mode" సాధ్యమే: హార్నెస్ కార్పస్‌పై
 పెద్ద పేజీలో 10×16 ఇమేజ్ టోకెన్‌కు ≈ 1.7 అక్షరాలు.
 
-### Via OpenRouter (same corpus/questions) — inconclusive for legibility
+### Via OpenRouter (same corpus/questions) — legibility కోసం అనిర్ధారితం
 
 | measured fact | number |
 |---|---|
@@ -64,7 +92,7 @@
 | Opus 10×16 (before credits ran out) | 7/9 exact (78%) |
 | misreads predicted by the confusability matrix | 4→a, 0→8, S/s case |
 
-### Transport comparison (same question, same content)
+### ట్రాన్స్‌పోర్ట్ పోలిక (same question, same content)
 
 | transport | filter/refusal | large page legible? |
 |---|---|---|
@@ -72,7 +100,7 @@
 | OpenRouter | ~100% std / ~20% hi-res | no (suspected: resample) |
 | Claude Code CLI (subscription) | 0 content_filter; ~50% of large batches stalled (resolved with chunks of 10 + retry) | no (suspected: Read resizes) |
 
-## 3. Cost per provider (offline, exact — FULL pages, theoretical)
+## 3. ప్రొవైడర్‌కు కాస్ట్ (offline, exact — FULL pages, theoretical)
 
 | provider · page | tokens/page | chars/page | **chars/token** | status |
 |---|---:|---:|---:|---|
@@ -84,7 +112,7 @@
 | Gemini tile 1533×1152 (native crop unit 768) | 1032 | 43,615 | **42.3 ← best documented** | docs; legibility untested |
 | Gemini 3 media_resolution:low 1148×1152 | 280 | 32,604 | **116 (if legible)** | hypothesis H6 |
 
-## 4. Bugs found and fixed (audit against official docs)
+## 4. కనుగొన్న మరియు సరిచేసిన బగ్‌లు (అధికారిక డాక్స్‌కు వ్యతిరేకంగా ఆడిట్)
 
 | id | bug | impact | commit |
 |---|---|---|---|
@@ -97,7 +125,7 @@
 | AA | AA atlas in production against the "eval-only" comment | −17pp reading on Fable | 9a25585 |
 | — | slab cols 313 (1573px) → 0.997× resample + extra patch column | fixed to 312 | baseline |
 
-## 5. Open hypotheses (what each one costs to close)
+## 5. ఓపెన్ పరికల్పనలు (ప్రతిదాన్ని మూసివేయడానికి అయ్యే ఖర్చు)
 
 | id | hypothesis | current evidence | decisive test | cost |
 |---|---|---|---|---|
@@ -113,7 +141,7 @@
 | H10 | Opus at 7×10 lands between 0% (5×8) and 87% (10×16) → fine trade-off | upstream curve 35% at 7×10 (n=20) | 1 extra arm | $0 (CLI) |
 | H11 | Retry-on-refusal in the proxy recovers the ~50% of filtered batches | refusal is stochastic per call | implement + measure in production | code |
 
-## 6. Operational pending items
+## 6. ఆపరేషనల్ పెండింగ్ ఐటమ్‌లు
 
 1. `gh auth login` → ప్రైవేట్ `diegosouzapw/omniglyph` సృష్టించండి + పుష్
    చేయండి (10 లోకల్ కమిట్‌లు).

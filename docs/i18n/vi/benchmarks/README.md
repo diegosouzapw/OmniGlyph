@@ -1,9 +1,45 @@
 # Benchmark
 
+🌐 Đã dịch: [tất cả ngôn ngữ](../../README.md)
+
 Mọi con số mà OmniGlyph công bố đều đến từ một trong hai bộ khung dưới
 đây — có thể chạy lại, tất định khi có thể, với bằng chứng thô cho từng
 câu trả lời trong `*/results/*.jsonl`. Phân tích hợp nhất:
 [docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+
+## Cách khoản tiết kiệm hoạt động (trong một hình)
+
+Các nhà cung cấp tính phí **văn bản theo token**, nhưng tính phí **hình
+ảnh theo kích thước** — không phải theo lượng văn bản nhồi bên trong nó.
+Một trang chuẩn có chi phí cố định bất kể văn bản dày đặc đến đâu:
+
+```
+                         ┌─────────────────────────────────────────────┐
+28,080 characters   →    │  one 1568 × 728 PNG page   =  1,460 tokens   │
+of dense context         └─────────────────────────────────────────────┘
+                                          the SAME 1,460 whether the page
+                                          holds 200 chars or 28,080
+```
+
+Cùng một ngữ cảnh, được tính phí theo hai cách:
+
+```
+as dense TEXT    ██████████████████████████████████████████████  ~14,040 tokens
+as ONE IMAGE     █████                                              1,460 tokens
+                                                                    ▼
+                                                              ~10× fewer tokens
+```
+
+Vì sao hình ảnh thắng — số ký tự chuyên chở trên mỗi token:
+
+```
+image (dense page)  ███████████████████████████████████████  19.2 chars/token
+dense text          ████                                       ~2  chars/token
+```
+
+OmniGlyph chỉ thực hiện việc hoán đổi này khi phép toán chính xác cho thấy
+nó thắng, và chỉ với các mô hình đã được chứng minh có thể đọc trang. Hai
+bộ khung dưới đây chứng minh từng nửa của điều đó.
 
 ## 1. `billing-sweep/` — một hình ảnh thực sự tốn bao nhiêu?
 
@@ -14,19 +50,28 @@ trên 11 hình học phép thử, 2 mô hình × 2 tier độ phân giải.
 **Kết quả (2026-07-05): mô hình patch khớp với độ dư BẰNG KHÔNG trên mọi
 phép thử** — mức tính phí = `⌈w/28⌉ × ⌈h/28⌉` sau khi resize theo tier,
 cộng thêm +3/+4 token cố định cho mỗi khối hình ảnh. Trang sản xuất
-(1568×728) tốn đúng 1.460 token và chứa 28.080 ký tự ≈ **19,2
-ký tự/token** so với ~2 ký tự/token khi là văn bản dày đặc.
+(1568×728) tốn đúng 1,460 token và chứa 28,080 ký tự ≈ **19.2
+chars/token** so với ~2 chars/token khi là văn bản dày đặc.
+
+```
+the page as the patch grid the API actually bills:
+
+  ⌈1568 / 28⌉ = 56 patches wide
+  ⌈ 728 / 28⌉ = 26 patches tall
+  ───────────────────────────────
+  56 × 26  = 1,456  + 4 per-block  =  1,460 tokens   (flat, WYSIWYG)
+```
 
 ```bash
-node benchmarks/billing-sweep/run.mjs --dry-run          # chỉ dự đoán, $0
-ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # sweep trực tiếp, vẫn $0 (count_tokens miễn phí)
+node benchmarks/billing-sweep/run.mjs --dry-run          # predictions only, $0
+ANTHROPIC_API_KEY=... node benchmarks/billing-sweep/run.mjs   # live sweep, still $0 (count_tokens is free)
 ```
 
 ## 2. `density-frontier/` — mô hình có thực sự ĐỌC được không?
 
 Chi phí (offline, chính xác) × độ chính xác đọc (trực tiếp) trên các cấu
 hình render, hình học trang, atlas glyph và nhà cung cấp. Corpus cấy các
-needle chuỗi chính xác (id hex 12 ký tự, camelCase, dãy chữ số) cộng với
+needle chuỗi chính xác (id hex, camelCase, dãy chữ số) cộng với
 **distractor gần-giống được xây dựng từ các cặp glyph dễ nhầm lẫn đã đo
 lường** — để phát hiện bịa đặt âm thầm, không chỉ đếm là sai. Chấm điểm
 tất định (không có LLM làm giám khảo): `correct` / `abstained` (`ILEGIVEL`
@@ -38,10 +83,26 @@ trung thực) / `silent_wrong` / `no_answer`.
 |---|---:|---|
 | Fable 5 · trang tiêu chuẩn · atlas 1-bit (sản xuất) | **30/30** | không lỗi, không bịa đặt |
 | Fable 5 · trang tiêu chuẩn · atlas AA (mặc định cũ) | 25/30 | 5 lần từ chối đọc trung thực — lý do sản xuất chuyển sang 1-bit |
-| Fable 5 · trang độ phân giải cao 1928² | 1–2/30 | tính phí gấp 3,3× nhưng bị resample bởi bộ mã hóa — cái bẫy tính phí, không được kích hoạt |
+| Fable 5 · trang độ phân giải cao 1928² | 1–2/30 | tính phí gấp 3.3× nhưng bị resample bởi bộ mã hóa — cái bẫy tính phí, không được kích hoạt |
 | Opus 4.8 · glyph 10×16 | 23–26/30 | chế độ an toàn tùy chọn |
 | GPT-5.5 · dải 768px (cả hai atlas) | 0/60 | + thổi phồng token output ~40× so với đối chứng văn bản của chính nó (30/30, 62 tok) |
 | Gemini 2.5-flash (một phần, hạn ngạch) | 0/26 | bịa đặt thay vì từ chối trả lời |
+
+Độ chính xác đọc nhìn thoáng qua — đây **chính là** cổng chặn mô hình
+fail-closed, được vẽ ra:
+
+```
+Fable 5 · 1-bit page (prod)   ██████████████████████████████  30/30  ✅ approved
+Opus 4.8 · 10×16 (safe mode)  ████████████████████████░░░░░░  ~24/30 ⚠️ opt-in
+Fable 5 · high-res 1928²      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+GPT-5.5 · 768px strip         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/60   ⛔ blocked
+Gemini 2.5-flash              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/26   ⛔ confabulates
+```
+
+Chỉ nhánh ✅ được đưa vào sản xuất. Bất cứ thứ gì đọc kém đều bị chặn *kèm
+bằng chứng*, và cách chấm điểm ba chiều nghĩa là một mô hình đoán sai
+(`silent_wrong`) bị coi là tệ hơn một mô hình từ chối đọc một cách trung
+thực (`ILEGIVEL`).
 
 Ba tầng vận chuyển: API trực tiếp (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GEMINI_API_KEY`),
 OpenRouter (`OPENROUTER_API_KEY`), và `--via-cli` (gói đăng ký Claude
@@ -50,8 +111,8 @@ của CLI) resample các hình ảnh lớn; chỉ kết quả từ API trực ti
 tin cậy cho khả năng đọc.
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # bảng chi phí, $0
-pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # qua đăng ký, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run                    # cost table, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --via-cli --sections 30     # via subscription, $0
 ANTHROPIC_API_KEY=... pnpm exec tsx benchmarks/density-frontier/run.ts --configs anthropic-std-5x8-1bit
 ```
 

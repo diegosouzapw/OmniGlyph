@@ -1,5 +1,25 @@
 # Anthropic-Vision-Billing-Sweep
 
+🌐 Übersetzt: [alle Sprachen](../../../README.md)
+
+**Warum es das gibt:** Das Profitabilitäts-Gate ist nur dann sicher, wenn
+die Kostenschätzung *exakt* ist. Eine Formel, die nur geringfügig daneben
+liegt, würde Blöcke umwandeln, die tatsächlich mehr kosten. Deshalb fixiert
+dieser Sweep die Formel an die echten Zahlen der API, bevor sie in
+Produktion geht — auf **Residuum null**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Kostenloser `count_tokens`-Sweep, der zwei offene Geometriefragen entscheidet:
 
 1. **Formel** — rechnet die API `ceil(w/28) × ceil(h/28)` Patches ab

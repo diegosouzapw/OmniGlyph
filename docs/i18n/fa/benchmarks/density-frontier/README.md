@@ -1,8 +1,40 @@
 # density-frontier — هزینه × دقت به‌ازای هر وضوح
 
+🌐 ترجمه‌شده: [همهٔ زبان‌ها](../../../README.md)
+
 مجموعه‌ای که **مرز پارتو بین هزینه و خوانایی** رندرهای متن-به-تصویر را،
 به‌ازای هر ارائه‌دهنده (Anthropic / OpenAI / Gemini)، هندسهٔ صفحه، سلول
 گلیف، و سبک اطلس اندازه‌گیری می‌کند.
+
+صفحات ارزان‌تر (متراکم‌تر) کاراکتر بیشتری به‌ازای هر توکن حمل می‌کنند اما
+سرانجام خوانا بودن را از دست می‌دهند. یک پیکربندی فقط زمانی مجاز به عرضه
+است که **هر دو** برقرار باشند — هزینه پایین است *و* مدل هنوز آن را کامل
+می‌خواند:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+هر پاسخ دقیقاً به یکی از سه پیامد امتیازدهی می‌شود — پیامد میانی همان
+چیزی است که گیت را قابل‌اعتماد می‌کند:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+پیکربندی‌ای که حتی یک 🔴 تولید کند، هرچقدر هم ارزان، رد صلاحیت می‌شود.
 
 نامتقارنی مرکزی: از زمان بررسی صورت‌حساب (2026-07-05،
 `benchmarks/billing-sweep/`)، **هزینه دقیقاً به‌صورت آفلاین قابل‌پیش‌بینی
@@ -35,7 +67,7 @@
 pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # جدول هزینه، $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # حدود ۹ needle + ۳ gist به‌ازای هر پیکربندی × تلاش
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 پیکربندی‌های مشخص: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.

@@ -1,9 +1,44 @@
 # Benchmarks
 
+🌐 Tradotto: [tutte le lingue](../../README.md)
+
 Ogni numero rivendicato da OmniGlyph proviene da uno dei due banchi di prova
 qui sotto — rieseguibili, deterministici dove possibile, con riscontri grezzi
-per ogni risposta in `*/results/*.jsonl`. Analisi consolidata:
-[docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+per ogni risposta in `*/results/*.jsonl`. Analisi consolidata: [docs/benchmarks/BENCHMARKS.md](../docs/benchmarks/BENCHMARKS.md).
+
+## Come funziona il risparmio (in un'unica immagine)
+
+I provider fatturano il **testo per token**, ma fatturano un'**immagine in
+base alle sue dimensioni** — non in base a quanto testo contiene. Una pagina
+standard ha un costo fisso indipendentemente dalla densità del testo:
+
+```
+                         ┌─────────────────────────────────────────────┐
+28,080 characters   →    │  one 1568 × 728 PNG page   =  1,460 tokens   │
+of dense context         └─────────────────────────────────────────────┘
+                                          the SAME 1,460 whether the page
+                                          holds 200 chars or 28,080
+```
+
+Lo stesso contesto, fatturato in due modi:
+
+```
+as dense TEXT    ██████████████████████████████████████████████  ~14,040 tokens
+as ONE IMAGE     █████                                              1,460 tokens
+                                                                    ▼
+                                                              ~10× fewer tokens
+```
+
+Perché l'immagine vince — caratteri trasportati per token:
+
+```
+image (dense page)  ███████████████████████████████████████  19.2 chars/token
+dense text          ████                                       ~2  chars/token
+```
+
+OmniGlyph esegue questo scambio solo quando la matematica esatta dice che
+conviene, e solo per i modelli dimostrati capaci di leggere la pagina. I due
+banchi di prova qui sotto dimostrano ciascuna delle due metà.
 
 ## 1. `billing-sweep/` — quanto costa davvero un'immagine?
 
@@ -17,6 +52,15 @@ livello, più un fisso di +3/+4 token per blocco immagine. La pagina di
 produzione (1568×728) costa esattamente 1.460 token e trasporta 28.080
 caratteri ≈ **19,2 caratteri/token** contro ~2 caratteri/token come testo
 denso.
+
+```
+the page as the patch grid the API actually bills:
+
+  ⌈1568 / 28⌉ = 56 patches wide
+  ⌈ 728 / 28⌉ = 26 patches tall
+  ───────────────────────────────
+  56 × 26  = 1,456  + 4 per-block  =  1,460 tokens   (flat, WYSIWYG)
+```
 
 ```bash
 node benchmarks/billing-sweep/run.mjs --dry-run          # predictions only, $0
@@ -45,6 +89,22 @@ onesto) / `silent_wrong` / `no_answer`.
 | GPT-5.5 · striscia 768px (entrambi gli atlas) | 0/60 | + ~40× inflazione dei token di output rispetto al proprio controllo testuale (30/30, 62 tok) |
 | Gemini 2.5-flash (parziale, quota) | 0/26 | confabula invece di astenersi |
 
+Accuratezza di lettura a colpo d'occhio — questo **è** il gate fail-closed
+del modello, disegnato:
+
+```
+Fable 5 · 1-bit page (prod)   ██████████████████████████████  30/30  ✅ approved
+Opus 4.8 · 10×16 (safe mode)  ████████████████████████░░░░░░  ~24/30 ⚠️ opt-in
+Fable 5 · high-res 1928²      █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+GPT-5.5 · 768px strip         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/60   ⛔ blocked
+Gemini 2.5-flash              ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0/26   ⛔ confabulates
+```
+
+Solo il braccio ✅ va in produzione. Tutto ciò che legge male è bloccato *con
+un riscontro*, e la valutazione a tre vie fa sì che un modello che sbaglia
+indovinando (`silent_wrong`) sia trattato come peggiore di uno che si astiene
+onestamente (`ILEGIVEL`).
+
 Tre trasporti: API diretta (`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/`GEMINI_API_KEY`),
 OpenRouter (`OPENROUTER_API_KEY`), e `--via-cli` (un abbonamento Claude
 Code — $0). Attenzione imparata a caro prezzo: gli intermediari
@@ -61,3 +121,4 @@ Test unitari che fissano le parti pure (corpus, valutazione, formule di
 costo): `tests/billing-sweep-formulas.test.ts`,
 `tests/density-frontier.test.ts`, `tests/anthropic-vision.test.ts`,
 `tests/gemini-profiles.test.ts`, `tests/gpt-billing-audit.test.ts`.
+</content>

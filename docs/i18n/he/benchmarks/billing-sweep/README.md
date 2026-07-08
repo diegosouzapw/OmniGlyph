@@ -1,5 +1,24 @@
 # Anthropic vision-billing sweep
 
+🌐 Translated: [all languages](../../../README.md)
+
+**למה זה קיים:** שער הרווחיות בטוח רק אם הערכת העלות
+*מדויקת*. נוסחה שסוטה מעט הייתה ממירה בלוקים שבפועל
+עולים יותר. אז ה-sweep הזה מצמיד את הנוסחה למספרים האמיתיים של ה-API לפני
+השחרור — ל**שארית אפס**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 בדיקת `count_tokens` חינמית שמכריעה שתי שאלות גאומטריה פתוחות:
 
 1. **נוסחה** — האם ה-API מחייב `ceil(w/28) × ceil(h/28)` טלאים (תיעוד

@@ -1,8 +1,39 @@
 # density-frontier — 解像度ごとのコスト×精度
 
+🌐 翻訳: [すべての言語](../../../README.md)
+
 テキスト→画像レンダーの、**コストと可読性のパレートフロンティア**を、プロバイダ
 （Anthropic / OpenAI / Gemini）、ページジオメトリ、グリフセル、アトラススタイル
 ごとに計測するハーネス。
+
+安価な（高密度な）ページはトークンあたりの文字数が多くなるが、やがて読めなくなる。
+ある構成が出荷を許されるのは、**両方**が成り立つ場合のみである — コストが低く、
+*かつ*モデルが依然として完璧に読める場合:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+すべての回答は、必ず3つの結果のいずれか一つにスコアリングされる — 真ん中の結果こそ
+が、このゲートを信頼できるものにしている:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+1件でも🔴を出す構成は、どれだけ安くても失格となる。
 
 中心的な非対称性: billing sweep（2026-07-05、`benchmarks/billing-sweep/`）以降、
 **コストはオフラインで正確に予測可能**である — Anthropicでは28pxパッチ + 4/ブロック

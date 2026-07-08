@@ -1,6 +1,25 @@
 # Anthropic vision-billing sweep
 
-ફ્રી `count_tokens` sweep જે બે ખુલ્લા geometry પ્રશ્નો નક્કી કરે છે:
+🌐 અનુવાદિત: [બધી ભાષાઓ](../../../README.md)
+
+**તે શા માટે અસ્તિત્વમાં છે:** profitability gate ફક્ત ત્યારે જ safe છે
+જ્યારે cost estimate *exact* હોય. થોડું પણ ખોટું formula એવા blocks ને
+convert કરી દેશે જે ખરેખર વધુ ખર્ચ કરે છે. તેથી આ sweep ship થાય તે પહેલાં
+formula ને API ના real numbers સાથે pin કરે છે — **zero residual** સુધી.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
+Free `count_tokens` sweep જે બે ખુલ્લા geometry પ્રશ્નો નક્કી કરે છે:
 
 1. **Formula** — શું API `ceil(w/28) × ceil(h/28)` patches (current docs)
    બિલ કરે છે કે retired `w·h/750`? Probe set બંનેને પ્રતિ row 25–180

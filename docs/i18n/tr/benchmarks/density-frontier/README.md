@@ -1,8 +1,41 @@
 # density-frontier — çözünürlük başına maliyet × doğruluk
 
+🌐 Çeviri: [tüm diller](../../../README.md)
+
 Metin→görüntü render'larının, sağlayıcı (Anthropic / OpenAI / Gemini),
 sayfa geometrisi, glif hücresi ve atlas stili başına **maliyet ve
 okunabilirlik arasındaki Pareto sınırını** ölçen harness.
+
+Daha ucuz (daha yoğun) sayfalar token başına daha fazla karakter taşır ama
+sonunda okunabilir olmaktan çıkar. Bir yapılandırmanın üretime çıkmasına
+yalnızca **her ikisi de** geçerliyken izin verilir — maliyet düşük *ve*
+model onu hâlâ kusursuz okuyor:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Her cevap tam olarak üç sonuçtan birine puanlanır — ortadaki, kapıyı
+güvenilir kılan sonuçtur:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Bir tane bile 🔴 üreten bir yapılandırma, ne kadar ucuz olursa olsun
+diskalifiye edilir.
 
 Merkezi asimetri: faturalama sweep'inden (2026-07-05,
 `benchmarks/billing-sweep/`) bu yana, **maliyet çevrimdışı olarak tam
@@ -34,10 +67,10 @@ tahmin edilebilir** — Anthropic'te 28 px parça + blok başına 4
 ## Çalıştırma
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # maliyet tablosu, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # yapılandırma × deneme başına ~9 needle+3 gist
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 Belirli yapılandırmalar: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`.
@@ -79,7 +112,7 @@ sayfaları **bozmadığı** kanıtlanmış olur.
 
 ```bash
 OMNIROUTE_URL=http://localhost:20128 \
-OMNIROUTE_API_KEY=<omniroute-anahtarınız> \
+OMNIROUTE_API_KEY=<your-omniroute-key> \
   pnpm exec tsx benchmarks/density-frontier/run.ts \
     --via-omniroute --configs anthropic-std-5x8-1bit --trials 2
 ```

@@ -1,5 +1,24 @@
 # Anthropic 비전 과금 스윕
 
+🌐 번역: [모든 언어](../../../README.md)
+
+**존재하는 이유:** 수익성 게이트는 비용 추정치가 *정확할* 때만 안전합니다.
+공식이 조금이라도 어긋나면 실제로는 비용이 더 드는 블록을 변환하게
+됩니다. 그래서 이 스윕은 프로덕션에 배포되기 전에 공식을 API의 실제
+숫자에 맞춰 고정합니다 — **잔차 0**으로.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 두 가지 열려 있는 기하 구조 질문을 판정하는 무료 `count_tokens` 스윕입니다:
 
 1. **공식** — API는 `ceil(w/28) × ceil(h/28)` 패치(현재 문서 기준)로
@@ -19,7 +38,7 @@
 1522보다 패치 공식의 1456에 더 가까워, API가 이미 패치 과금으로 전환했을
 가능성을 시사합니다.
 
-## Run
+## 실행
 
 ```bash
 pnpm run build                              # dist/ prerequisite (like all evals)
@@ -33,7 +52,7 @@ API를 **직접** 호출해야 합니다 — 바디를 변환하게 되는 OmniG
 절대 거치지 마세요. `count_tokens`는 무료입니다; 전체 스윕은 약 25건의
 요청을 만듭니다.
 
-## Reading the output
+## 출력 읽기
 
 모델별로 각 프로브 행은 측정된 이미지 토큰(이미지 포함 값에서 텍스트
 전용 베이스라인을 뺀 값)을 네 가지 예측
@@ -45,7 +64,7 @@ API를 **직접** 호출해야 합니다 — 바디를 변환하게 되는 OmniG
 `formulas.mjs`에 있고 `tests/billing-sweep-formulas.test.ts`로
 고정됩니다.
 
-## After the verdict
+## 판정 이후
 
 - 패치 공식이 확인되면 → OmniGlyph PR #27(정확한 리사이즈 변환)을 포팅하고
   `src/core/transform.ts`의 `ANTHROPIC_PIXELS_PER_TOKEN` 게이트 수학을

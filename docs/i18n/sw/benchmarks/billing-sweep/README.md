@@ -1,5 +1,24 @@
 # Uchunguzi wa bili ya maono ya Anthropic
 
+🌐 Imetafsiriwa: [lugha zote](../../../README.md)
+
+**Kwa nini ipo:** lango la faida ni salama tu ikiwa makadirio ya gharama ni
+*sahihi kabisa*. Fomula iliyokosea kidogo tu ingebadilisha vizuizi ambavyo
+kwa kweli vinagharimu zaidi. Kwa hiyo uchunguzi huu unabainisha fomula kwa
+nambari halisi za API kabla ya kusafirishwa — hadi **mabaki sifuri**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Uchunguzi wa bure wa `count_tokens` unaoamua maswali mawili wazi ya
 jiometri:
 
@@ -25,8 +44,8 @@ kipande.
 ## Kuendesha
 
 ```bash
-pnpm run build                              # sharti la dist/ (kama vipimo vyote)
-node benchmarks/billing-sweep/run.mjs --dry-run   # makadirio tu, bila funguo, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

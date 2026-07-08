@@ -1,8 +1,38 @@
 # density-frontier —— 每种分辨率下的成本 × 准确率
 
+🌐 已翻译:[所有语言](../../../README.md)
+
 用于测量文本→图像渲染在**成本与可读性之间的帕累托前沿**的测试套件,
 按服务商(Anthropic / OpenAI / Gemini)、页面几何结构、字形单元格
 和图集风格划分。
+
+更便宜(更密集)的页面每 token 能承载更多字符,但密度一旦过高就会
+变得不可读。一个配置只有在**同时**满足两个条件时才允许上线——
+成本低,*并且*模型仍然能完美读出内容:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+每个回答都会被精确归入三种结果之一——中间那一种正是让门控值得信赖的关键:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+一个配置只要产生哪怕一次 🔴,无论多便宜都会被淘汰。
 
 核心的不对称性在于:自计费扫描测试(2026-07-05,
 `benchmarks/billing-sweep/`)以来,**成本已可离线精确预测**——

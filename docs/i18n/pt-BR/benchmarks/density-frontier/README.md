@@ -1,8 +1,41 @@
 # density-frontier — custo × precisão por resolução
 
+🌐 Traduzido: [todos os idiomas](../../../README.md)
+
 Harness que mede a **fronteira de Pareto entre custo e legibilidade** dos
 renders texto→imagem, por provedor (Anthropic / OpenAI / Gemini), geometria
 de página, célula de glifo e estilo de atlas.
+
+Páginas mais baratas (mais densas) carregam mais caracteres por token, mas em
+algum ponto deixam de ser legíveis. Uma config só pode ir para produção onde
+**ambas** as condições se sustentam — o custo é baixo *e* o modelo ainda a lê
+perfeitamente:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Cada resposta é pontuada em exatamente um de três resultados — o do meio é o
+que torna o gate confiável:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Uma config que produz até mesmo um único 🔴 é desqualificada, não importa
+quão barata seja.
 
 A assimetria central: desde o sweep de cobrança (2026-07-05,
 `benchmarks/billing-sweep/`), **o custo é exatamente previsível offline** —
@@ -34,7 +67,7 @@ leitura** precisa da API.
 ## Executando
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # tabela de custo, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
   pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
@@ -77,7 +110,7 @@ Pré-requisitos (operacionais):
 
 ```bash
 OMNIROUTE_URL=http://localhost:20128 \
-OMNIROUTE_API_KEY=<sua-chave-omniroute> \
+OMNIROUTE_API_KEY=<your-omniroute-key> \
   pnpm exec tsx benchmarks/density-frontier/run.ts \
     --via-omniroute --configs anthropic-std-5x8-1bit --trials 2
 ```

@@ -1,5 +1,24 @@
 # Anthropic ویژن-بلنگ سویپ
 
+🌐 ترجمہ شدہ: [تمام زبانیں](../../../README.md)
+
+**یہ کیوں موجود ہے:** منافع بخشی کا گیٹ صرف اسی وقت محفوظ ہے جب لاگت کا
+تخمینہ *عین* ہو۔ ایک فارمولا جو تھوڑا سا بھی غلط ہو ان بلاکس کو تبدیل
+کر دے گا جن کی اصل لاگت زیادہ ہے۔ اس لیے یہ سویپ شپ ہونے سے پہلے فارمولے
+کو API کے اصل اعداد پر — **بقیہ صفر** تک — پن کرتا ہے۔
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 مفت `count_tokens` سویپ جو دو کھلے جیومیٹری سوالات کا فیصلہ کرتا ہے:
 
 1. **فارمولا** — کیا API `ceil(w/28) × ceil(h/28)` پیچز کا بل کرتا ہے
@@ -23,8 +42,8 @@
 ## چلائیں
 
 ```bash
-pnpm run build                              # dist/ پیشگی شرط (تمام evals کی طرح)
-node benchmarks/billing-sweep/run.mjs --dry-run   # صرف پیش گوئیاں، بغیر کلید کے، $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

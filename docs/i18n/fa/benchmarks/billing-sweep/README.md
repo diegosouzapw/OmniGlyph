@@ -1,5 +1,24 @@
 # بررسی صورت‌حساب بینایی Anthropic
 
+🌐 ترجمه‌شده: [همهٔ زبان‌ها](../../../README.md)
+
+**چرا وجود دارد:** گیت سودآوری فقط زمانی امن است که تخمین هزینه *دقیق*
+باشد. فرمولی که کمی خطا داشته باشد ممکن است بلاک‌هایی را تبدیل کند که در
+واقع هزینهٔ بیشتری دارند. پس این بررسی فرمول را پیش از عرضه با اعداد
+واقعی API — تا **باقی‌ماندهٔ صفر** — تطبیق می‌دهد.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 بررسی رایگان `count_tokens` که دو پرسش باز دربارهٔ هندسه را تعیین می‌کند:
 
 1. **فرمول** — آیا API پچ‌های `ceil(w/28) × ceil(h/28)` (مستندات فعلی) را

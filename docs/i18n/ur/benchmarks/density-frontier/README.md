@@ -1,8 +1,40 @@
 # density-frontier — فی ریزولوشن لاگت × درستگی
 
+🌐 ترجمہ شدہ: [تمام زبانیں](../../../README.md)
+
 ایک ہارنس جو متن→تصویر رینڈرز کے **لاگت اور پڑھنے کی صلاحیت کے درمیان
 Pareto فرنٹیئر** کی پیمائش کرتا ہے، فی فراہم کنندہ (Anthropic / OpenAI /
 Gemini)، صفحہ جیومیٹری، گلف سیل، اور ایٹلس اسٹائل۔
+
+سستے (زیادہ گھنے) صفحات فی ٹوکن زیادہ حروف اٹھاتے ہیں لیکن بالآخر پڑھنے
+کے قابل نہیں رہتے۔ کوئی کنفیگ شپ کرنے کی اجازت صرف اسی وقت پاتی ہے جب
+**دونوں** پورے ہوں — لاگت کم *ہو* *اور* ماڈل اسے اب بھی کامل طور پر پڑھے:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+ہر جواب کو تین نتائج میں سے بالکل ایک میں اسکور کیا جاتا ہے — درمیانہ
+والا وہ ہے جو گیٹ کو قابلِ اعتماد بناتا ہے:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+کوئی بھی کنفیگ جو ایک بھی 🔴 پیدا کرے نااہل ہے، چاہے وہ کتنی ہی سستی
+کیوں نہ ہو۔
 
 مرکزی عدم مساوات: billing sweep (2026-07-05، `benchmarks/billing-sweep/`)
 کے بعد سے، **لاگت آف لائن بالکل قابلِ پیش گوئی ہے** — Anthropic پر
@@ -30,23 +62,22 @@ Gemini)، صفحہ جیومیٹری، گلف سیل، اور ایٹلس اسٹا
 ## چلانا
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # لاگت کا جدول، $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 سوئیاں+3 gist × کنفیگ × trial
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 مخصوص کنفیگز: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`۔
-جوابات `results/*.jsonl` میں جاتے ہیں (آڈٹنگ کے لیے خام جواب کے ساتھ
-فی سوال ایک لائن)۔
+جوابات `results/*.jsonl` میں جاتے ہیں (آڈٹنگ کے لیے خام جواب کے ساتھ فی
+سوال ایک لائن)۔
 
 ## قبولیت کا معیار (اپ اسٹریم PRs #35/#36 سے وراثت میں ملا)
 
-کوئی کنفیگ صرف اسی وقت پروڈکشن ڈیفالٹ بنتی ہے اگر: **gist == متن بیس
+کوئی کنفیگ صرف اسی وقت پروڈکشن ڈیفالٹ بنتی ہے جب: **gist == متن بیس
 لائن** اور **صفر خاموش غلط عین اسٹرنگز** اور **مثبت بچت**۔ پہلا لازمی
-رن Fable پر `anthropic-std-5x8-aa` بمقابلہ `anthropic-hires-5x8-aa` ہے
-— ہائی-ریز درجے کو فعال کرنے سے پہلے بڑے صفحے کی پڑھنے کی صلاحیت کا
-اسپاٹ چیک۔
+رن Fable پر `anthropic-std-5x8-aa` بمقابلہ `anthropic-hires-5x8-aa` ہے —
+ہائی-ریز درجے کو فعال کرنے سے پہلے بڑے صفحے کی پڑھنے کی صلاحیت کا اسپاٹ چیک۔
 
 ## `--via-omniroute` — OmniRoute کے ذریعے e2e (P3: عدم-تنزلی کا ثبوت)
 

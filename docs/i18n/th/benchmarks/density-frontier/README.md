@@ -1,8 +1,39 @@
 # density-frontier — ต้นทุน × ความแม่นยำต่อความละเอียด
 
+🌐 แปลแล้ว: [ทุกภาษา](../../../README.md)
+
 ชุดทดสอบที่วัด **ขอบเขต Pareto ระหว่างต้นทุนและความสามารถในการอ่าน** ของ
 การเรนเดอร์ข้อความ→ภาพ ต่อผู้ให้บริการ (Anthropic / OpenAI / Gemini), รูปทรงหน้า,
 เซลล์กลิฟ และสไตล์ atlas
+
+หน้าที่ถูกกว่า (หนาแน่นกว่า) บรรจุตัวอักษรต่อโทเคนได้มากกว่า แต่ในที่สุดก็
+เริ่มอ่านไม่ได้ คอนฟิกจะถูกนำไปใช้งานจริงได้ก็ต่อเมื่อ **ทั้งสองเงื่อนไข**
+เป็นจริง — ต้นทุนต่ำ *และ* โมเดลยังคงอ่านได้อย่างสมบูรณ์แบบ:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+คำตอบทุกข้อจะถูกให้คะแนนเป็นหนึ่งในสามผลลัพธ์เท่านั้น — ผลลัพธ์ตรงกลางคือ
+สิ่งที่ทำให้เกทนี้น่าเชื่อถือ:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+คอนฟิกที่ให้ผล 🔴 แม้เพียงหนึ่งครั้งจะถูกตัดสิทธิ์ทันที ไม่ว่าจะถูกแค่ไหนก็ตาม
 
 ความไม่สมมาตรหลัก: นับตั้งแต่การ billing sweep (2026-07-05,
 `benchmarks/billing-sweep/`), **ต้นทุนสามารถคาดการณ์ได้แบบเป๊ะออฟไลน์** — แพตช์ 28 px
@@ -30,10 +61,10 @@
 ## การรัน
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # ตารางต้นทุน, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
-  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # needle ~9 ตัว + gist 3 ตัว × คอนฟิก × trial
+  pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial
 ```
 
 คอนฟิกเฉพาะ: `--configs anthropic-std-5x8-aa,anthropic-hires-5x8-aa`

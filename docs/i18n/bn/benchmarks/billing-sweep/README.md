@@ -1,5 +1,24 @@
 # Anthropic ভিশন-বিলিং সুইপ
 
+🌐 অনূদিত: [সব ভাষা](../../../README.md)
+
+**কেন এটি আছে:** প্রফিটেবিলিটি গেট তখনই নিরাপদ যখন খরচের অনুমান *এক্সাক্ট*।
+সামান্য ভুল ফর্মুলা এমন ব্লক রূপান্তর করে দিতে পারে যেগুলোর আসলে বেশি খরচ
+হয়। তাই এই সুইপ শিপ করার আগে ফর্মুলাকে API-এর প্রকৃত সংখ্যায় পিন করে —
+**শূন্য অবশিষ্টাংশ পর্যন্ত**।
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 দুটি খোলা জ্যামিতি প্রশ্নের সিদ্ধান্ত নেয় এমন ফ্রি `count_tokens` সুইপ:
 
 1. **ফর্মুলা** — API কি `ceil(w/28) × ceil(h/28)` প্যাচ বিল করে (বর্তমান

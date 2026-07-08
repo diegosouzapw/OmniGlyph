@@ -1,5 +1,24 @@
 # Anthropic görmə-billinq sweep-i
 
+🌐 Tərcümə: [bütün dillər](../../../README.md)
+
+**Niyə mövcuddur:** mənfəətlilik qapısı yalnız xərc qiymətləndirməsi *dəqiq*
+olduqda təhlükəsizdir. Az fərqlə səhv olan düstur əslində daha çox xərcləyən
+blokları çevirərdi. Ona görə bu sweep düsturu API-nin əsl rəqəmlərinə mismar
+edir, işə salınmadan əvvəl — **sıfır qalığa** qədər.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 İki açıq geometriya sualını həll edən pulsuz `count_tokens` sweep-i:
 
 1. **Düstur** — API `ceil(w/28) × ceil(h/28)` yamaqlarını (cari sənədlər)

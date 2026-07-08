@@ -1,8 +1,39 @@
 # density-frontier —— 各解析度的成本 × 準確率
 
-用來測量文字→圖像渲染在**成本與可讀性之間帕累托邊界**的測試套件,
+🌐 已翻譯:[所有語言](../../../README.md)
+
+此測試套件用於測量文字→圖像渲染在**成本與可讀性之間的帕累托邊界**,
 依服務商(Anthropic / OpenAI / Gemini)、頁面幾何結構、字形格與
-圖集樣式分組。
+圖集樣式分組進行測量。
+
+較便宜(較密集)的頁面每個 token 可承載更多字元,但密度過高終究
+會變得無法讀取。唯有**同時**滿足兩個條件——成本低*且*模型仍能
+完美讀取——的配置才被允許上線:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+每個回答都會被評為以下三種結果之一——中間這一種正是讓這道門控
+值得信賴的關鍵:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+只要配置產生一次 🔴,無論多便宜都會被淘汰。
 
 核心的不對稱性在於:自計費掃描(2026-07-05,
 `benchmarks/billing-sweep/`)之後,**成本已可離線精確預測**——

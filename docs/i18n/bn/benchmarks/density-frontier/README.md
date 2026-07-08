@@ -1,8 +1,39 @@
 # density-frontier — প্রতি রেজোলিউশনে খরচ × অ্যাকুরেসি
 
+🌐 অনূদিত: [সব ভাষা](../../../README.md)
+
 হার্নেস যা টেক্সট→ইমেজ রেন্ডারের **খরচ এবং পাঠযোগ্যতার মধ্যে প্যারেটো
 ফ্রন্টিয়ার** মাপে, প্রতি প্রোভাইডার (Anthropic / OpenAI / Gemini), পৃষ্ঠা
 জ্যামিতি, গ্লিফ সেল, এবং অ্যাটলাস স্টাইল অনুযায়ী।
+
+সস্তা (ঘনতর) পৃষ্ঠা প্রতি টোকেনে বেশি chars বহন করে কিন্তু শেষে পাঠযোগ্য
+থাকা বন্ধ হয়ে যায়। একটি কনফিগ শুধুমাত্র তখনই শিপ করার অনুমতি পায় যখন
+**উভয়ই** সত্য হয় — খরচ কম *এবং* মডেল এখনও নিখুঁতভাবে এটি পড়ে:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+প্রতিটি উত্তর ঠিক তিনটি ফলাফলের একটিতে স্কোর করা হয় — মাঝেরটিই সেই যা
+গেটকে বিশ্বাসযোগ্য করে তোলে:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+একটিও 🔴 উৎপন্ন করা কনফিগ ডিসকোয়ালিফাই হয়ে যায়, যতই সস্তা হোক না কেন।
 
 কেন্দ্রীয় অসামঞ্জস্য: বিলিং সুইপ (2026-07-05, `benchmarks/billing-sweep/`)
 থেকে, **খরচ অফলাইনে ঠিক অনুমানযোগ্য** — Anthropic-এ 28 px প্যাচ +

@@ -1,5 +1,24 @@
 # Sweep de faturação de visão da Anthropic
 
+🌐 Traduzido: [todos os idiomas](../../../README.md)
+
+**Porque existe:** o gate de rentabilidade só é seguro se a estimativa de
+custo for *exata*. Uma fórmula que erre por pouco converteria blocos que na
+realidade custam mais. Por isso este sweep fixa a fórmula aos números reais
+da API antes de ir para produção — até um **resíduo zero**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Sweep gratuito de `count_tokens` que decide duas questões de geometria em
 aberto:
 
@@ -24,8 +43,8 @@ faturação por patch.
 ## Executar
 
 ```bash
-pnpm run build                              # pré-requisito dist/ (como todos os evals)
-node benchmarks/billing-sweep/run.mjs --dry-run   # apenas previsões, sem chave, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus

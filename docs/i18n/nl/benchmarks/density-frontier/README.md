@@ -1,8 +1,41 @@
 # density-frontier — kosten × nauwkeurigheid per resolutie
 
+🌐 Vertaald: [alle talen](../../../README.md)
+
 Harness die de **Pareto-grens tussen kosten en leesbaarheid** meet van de
 tekst→afbeelding-renders, per provider (Anthropic / OpenAI / Gemini),
 paginageometrie, glyfcel en atlasstijl.
+
+Goedkopere (dichtere) pagina's dragen meer tekens per token, maar houden op
+een gegeven moment op leesbaar te zijn. Een config mag alleen naar productie
+als **beide** gelden — de kosten zijn laag *en* het model leest de pagina
+nog steeds perfect:
+
+```
+  cost  ▲
+ (tokens│  cheap
+  /char)│    ·  high-res 1928²   ← ~2/30 reads  (billing trap, blocked)
+        │        ·
+        │            ●  std 1-bit page  ← 30/30 reads  ✅ the production pick
+        │                ·
+        │  expensive         ·  AA page ← 25/30 (5 abstain)
+        └────────────────────────────────▶  read accuracy
+                                        100%
+
+  the sweet spot is the ● : lowest cost that still reads 30/30.
+```
+
+Elk antwoord wordt in precies een van drie uitkomsten gescoord — de
+middelste is wat de poort betrouwbaar maakt:
+
+```
+  ✅ correct        exact string read back
+  🟡 abstained      model said "ILEGIVEL" — an HONEST "I can't read it"
+  🔴 silent_wrong   model returned a confident WRONG value  ← the dangerous mode
+```
+
+Een config die zelfs maar één 🔴 oplevert, is gediskwalificeerd, hoe
+goedkoop ook.
 
 De centrale asymmetrie: sinds de billing-sweep (2026-07-05,
 `benchmarks/billing-sweep/`), zijn **kosten exact offline voorspelbaar** —
@@ -32,7 +65,7 @@ tiles/media_resolution op Gemini (`gemini-cost.ts`). Alleen
 ## Uitvoeren
 
 ```bash
-pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # kostentabel, $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run     # cost table, $0
 
 ANTHROPIC_API_KEY=... OPENAI_API_KEY=... GEMINI_API_KEY=... \
   pnpm exec tsx benchmarks/density-frontier/run.ts --trials 2  # ~9 needles+3 gist × config × trial

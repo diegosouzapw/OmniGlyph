@@ -1,5 +1,24 @@
 # Anthropic vision-faktureringsgenomgång
 
+🌐 Översatt: [alla språk](../../../README.md)
+
+**Varför den finns:** lönsamhetsspärren är bara säker om kostnadsuppskattningen
+är *exakt*. En formel som är lite fel skulle konvertera block som i själva
+verket kostar mer. Därför fäster den här genomgången formeln vid API:ets
+riktiga siffror innan den skickas i produktion — till **noll residual**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Gratis `count_tokens`-genomgång som avgör två öppna geometrifrågor:
 
 1. **Formel** — fakturerar API:et `ceil(w/28) × ceil(h/28)`-patchar (aktuell
@@ -8,7 +27,7 @@ Gratis `count_tokens`-genomgång som avgör två öppna geometrifrågor:
 2. **Nivå** — får `claude-fable-5` de högupplösta taken (lång kant
    ≤ 2576 px, ≤ 4784 visuella tokens)? Raden `page-old-1928x1928` är
    avgörandet: ≈ **4761** uppmätt betyder high-res WYSIWYG (den gamla stora
-   sidan rymmer ~3,3× fler tecken per bild än dagens 1568×728, till samma
+   sidan rymmer ~3.3× fler tecken per bild än dagens 1568×728, till samma
    tecken/token); ≈ **1521** betyder resampling på standardnivå, och
    1568×728 förblir korrekt.
 

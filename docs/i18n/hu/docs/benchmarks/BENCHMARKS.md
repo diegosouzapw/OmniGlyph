@@ -1,9 +1,36 @@
 # OmniGlyph — Konszolidált mérések (2026-07-05)
 
+🌐 Fordítva: [minden nyelv](../../../README.md)
+
 Minden, ami ebben a munkamenetben MÉRVE lett, forrással és n-nel; a
 hipotézisek egyértelműen elkülönítve a végén. Bizonyítékok:
 `benchmarks/billing-sweep/results/` és `benchmarks/density-frontier/results/`
 (JSONL válaszonként).
+
+## TL;DR — a teljes eredmény két sávban
+
+**Költség** — egy standard 1568×728-as oldal 28,080 karaktert hordoz fix
+1,460 tokenért; ugyanez a szöveg nyersen elküldve ~10× többe kerül:
+
+```
+same 28,080-char context
+
+  as dense TEXT   ██████████████████████████████████████████████  ~14,040 tokens
+  as ONE IMAGE    █████                                              1,460 tokens   (flat, WYSIWYG)
+```
+
+**Pontosság** — de csak ott, ahol a modell ténylegesen elolvassa az
+oldalt. A kapu fail-closed; csak a ✅ sor kerül élesbe:
+
+```
+  Fable 5 · 1-bit std page (prod)  ██████████████████████████████  30/30  ✅
+  Fable 5 · AA std page (old)      █████████████████████████░░░░░  25/30  🟡 5 abstain
+  Opus 4.8 · 10×16 (safe mode)     ████████████████████████░░░░░░  ~24/30 ⚠️
+  Fable 5 · high-res 1928²         █░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  ~2/30  🚫 billing trap
+  GPT-5.5 / Gemini 2.5-flash       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0      ⛔ blocked
+```
+
+A dokumentum további része a bizonyíték e két sáv mögött.
 
 ## 1. Anthropic számlázás (közvetlen count_tokens, $0, 11 geometria × 2 modell)
 
@@ -29,7 +56,7 @@ szint (Fable/Mythos/Opus 4.8/4.7/Sonnet 5 = high-res); `cols` 313→312.
 
 ## 2. Olvasási pontosság (density-frontier, hex/camelCase/számjegy tűk elterelőkkel)
 
-### Fable 5 2×2-es mátrix — CLI/előfizetésen keresztül, n=30/kar, azonos korpusz (~16,6k karakter)
+### Fable 5 2×2-es mátrix — CLI/előfizetésen keresztül, n=30/kar, azonos korpusz (~16.6k karakter)
 
 | oldal × atlasz | pontos | tartózkodás (ILEGIVEL) | néma hiba |
 |---|---:|---:|---:|
@@ -52,7 +79,7 @@ ALKALMAZVA: `DENSE_RENDER_STYLE` → `aa:false` (commit 9a25585).
 
 → Az Opus töréspontja megerősítve a saját n-ünkkel (az upstream 95%-ot mért
 10×16-nál, n=20-szal). Az "Opus biztonságos mód" életképes: 10×16 a nagy
-oldalon ≈ 1,7 karakter kép-tokenenként a harness korpuszán.
+oldalon ≈ 1.7 karakter kép-tokenenként a harness korpuszán.
 
 ### OpenRouteren keresztül (azonos korpusz/kérdések) — nem döntő az olvashatóságra
 
@@ -76,41 +103,41 @@ oldalon ≈ 1,7 karakter kép-tokenenként a harness korpuszán.
 
 | szolgáltató · oldal | token/oldal | karakter/oldal | **karakter/token** | státusz |
 |---|---:|---:|---:|---|
-| Anthropic std 1568×728 (minden modell) | 1460 | 28 080 | **19,2** | mérve |
-| Anthropic hi-res 1928×1928 (Fable/Opus4.8/Sonnet5) | 4765 | 92 160 | **19,3** (3,3×-szal kevesebb kép) | számlázás mérve; olvashatóság függőben (H1) |
-| GPT-5 (csempe) csík 768×2048 | 1190 | ~38 760 | **32,6** | auditált dokumentáció |
-| GPT-5.4/5.5 (patch, original) akár 1568×5984-ig | ~9163 | ~233k | **25,4** | dokumentáció; olvashatóság nem tesztelve |
-| gpt-4o-mini | 48 169/csík | — | **0,8 — SOHA NE képesítse** | dokumentáció (D2 hiba javítva) |
-| Gemini csempe 1533×1152 (natív vágási egység 768) | 1032 | 43 615 | **42,3 ← legjobb dokumentált** | dokumentáció; olvashatóság nem tesztelve |
-| Gemini 3 media_resolution:low 1148×1152 | 280 | 32 604 | **116 (ha olvasható)** | H6 hipotézis |
+| Anthropic std 1568×728 (minden modell) | 1460 | 28,080 | **19.2** | mérve |
+| Anthropic hi-res 1928×1928 (Fable/Opus4.8/Sonnet5) | 4765 | 92,160 | **19.3** (3.3× kevesebb kép) | számlázás mérve; olvashatóság függőben (H1) |
+| GPT-5 (csempe) csík 768×2048 | 1190 | ~38,760 | **32.6** | auditált dokumentáció |
+| GPT-5.4/5.5 (patch, original) akár 1568×5984-ig | ~9,163 | ~233k | **25.4** | dokumentáció; olvashatóság nem tesztelve |
+| gpt-4o-mini | 48,169/csík | — | **0.8 — SOHA NE képesítse** | dokumentáció (D2 hiba javítva) |
+| Gemini csempe 1533×1152 (natív vágási egység 768) | 1032 | 43,615 | **42.3 ← legjobb dokumentált** | dokumentáció; olvashatóság nem tesztelve |
+| Gemini 3 media_resolution:low 1148×1152 | 280 | 32,604 | **116 (ha olvasható)** | H6 hipotézis |
 
 ## 4. Talált és javított hibák (audit a hivatalos dokumentáció alapján)
 
 | id | hiba | hatás | commit |
 |---|---|---|---|
 | D2 | a gpt-4o-mini az alapértelmezett 85/170-es csempébe esett (valós: 2833/5667) | költség alulbecsülve ~33×-szal — **fordított kapu** | e6bc75f |
-| D1 | o4-mini szorzó 1,62 (valós 1,72) | −5,8% | e6bc75f |
+| D1 | o4-mini szorzó 1.62 (valós 1.72) | −5.8% | e6bc75f |
 | D3 | gpt-5.1/5.2/5.3(+codex) 10000-es plafonnal (valós 1536, original nélkül) | nagyobb oldalaknál eltörne | e6bc75f |
 | D4 | gpt-5-codex-mini a csempe-rezsimben (valós: patch 1536) | ≥+23% alulbecsülve | e6bc75f |
 | D5 | detail:'original' minden modellhez hardkódolva (csak az 5.4+-ban létezik) | szerződésen kívül | e6bc75f |
 | #44 | leírás-stub beszúrva típusos eszközökbe → 400 + néma fallback | a megtakarítás jelzés nélkül nullázódott | 0f66e32 |
 | AA | AA atlasz éles környezetben a "csak-eval" komment ellenére | −17pp olvasás a Fable-en | 9a25585 |
-| — | slab cols 313 (1573px) → 0,997×-es resample + extra patch oszlop | 312-re javítva | alapérték |
+| — | slab cols 313 (1573px) → 0.997× resample + extra patch oszlop | 312-re javítva | alapérték |
 
 ## 5. Nyitott hipotézisek (mennyibe kerül lezárni mindegyiket)
 
 | id | hipotézis | jelenlegi bizonyíték | döntő teszt | költség |
 |---|---|---|---|---|
-| H1 | Az 1928²-es oldal ≥ standard olvasható a közvetlen API-n (WYSIWYG bizonyítva a számlázásban) | 4764-es számlázás resample nélkül; az 1-bit már degradáltan is 67%-ot olvas | közvetlen A/B std vs hi-res (1-bit) | ~4 USD API |
-| H2 | hi-res + 1-bit a közvetlen API-n ≈ 100%, 3,3×-szal kevesebb képpel | H1 + 2×2-es mátrix | ugyanaz, mint H1 | ugyanaz |
-| H3 | A CLI Read-je és az OpenRouter átméretezi a >1568/2000px-es képeket | az 5×8 elhal, a 10×16 túléli UGYANAZON az oldalon | egy 1928²-es oldal 20×32-es glifekkel transzportonként | ~0 USD (CLI) |
+| H1 | Az 1928²-es oldal ≥ standard olvasható a közvetlen API-n (WYSIWYG bizonyítva a számlázásban) | 4764-es számlázás resample nélkül; az 1-bit már degradáltan is 67%-ot olvas | közvetlen A/B std vs hi-res (1-bit) | ~US$4 API |
+| H2 | hi-res + 1-bit a közvetlen API-n ≈ 100%, 3.3× kevesebb képpel | H1 + 2×2-es mátrix | ugyanaz, mint H1 | ugyanaz |
+| H3 | A CLI Read-je és az OpenRouter átméretezi a >1568/2000px-es képeket | az 5×8 elhal, a 10×16 túléli UGYANAZON az oldalon | egy 1928²-es oldal 20×32-es glifekkel transzportonként | ~US$0 (CLI) |
 | H4 | Az elutasítás a megfogalmazástól függ (ágens-fájlt-olvas ≈ 0% vs nyers API ≈ 100%) | fenti transzport-összehasonlítás | megfogalmazás A/B a valós proxy útvonalon | alacsony |
 | H5 | Gemini csempe 1533×1152 olvasható 5×8-nál (42 karakter/token) | nincs | density-frontier GEMINI_API_KEY-jel | ~ingyenes (ingyenes szint) |
 | H6 | media_resolution:low olvasható (116 karakter/token) | valószínűtlen (alacsony felbontású enkóder), de senki nem mérte | 1 hívás | ~ingyenes |
-| H7 | GPT: csík-olvashatóság + completion-token felfújás (PageWatch kockázat) | a közösség −40% promptot látott, de +completion/2×-es késleltetést | density-frontier OPENAI_API_KEY-jel | ~2-5 USD |
-| H8 | Glif-sebészet (H~K, 0/8, 5/3…) a tartózkodásokat olvasásokká alakítja | 1-bit után MINDEN Fable-hiba tartózkodássá vált | ~10 bitmap szerkesztése + mátrix újrafuttatása | 0 USD (CLI) |
-| H9 | Világos téma (fekete-fehéren) > invertált | szakirodalom (Glyph paper, Tesseract); soha nem mérve kereskedelmi VLM-en | stílus flag + 2 kar | 0 USD (CLI) |
-| H10 | Opus 7×10-nél 0% (5×8) és 87% (10×16) között landol → jó kompromisszum | upstream görbe 35% 7×10-nél (n=20) | 1 extra kar | 0 USD (CLI) |
+| H7 | GPT: csík-olvashatóság + completion-token felfújás (PageWatch kockázat) | a közösség −40% promptot látott, de +completion/2×-es késleltetést | density-frontier OPENAI_API_KEY-jel | ~US$2-5 |
+| H8 | Glif-sebészet (H~K, 0/8, 5/3…) a tartózkodásokat olvasásokká alakítja | 1-bit után MINDEN Fable-hiba tartózkodássá vált | ~10 bitmap szerkesztése + mátrix újrafuttatása | $0 (CLI) |
+| H9 | Világos téma (fekete-fehéren) > invertált | szakirodalom (Glyph paper, Tesseract); soha nem mérve kereskedelmi VLM-en | stílus flag + 2 kar | $0 (CLI) |
+| H10 | Opus 7×10-nél 0% (5×8) és 87% (10×16) között landol → jó kompromisszum | upstream görbe 35% 7×10-nél (n=20) | 1 extra kar | $0 (CLI) |
 | H11 | Elutasításnál-újrapróbálkozás a proxyban visszanyeri a szűrt batch-ek ~50%-át | az elutasítás hívásonként sztochasztikus | implementálás + mérés élesben | kód |
 
 ## 6. Operatív függőben lévő tételek
@@ -134,7 +161,7 @@ oldalon ≈ 1,7 karakter kép-tokenenként a harness korpuszán.
 ÍTÉLET: a high-res szint 1928²-es oldala WYSIWYG módon van SZÁMLÁZVA (4764
 token, sweep), de az ENKÓDER nem kapja meg a teljes felbontást — 1-2/30
 olvasás, egyedi-glif csere hibákkal (6→8, a→4), egy belső resample aláírásával.
-**Számlázás ≠ enkóder bemenet → csapda: 3,3×-os költség, rosszabb
+**Számlázás ≠ enkóder bemenet → csapda: 3.3× költség, rosszabb
 olvashatóság.** ALKALMAZVA: a pageGeometryForTier() visszaállítva — mindkét
 szint az 1568×728-at rendereli; a szint-infrastruktúra megmaradt (a pontos
 számlázás továbbra is érvényes, és a jövőbeli finomhangolás 1 sor). A H3
@@ -147,12 +174,12 @@ mindkét transzporton megerősítve (77-87%).
 
 | kar | szó szerinti | lényeg | kimenet/válasz |
 |---|---:|---:|---:|
-| csík 768×2048 5×8 AA | 0/30 (18 tartózkodás, 5 szűrve, 7 hiba) | 0/3 | 2639 token |
-| csík 5×8 1-bit | 0/30 (15 tartózkodás, 5 szűrve, 10 hiba) | 1/3 | 2383 token |
+| csík 768×2048 5×8 AA | 0/30 (18 tartózkodás, 5 szűrve, 7 hiba) | 0/3 | 2,639 token |
+| csík 5×8 1-bit | 0/30 (15 tartózkodás, 5 szűrve, 10 hiba) | 1/3 | 2,383 token |
 | SZÖVEG (kontroll) | **30/30** | **3/3** | **62 token** |
 
 A GPT-5.5 nem képes olvasni az 5×8-as glifeket (0/60; még a lényeg sem
-marad meg), és a válaszát ~40×-esen felfújja próbálkozás közben (2,4-2,7k
+marad meg), és a válaszát ~40× felfújja próbálkozás közben (2.4-2.7k
 reasoning token kérdésenként) — a prompt-megtakarítást felemészti a
 kimenet. A tökéletes szöveges kontroll bizonyítja, hogy a korpusz/kérdések
 épek. Megerősíti és számszerűsíti az 5.5-ös opt-int; a gpt-5.6
@@ -176,7 +203,7 @@ hibamóddal (néma konfabuláció tartózkodás helyett) — a Geminihez extra
 védőkorlátok kellenének a proxyban. Lezárandó: újrafuttatás fizetős
 kvótával vagy másik napon, és a gemini-2.5-pro tesztelése (a flash a
 leggyengébb olvasó a családban). A natív-csempe oldal továbbra is a
-legjobb DOKUMENTÁLT arányú (42,3 karakter/token); az olvashatóság az, ami
+legjobb DOKUMENTÁLT arányú (42.3 karakter/token); az olvashatóság az, ami
 kérdéses.
 
 Költség-megjegyzés: a részleges oldalak (a korpusz utolsó oldala) rosszul

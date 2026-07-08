@@ -1,5 +1,24 @@
 # Anthropic 视觉计费扫描测试
 
+🌐 已翻译:[所有语言](../../../README.md)
+
+**存在的原因:** 只有当成本估算**精确**时,盈利性门控才是安全的。
+一个哪怕只有微小偏差的公式,也可能转换掉实际上成本更高的内容块。
+因此这套扫描测试会在正式上线前,将公式与 API 的真实数字对齐——
+做到**零残差**。
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 免费的 `count_tokens` 扫描测试,用于裁定两个悬而未决的几何结构问题:
 
 1. **公式**——API 计费究竟是按 `ceil(w/28) × ceil(h/28)` 分块(当前文档所述),

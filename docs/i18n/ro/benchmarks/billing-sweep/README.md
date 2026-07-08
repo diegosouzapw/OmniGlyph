@@ -1,5 +1,24 @@
 # Sweep de facturare de viziune Anthropic
 
+🌐 Tradus: [toate limbile](../../../README.md)
+
+**De ce există:** gate-ul de profitabilitate este sigur doar dacă estimarea
+de cost este *exactă*. O formulă care greșește cu puțin ar converti blocuri
+care de fapt costă mai mult. De aceea acest sweep fixează formula pe
+numerele reale ale API-ului înainte de lansare — la **reziduu zero**.
+
+```
+what the sweep decides, visually:
+
+  patch model     ⌈w/28⌉ × ⌈h/28⌉ + overhead        ← current docs
+  retired /750    (w · h) / 750                       ← old formula
+                       │
+                       ▼  probe geometries chosen to separate the two by 25–180 tokens/row
+  measured 1568×728 page = 1,460 tokens
+     patch predicts 1,456  ✅   (residual ~0)
+     /750  predicts 1,522  ✗   (off by 62)
+```
+
 Sweep gratuit `count_tokens` care decide două întrebări deschise de geometrie:
 
 1. **Formula** — API-ul facturează patch-uri `ceil(w/28) × ceil(h/28)`
@@ -23,8 +42,8 @@ trecuse la facturarea pe patch-uri.
 ## Rulare
 
 ```bash
-pnpm run build                              # prerechizit dist/ (ca toate eval-urile)
-node benchmarks/billing-sweep/run.mjs --dry-run   # doar predicții, fără cheie, $0
+pnpm run build                              # dist/ prerequisite (like all evals)
+node benchmarks/billing-sweep/run.mjs --dry-run   # predictions only, no key, $0
 
 ANTHROPIC_API_KEY=sk-... node benchmarks/billing-sweep/run.mjs \
   --models claude-fable-5,claude-sonnet-4-5 --probe-multi --probe-20plus
