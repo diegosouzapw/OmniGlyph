@@ -752,7 +752,7 @@ function splitStaticDynamic(text: string): {
   // Open tags found by regex; the matching close is located with indexOf so the
   // scan stays linear on adversarial input (a lazy [\s\S]*? + backreference is
   // polynomial when many opens never close).
-  const openTag = /<([a-zA-Z][a-zA-Z0-9_-]*)(?:\s[^>]*)?>/g;
+  const openTag = /<([a-zA-Z][a-zA-Z0-9_-]*)(?:\s[^<>]*)?>/g;
   const unknown = new Set<string>();
   const staticTagContents = new Map<string, string>();
   let s: RegExpExecArray | null;
@@ -1018,9 +1018,13 @@ export function extractEnvFields(dynamicText: string): EnvFields {
   const out: EnvFields = {};
   if (!dynamicText) return out;
 
-  const envMatch = /<env>([\s\S]*?)<\/env>/i.exec(dynamicText);
-  if (envMatch) {
-    const body = envMatch[1]!;
+  // indexOf instead of a lazy regex: many repeated `<env>` openers without a
+  // close made the regex scan polynomial on request-controlled input.
+  const lower = dynamicText.toLowerCase();
+  const envOpen = lower.indexOf('<env>');
+  const envClose = envOpen === -1 ? -1 : lower.indexOf('</env>', envOpen + 5);
+  if (envClose !== -1) {
+    const body = dynamicText.slice(envOpen + 5, envClose);
     const cwd = /(?:^|\n)[ \t]*Working directory:[ \t]*([^\n]*)/i.exec(body);
     if (cwd) out.cwd = cwd[1]!.trim();
     const gitRepo = /(?:^|\n)[ \t]*Is directory a git repo:[ \t]*(Yes|No)\b/i.exec(body);
