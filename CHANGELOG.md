@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Security
+
+- **Resolve a CodeQL `js/regex/missing-regexp-anchor` alert** in the
+  docs-integrity guard. The upstream-credit assertion matched its target link
+  with an unanchored regex; it now uses a literal, scheme-qualified substring
+  check instead — stricter (a bare host mention no longer satisfies it) and
+  regex-free. Test-only; no change to shipped behavior.
+
 ### Docs
 
 - **Offline export, documented.** New README section (mirrored across the 41
@@ -12,6 +20,58 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   chat that reads images. Two new FAQ entries cover using OmniGlyph outside
   Claude Code and how the text→image render works. Documentation only; no
   behavior change.
+
+## [1.1.0] — 2026-07-08
+
+Dashboard release. The compression path and billing math are unchanged; this is
+a full rebuild of the local dashboard plus documentation.
+
+### Added
+
+- **Multi-page dashboard**, visually aligned with the OmniRoute family (coral/
+  indigo palette, graph-paper backdrop, warm shadows). Six server-rendered
+  pages behind real routes: **Overview** (mission-control KPI grid — savings %,
+  $ saved, latency p95, first-byte, cache hits, errors, imaged chars — with a
+  savings sparkline and a live event feed), **Live Flow** (the pipeline as a
+  dependency-free SVG node graph with a particle per request), **Telemetry**
+  (a token/$ odometer and a live request timeline; the image-vs-text breakdown
+  and image↔source inspector live here), **Benchmarks**, **Sessions**, and
+  **History**.
+- **Benchmarks from the UI**: the harness receipts are rendered straight from
+  `benchmarks/*/results/*.jsonl` (one row per model·config experiment), and the
+  harnesses run from the page — `$0` dry-runs stream their stdout live; live
+  runs stay gated behind `ANTHROPIC_API_KEY` and an explicit cost confirmation.
+  Closed-enum, shell-less spawn, one run at a time; results stay append-only
+  through the harness.
+- **Live updates over SSE** (`GET /events/stream`): per-request frames and a
+  stats snapshot push from the proxy, refreshing fragments instantly and
+  driving the odometer and flow particles. Polling remains the fallback.
+- **Dashboard localized into 42 languages** with a flag language selector in the
+  top bar (`omniglyph_lang` cookie, falling back to `OMNIGLYPH_LANG`/`LC_ALL`/
+  `LANG`, English fail-closed). RTL locales (`ar`, `fa`, `he`, `ur`) render
+  mirrored.
+- Accessibility pass: skip-link, nav landmarks, focus-visible rings, an
+  `aria-live` odometer, consolidated `prefers-reduced-motion`, and AA contrast.
+
+### Changed
+
+- Every dashboard percentage still derives from the cache-weighted pair and a
+  weighted net loss renders as a loss — the same honesty invariant as before,
+  now applied across the KPI grid, flow ribbon and telemetry.
+
+### Fixed
+
+- Dashboard nav/KPI/theme icons use emoji glyphs instead of rare Unicode
+  symbols, so they render everywhere instead of falling back to tofu boxes on
+  font stacks that lack those symbols.
+
+### Docs
+
+- README gains a **dashboard** section (with screenshots) and an
+  **Acknowledgments** section crediting the upstream context-as-image discovery
+  and the Spleen/Unifont typefaces; both translated across the 41 locale
+  READMEs. New library-use and FAQ sections; refreshed ROADMAP, `llm.txt` and
+  wiki.
 
 ## [1.0.2] — 2026-07-08
 
@@ -91,3 +151,18 @@ First public release.
 - **gpt-4o-mini never imaged** (2833/5667 token floor makes it unprofitable).
 - **Gemini 2.5-flash confabulates** instead of abstaining on dense pages
   (0/26) — pending paid-quota retest.
+
+### Acknowledgments
+
+Several fixes that shipped in this first release originated with outside
+contributors; crediting them here retroactively:
+
+- **`/v1/models` auth-style routing:** never forward an `sk-ant` OAuth bearer
+  (Claude Code subscription auth) to the OpenAI upstream — a credential leak and
+  a guaranteed 401. (thanks @XyraSinclair)
+- **Schema stripper keeps `$schema`/`$id`:** stripping the dialect declaration
+  re-dialected draft-07 schemas to 2020-12 and 400'd legal tuple-form `items`.
+  (thanks @Monivancan)
+- **Dashboard `hx-vals` escaping:** a crafted model id could break out of the
+  single-quoted attribute; the value is now HTML-escaped, closing the JSON
+  injection and the attribute-breakout XSS. (thanks @dex0shubham)
