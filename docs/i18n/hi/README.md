@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` ब्लॉक्स को टेक्स्ट के रूप में पिन करता है; `options.emitRecoverable` इमेज में बदले गए ब्लॉक्स के मूल संस्करण लौटाता है। सटीक बिलिंग गणित पैकेज रूट पर भी शिप होता है (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — यही वह है जिसे [OmniRoute](https://github.com/diegosouzapw/OmniRoute) उपयोग करता है। शुद्ध-JS रनटाइम (Node और edge/Workers)। पूरा सरफ़ेस: `src/core/index.ts`।
 
+# 📤 ऑफ़लाइन एक्सपोर्ट — कोई प्रॉक्सी नहीं, कोई Claude Code नहीं
+
+Claude Code पर नहीं हैं? संदर्भ को **स्थानीय रूप से** PNG पेजों में रेंडर करें और उन्हें Cursor, ChatGPT, या किसी भी ऐसे चैट में पेस्ट करें जो छवि अपलोड स्वीकार करता है। कोई प्रॉक्सी नहीं, कोई API कुंजी नहीं, कोई खाता जोड़ने की ज़रूरत नहीं:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+आपको एक फ़ोल्डर मिलता है जिसमें चैट में डालने के लिए सब कुछ होता है:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` आपके अनकमिटेड diff को रेंडर करता है, `--diff <ref>` एक कमिट रेंज को, `--open` फ़ोल्डर को दिखाता है (macOS)। यह सब आपकी मशीन पर चलता है — एक्सपोर्ट पथ कभी प्रॉक्सी शुरू नहीं करता और कभी किसी मॉडल को कॉल नहीं करता। हर फ़्लैग के लिए `omniglyph export --help` चलाएँ।
+
 # 🧭 The honest part
 
 - **यह हानिपूर्ण (lossy) है।** छवियों से बाइट-सटीक स्मरण स्वभाव से अविश्वसनीय है। लागू शमन: सटीक पहचानकर्ता छवि के साथ टेक्स्ट के रूप में यात्रा करते हैं, और मापा गया प्रोडक्शन कॉन्फ़िगरेशन **शून्य मौन मनगढ़ंत उत्तर** देता है — असफल पठन परहेज़ करते हैं।
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **क्या DeepSeek-OCR ने यह तय नहीं कर दिया था कि यह काम करता है या नहीं?**
 इसने साबित किया कि *चैनल* काम करता है — इस काम के लिए प्रशिक्षित एक एन्कोडर/डिकोडर जोड़ी के साथ। संदेह उस समय से चला आ रहा है जब कोई भी स्टॉक प्रोडक्शन मॉडल सघन रेंडर नहीं पढ़ पाता था; अब वह बदल चुका है, और ऊपर दिया [मॉडल स्कोरकार्ड](../../../README.md#-the-numbers--measured-not-estimated) रसीदों सहित बिल्कुल दिखाता है कि आज उन्हें कौन पढ़ पाता है। [बेंचमार्क हार्नेस](../../../benchmarks/README.md) एक ही कमांड में किसी भी नए मॉडल को दोबारा जाँच लेता है — गेट डेटा का अनुसरण करता है, प्रचार का नहीं।
+
+**क्या मैं इसे Claude Code के बिना उपयोग कर सकता हूँ — Cursor, ChatGPT, एक साधारण pipe?**
+हाँ, दो तरीक़े। एक **प्रॉक्सी** के रूप में यह किसी भी ऐसे क्लाइंट के साथ काम करता है जो आपको API बेस URL सेट करने देता है (`ANTHROPIC_BASE_URL`, या OpenAI बेस URL) — Claude Code, आपकी अपनी स्क्रिप्ट्स, कुछ भी HTTP। और उन टूल्स के लिए जो प्रॉक्सी नहीं कर सकते, ऊपर दिया **ऑफ़लाइन एक्सपोर्ट** संदर्भ को PNG पेजों में रेंडर करता है जिन्हें आप हाथ से पेस्ट करते हैं — `omniglyph export --stdin` तो सीधे एक Unix pipe से भी पढ़ लेता है।
+
+**यह असल में टेक्स्ट को छवि में कैसे बदलता है?**
+यह टेक्स्ट को फिर से रीफ़्लो करता है और उसे एक 1-bit 5×8 पिक्सेल ग्लिफ़ एटलस से सघन 1568×728 PNG पेजों पर पेंट करता है — प्रति पिक्सेल एक बिट, कोई एंटी-एलियासिंग नहीं, इसलिए मॉडल पेज का बिल उसके आयामों के आधार पर लगाता है, न कि इस आधार पर कि उसके अंदर कितने अक्षर हैं। ऊपर दिया **यह कैसे काम करता है** पाइपलाइन देता है; बेंचमार्क दस्तावेज़ में ज्यामिति है और यह कि सघन होना हमेशा सस्ता क्यों नहीं होता।
 
 # 🔬 हर आँकड़े को पुनरुत्पादित करें
 
