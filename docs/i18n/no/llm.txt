@@ -1,0 +1,62 @@
+# OmniGlyph
+
+> Kontekst-som-bilde-komprimeringsproxy for LLM-er. En lokal proxy som
+> skriver om de tunge delene av hver forespørsel (systemprompt,
+> verktøydokumentasjon, gammel historikk, store verktøyresultater) til
+> tette 1-bit PNG-sider før de forlater maskinen, ved bruk av eksakt
+> faktureringsmatematikk per leverandør (Anthropic/OpenAI/Gemini) slik at
+> den kun konverterer når tokenmatematikken lønner seg. Målt reduksjon i
+> totalregning, ende til ende: 59–70 %. Del av OmniRoute-familien; leveres
+> også som `omniglyph`-komprimeringsmotoren inni OmniRoute.
+
+**Nøkkelverdi:** pek et hvilket som helst Anthropic-kompatibelt verktøy mot
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821`, og tung kontekst faktureres
+som bildetokens (~19 tegn/token) i stedet for teksttokens (~2 tegn/token).
+
+**Nåværende versjon:** 1.0.0 · **Lisens:** MIT · **Kjøretid:** Node ≥18 og
+Cloudflare Workers.
+
+## Slik fungerer det
+
+1. Lønnsomhetsport: beregner leverandørens eksakte bildefakturering
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + blokkoverhead, målt til null avvik) og
+   konverterer kun når det sparer tokens.
+2. Modellport (fail-closed): kun modeller som besto lesebenchmarken mottar
+   bilder. Godkjent i dag: Claude Fable 5 (100 % eksakte lesninger).
+   Blokkert med bevis: GPT-5.5 (0/60), Gemini 2.5-flash (konfabulerer),
+   Opus 4.8 kun i opt-in sikker modus (4× glyffer).
+3. Rendring: omflyt + 1-bit 5×8-glyffatlas → standard 1568×728 PNG-sider
+   (høyoppløsningsnivået er en målt faktureringsfelle — ikke i bruk).
+4. Spleis sidene tilbake cache-vennlig; byte-eksakte verdier (hasher/ID-er)
+   blir med som tekst; mislykkede lesninger avstår (null stille
+   konfabulasjoner i ~300 prober).
+5. Avslag-gjenforsøk: hvis modellen avslår den rendrede siden, spilles den
+   opprinnelige forespørselen automatisk av på nytt.
+
+## Prosjektstruktur
+
+- `src/core/` — transformasjonspipeline, eksakt faktureringsmatematikk,
+  renderer, LRU-rendringscache, proxy med avslag-gjenforsøk.
+  Faktureringsmatematikk eksportert ved pakkeroten.
+- `src/node.ts` — lokal vert med dashbord (tokens spart, side-om-side-
+  konverteringer, kill switch). `src/worker.ts` — Cloudflare Workers-vert.
+- `benchmarks/` — billing-sweep- og density-frontier-rigger; hvert
+  publiserte tall har en JSONL-kvittering i `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodikk + resultater), ops/
+  (OmniRoute-driftsguide), i18n/pt-BR/.
+
+## Viktige notater for LLM-er
+
+- Streng TDD og måling-før-påstander: tall uten benchmark-kvitteringer
+  aksepteres ikke; fail-closed-porter må aldri svekkes for å få tester til
+  å bestå.
+- Komprimering skjer kun forespørselssiden — modellsvar strømmer gjennom
+  uberørt.
+- Proxyen er lokal-først: ingenting ekstra sendes til noen tredjepart.
+
+## Lenker
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (familiens gateway med den innebygde motoren):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

@@ -1,0 +1,61 @@
+# OmniGlyph
+
+> LLM을 위한 이미지로서의 컨텍스트 압축 프록시입니다. 각 요청의 부피가 큰
+> 부분(시스템 프롬프트, 툴 문서, 오래된 히스토리, 큰 툴 출력)을 머신을
+> 떠나기 전에 밀도 높은 1비트 PNG 페이지로 다시 작성하는 로컬 프록시로,
+> 프로바이더별 정확한 과금 수학(Anthropic/OpenAI/Gemini)을 사용해 토큰
+> 계산상 이득일 때만 변환합니다. 측정된 종단 간 요금 절감률: 59–70%.
+> OmniRoute 패밀리의 일부이며, OmniRoute 내부의 `omniglyph` 압축 엔진으로도
+> 제공됩니다.
+
+**핵심 가치:** Anthropic 호환 도구를
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821`로 지정하면, 부피가 큰
+컨텍스트는 텍스트 토큰(~2자/토큰) 대신 이미지 토큰(~19자/토큰)으로
+과금됩니다.
+
+**현재 버전:** 1.0.0 · **라이선스:** MIT · **런타임:** Node ≥18 및
+Cloudflare Workers.
+
+## How it works
+
+1. 수익성 게이트: 프로바이더의 정확한 이미지 과금을 계산하고(Anthropic:
+   ⌈w/28⌉ × ⌈h/28⌉ + 블록 오버헤드, 잔차 0으로 측정됨) 토큰을 절약할 때만
+   변환합니다.
+2. 모델 게이트(fail-closed): 판독 벤치마크를 통과한 모델만 이미지를
+   받습니다. 오늘 승인됨: Claude Fable 5(정확 판독 100%). 증거와 함께
+   차단됨: GPT-5.5(0/60), Gemini 2.5-flash(컨퓨불레이션), Opus 4.8은
+   옵트인 세이프 모드에서만(4배 글리프).
+3. 렌더링: 리플로우 + 1비트 5×8 글리프 아틀라스 → 표준 1568×728 PNG
+   페이지(고해상도 티어는 측정된 과금 함정이므로 사용하지 않음).
+4. 페이지를 캐시 친화적으로 다시 이어붙임; 바이트 단위로 정확한 값
+   (해시/ID)은 텍스트로 함께 이동함; 판독에 실패하면 기권함(약 300회
+   프로브에서 은밀한 컨퓨불레이션 0건).
+5. 거부 재시도: 모델이 렌더링된 페이지를 거부하면 원본 요청이 자동으로
+   재전송됩니다.
+
+## Project structure
+
+- `src/core/` — 변환 파이프라인, 정확한 과금 수학, 렌더러, LRU 렌더 캐시,
+  거부-재시도가 포함된 프록시. 과금 수학은 패키지 루트에서 익스포트됩니다.
+- `src/node.ts` — 대시보드가 있는 로컬 호스트(절약된 토큰, 나란히 비교되는
+  변환, 킬 스위치). `src/worker.ts` — Cloudflare Workers 호스트.
+- `benchmarks/` — billing-sweep과 density-frontier 하네스; 게시된 모든
+  숫자는 `benchmarks/*/results/`에 JSONL 근거가 있습니다.
+- `docs/` — architecture/, benchmarks/(방법론 + 결과), ops/(OmniRoute
+  런북), i18n/pt-BR/.
+
+## Important notes for LLMs
+
+- 엄격한 TDD와 측정-후-주장: 벤치마크 근거가 없는 숫자는 받아들여지지
+  않습니다; fail-closed 게이트는 테스트를 통과시키기 위해 절대 약화되어서는
+  안 됩니다.
+- 압축은 요청 측에서만 이루어집니다 — 모델 응답은 변경 없이 그대로
+  스트리밍됩니다.
+- 프록시는 로컬 우선입니다: 그 외 어떤 것도 제3자에게 전송되지 않습니다.
+
+## Links
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (네이티브 엔진을 갖춘 패밀리 게이트웨이):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

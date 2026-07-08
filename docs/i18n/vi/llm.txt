@@ -1,0 +1,67 @@
+# OmniGlyph
+
+> Proxy nén ngữ cảnh dưới dạng hình ảnh cho LLM. Một proxy cục bộ viết lại
+> các phần cồng kềnh của mỗi request (system prompt, tài liệu công cụ,
+> lịch sử cũ, kết quả công cụ lớn) thành các trang PNG 1-bit dày đặc trước
+> khi chúng rời khỏi máy, sử dụng công thức tính phí chính xác theo từng
+> nhà cung cấp (Anthropic/OpenAI/Gemini) để chỉ chuyển đổi khi phép tính
+> token có lợi. Mức giảm hóa đơn đầu-cuối đã đo lường: 59–70%. Một phần
+> của gia đình OmniRoute; cũng được phân phối như engine nén `omniglyph`
+> bên trong OmniRoute.
+
+**Giá trị cốt lõi:** trỏ bất kỳ công cụ tương thích Anthropic nào đến
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` và ngữ cảnh cồng kềnh sẽ được
+tính phí như token hình ảnh (~19 ký tự/token) thay vì token văn bản
+(~2 ký tự/token).
+
+**Phiên bản hiện tại:** 1.0.0 · **Giấy phép:** MIT · **Runtime:** Node ≥18
+và Cloudflare Workers.
+
+## Cách hoạt động
+
+1. Gate lợi nhuận: tính toán phí hình ảnh chính xác của nhà cung cấp
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + overhead khối, đo được với độ dư bằng
+   không) và chỉ chuyển đổi khi tiết kiệm được token.
+2. Gate mô hình (fail-closed): chỉ những mô hình đã vượt qua benchmark đọc
+   mới nhận hình ảnh. Được phê duyệt hiện nay: Claude Fable 5 (100% đọc
+   chính xác). Bị chặn có bằng chứng: GPT-5.5 (0/60), Gemini 2.5-flash
+   (bịa đặt), Opus 4.8 chỉ ở chế độ an toàn tùy chọn (glyph 4×).
+3. Render: reflow + atlas glyph 1-bit 5×8 → trang PNG tiêu chuẩn
+   1568×728 (tier độ phân giải cao là một cái bẫy tính phí đã đo lường —
+   không được sử dụng).
+4. Ghép các trang lại một cách thân thiện với cache; các giá trị chính
+   xác từng byte (hash/ID) đi kèm dưới dạng văn bản; các lần đọc thất bại
+   sẽ tự nhận là không đọc được (không có bịa đặt âm thầm nào trong ~300
+   phép thử).
+5. Thử lại khi bị từ chối: nếu mô hình từ chối trang đã render, request
+   gốc sẽ được phát lại tự động.
+
+## Cấu trúc dự án
+
+- `src/core/` — pipeline biến đổi, công thức tính phí chính xác, bộ
+  render, cache render LRU, proxy với thử lại khi bị từ chối. Công thức
+  tính phí được export tại package root.
+- `src/node.ts` — host cục bộ với dashboard (token đã tiết kiệm, các lần
+  chuyển đổi đặt cạnh nhau, công tắc tắt khẩn cấp). `src/worker.ts` —
+  host cho Cloudflare Workers.
+- `benchmarks/` — bộ khung billing-sweep và density-frontier; mọi con số
+  được công bố đều có bằng chứng JSONL trong `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (phương pháp + kết quả), ops/
+  (runbook OmniRoute), i18n/pt-BR/.
+
+## Ghi chú quan trọng cho LLM
+
+- TDD nghiêm ngặt và đo lường trước khi khẳng định: các con số không có
+  bằng chứng benchmark sẽ không được chấp nhận; các gate fail-closed
+  không bao giờ được làm yếu đi để giúp bài kiểm thử vượt qua.
+- Việc nén chỉ diễn ra ở phía request — phản hồi của mô hình vẫn stream
+  không thay đổi.
+- Proxy ưu tiên cục bộ: không có gì thêm được gửi đến bất kỳ bên thứ ba
+  nào.
+
+## Liên kết
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (gateway gia đình với engine gốc):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

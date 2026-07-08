@@ -1,0 +1,60 @@
+# OmniGlyph
+
+> Context-as-image compression proxy for LLMs. A local proxy that rewrites the
+> bulky parts of each request (system prompt, tool docs, old history, large
+> tool outputs) into dense 1-bit PNG pages before they leave the machine,
+> using exact per-provider billing math (Anthropic/OpenAI/Gemini) so it only
+> converts when the token math wins. Measured end-to-end bill reduction:
+> 59–70%. Part of the OmniRoute family; also ships as the `omniglyph`
+> compression engine inside OmniRoute.
+
+**Key value:** point any Anthropic-compatible tool at
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` and bulky context is billed as
+image tokens (~19 chars/token) instead of text tokens (~2 chars/token).
+
+**Current version:** 1.0.0 · **License:** MIT · **Runtime:** Node ≥18 and
+Cloudflare Workers.
+
+## How it works
+
+1. Profitability gate: computes the provider's exact image billing
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + block overhead, measured to residual zero)
+   and converts only when it saves tokens.
+2. Model gate (fail-closed): only models that passed the reading benchmark
+   receive images. Approved today: Claude Fable 5 (100% exact reads).
+   Blocked with proof: GPT-5.5 (0/60), Gemini 2.5-flash (confabulates),
+   Opus 4.8 only in opt-in safe mode (4× glyphs).
+3. Render: reflow + 1-bit 5×8 glyph atlas → standard 1568×728 PNG pages
+   (the high-resolution tier is a measured billing trap — not used).
+4. Splice pages back cache-friendly; byte-exact values (hashes/IDs) ride
+   alongside as text; failed reads abstain (zero silent confabulations in
+   ~300 probes).
+5. Refusal retry: if the model refuses the rendered page, the original
+   request is replayed automatically.
+
+## Project structure
+
+- `src/core/` — transform pipeline, exact billing math, renderer, LRU render
+  cache, proxy with refusal-retry. Billing math exported at package root.
+- `src/node.ts` — local host with dashboard (tokens saved, side-by-side
+  conversions, kill switch). `src/worker.ts` — Cloudflare Workers host.
+- `benchmarks/` — billing-sweep and density-frontier harnesses; every
+  published number has a JSONL receipt in `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (methodology + results), ops/
+  (OmniRoute runbook), i18n/pt-BR/.
+
+## Important notes for LLMs
+
+- Strict TDD and measurement-before-claims: numbers without benchmark
+  receipts are not accepted; fail-closed gates must never be weakened to
+  make tests pass.
+- Compression is request-side only — model responses stream through
+  untouched.
+- The proxy is local-first: nothing extra is sent to any third party.
+
+## Links
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (family gateway with the native engine):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

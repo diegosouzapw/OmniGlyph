@@ -1,0 +1,63 @@
+# OmniGlyph
+
+> LLM'ler için görüntü olarak bağlam sıkıştırma proxy'si. Her isteğin hacimli
+> parçalarını (system prompt, araç dokümanları, eski geçmiş, büyük araç
+> çıktıları), sağlayıcı başına tam faturalama matematiği (Anthropic/OpenAI/
+> Gemini) kullanarak makineden çıkmadan önce yoğun 1-bit PNG sayfalara
+> dönüştüren yerel bir proxy — böylece yalnızca token matematiği kazandığında
+> dönüştürür. Ölçülen uçtan uca fatura azalması: %59–70. OmniRoute ailesinin
+> bir parçasıdır; ayrıca OmniRoute içinde `omniglyph` sıkıştırma motoru
+> olarak da gönderilir.
+
+**Temel değer:** Anthropic uyumlu herhangi bir aracı
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` adresine yönlendirin ve hacimli
+bağlam, metin token'ları (~2 karakter/token) yerine görüntü token'ları
+(~19 karakter/token) olarak faturalandırılır.
+
+**Güncel sürüm:** 1.0.0 · **Lisans:** MIT · **Runtime:** Node ≥18 ve
+Cloudflare Workers.
+
+## Nasıl çalışır
+
+1. Kârlılık kapısı: sağlayıcının tam görüntü faturalamasını hesaplar
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + blok ek yükü, sıfır kalıntıya ölçülmüş) ve
+   yalnızca token tasarrufu sağladığında dönüştürür.
+2. Model kapısı (fail-closed): yalnızca okuma benchmark'ını geçen modeller
+   görüntü alır. Bugün onaylı: Claude Fable 5 (%100 tam okuma). Kanıtla
+   engellenen: GPT-5.5 (0/60), Gemini 2.5-flash (uyduruyor), Opus 4.8
+   yalnızca opt-in güvenli modda (4× glif).
+3. Render: yeniden akış + 1-bit 5×8 glif atlası → standart 1568×728 PNG
+   sayfalar (yüksek çözünürlüklü katman ölçülen bir faturalama tuzağıdır —
+   kullanılmıyor).
+4. Sayfaları cache-dostu şekilde geri ekler; byte-tam değerler (hash'ler/
+   ID'ler) metin olarak yanında taşınır; başarısız okumalar çekimser kalır
+   (~300 probda sıfır sessiz uydurma).
+5. Refuzal yeniden denemesi: model render edilmiş sayfayı reddederse,
+   orijinal istek otomatik olarak yeniden oynatılır.
+
+## Proje yapısı
+
+- `src/core/` — dönüştürme pipeline'ı, tam faturalama matematiği, render
+  motoru, LRU render önbelleği, refuzal-yeniden-deneme özellikli proxy.
+  Faturalama matematiği paket kökünde dışa aktarılır.
+- `src/node.ts` — dashboard'lu yerel host (kaydedilen tokenlar, yan yana
+  dönüşümler, kill switch). `src/worker.ts` — Cloudflare Workers host'u.
+- `benchmarks/` — billing-sweep ve density-frontier harness'leri; yayınlanan
+  her rakamın `benchmarks/*/results/` içinde bir JSONL kanıtı vardır.
+- `docs/` — architecture/, benchmarks/ (metodoloji + sonuçlar), ops/
+  (OmniRoute runbook'u), i18n/pt-BR/.
+
+## LLM'ler için önemli notlar
+
+- Sıkı TDD ve iddiadan önce ölçüm: benchmark kanıtı olmayan rakamlar kabul
+  edilmez; fail-closed kapılar testleri geçirmek için asla zayıflatılmamalıdır.
+- Sıkıştırma yalnızca istek tarafındadır — model yanıtları değişmeden
+  stream edilir.
+- Proxy yerel öncelikli: hiçbir üçüncü tarafa fazladan bir şey gönderilmez.
+
+## Bağlantılar
+
+- Depo: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (yerel motorlu aile gateway'i):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

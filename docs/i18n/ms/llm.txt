@@ -1,0 +1,67 @@
+# OmniGlyph
+
+> Proksi pemampatan konteks-sebagai-imej untuk LLM. Proksi tempatan yang
+> menulis semula bahagian-bahagian besar setiap permintaan (system prompt,
+> dokumentasi alat, sejarah lama, output alat yang besar) menjadi halaman
+> PNG 1-bit padat sebelum meninggalkan mesin, menggunakan matematik
+> pengebilan tepat bagi setiap penyedia (Anthropic/OpenAI/Gemini) supaya ia
+> hanya menukar apabila pengiraan token menguntungkan. Pengurangan bil
+> hujung ke hujung yang diukur: 59–70%. Sebahagian daripada keluarga
+> OmniRoute; juga dihantar sebagai enjin pemampatan `omniglyph` di dalam
+> OmniRoute.
+
+**Nilai utama:** arahkan mana-mana alat serasi Anthropic ke
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` dan konteks besar dikenakan bil
+sebagai token imej (~19 aksara/token) berbanding token teks (~2
+aksara/token).
+
+**Versi semasa:** 1.0.0 · **Lesen:** MIT · **Runtime:** Node ≥18 dan
+Cloudflare Workers.
+
+## Bagaimana ia berfungsi
+
+1. Get keuntungan: mengira pengebilan imej tepat penyedia (Anthropic:
+   ⌈w/28⌉ × ⌈h/28⌉ + overhed blok, diukur hingga baki sifar) dan hanya
+   menukar apabila ia menjimatkan token.
+2. Get model (gagal-tertutup): hanya model yang lulus penanda aras bacaan
+   menerima imej. Diluluskan hari ini: Claude Fable 5 (100% bacaan tepat).
+   Disekat dengan bukti: GPT-5.5 (0/60), Gemini 2.5-flash (mengarang
+   jawapan), Opus 4.8 hanya dalam mod selamat opt-in (glif 4×).
+3. Render: reflow + atlas glif 1-bit 5×8 → halaman PNG standard 1568×728
+   (tingkat resolusi tinggi ialah perangkap pengebilan yang diukur — tidak
+   digunakan).
+4. Sambung semula halaman secara mesra cache; nilai tepat-bait (hash/ID)
+   mengiringi sebagai teks; bacaan yang gagal menahan diri (sifar
+   konfabulasi senyap dalam ~300 ujian).
+5. Cuba semula penolakan: jika model menolak halaman yang dirender,
+   permintaan asal dihantar semula secara automatik.
+
+## Struktur projek
+
+- `src/core/` — saluran transformasi, matematik pengebilan tepat, perender,
+  cache render LRU, proksi dengan cuba-semula-penolakan. Matematik
+  pengebilan dieksport pada akar pakej.
+- `src/node.ts` — hos tempatan dengan papan pemuka (token dijimatkan,
+  penukaran bersebelahan, suis kill). `src/worker.ts` — hos Cloudflare
+  Workers.
+- `benchmarks/` — harness billing-sweep dan density-frontier; setiap angka
+  yang diterbitkan mempunyai resit JSONL dalam `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodologi + hasil), ops/ (buku
+  panduan OmniRoute), i18n/pt-BR/.
+
+## Nota penting untuk LLM
+
+- TDD ketat dan pengukuran-sebelum-dakwaan: angka tanpa resit penanda aras
+  tidak diterima; get gagal-tertutup tidak boleh dilemahkan untuk melepasi
+  ujian.
+- Pemampatan hanya di sisi permintaan — respons model mengalir tanpa
+  disentuh.
+- Proksi ini tempatan-dahulu: tiada apa-apa tambahan dihantar kepada mana-mana
+  pihak ketiga.
+
+## Pautan
+
+- Repositori: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (get laluan keluarga dengan enjin asli):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

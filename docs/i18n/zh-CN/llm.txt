@@ -1,0 +1,54 @@
+# OmniGlyph
+
+> 面向 LLM 的"上下文即图像"压缩代理。一个本地代理,会在每个请求
+> 离开机器之前,将其中臃肿的部分(系统提示词、工具文档、旧历史记录、
+> 大型工具输出)重写为高密度的 1-bit PNG 页面,使用按服务商精确的计费数学
+> (Anthropic/OpenAI/Gemini),因此只在 token 数学上划算时才转换。
+> 已测得的端到端账单降幅:59–70%。隶属于 OmniRoute 家族;
+> 同时也作为 `omniglyph` 压缩引擎内置于 OmniRoute 中。
+
+**核心价值:** 将任何兼容 Anthropic 的工具指向
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821`,臃肿的上下文就会被按图像 token
+(约 19 字符/token)而非文本 token(约 2 字符/token)计费。
+
+**当前版本:** 1.0.0 · **许可证:** MIT · **运行时:** Node ≥18 与
+Cloudflare Workers。
+
+## 工作原理
+
+1. 盈利性门控:计算服务商精确的图像计费(Anthropic:
+   ⌈w/28⌉ × ⌈h/28⌉ + 区块开销,测得残差为零),只在能节省 token 时才转换。
+2. 模型门控(失败即关闭):只有通过阅读基准测试的模型才会收到图像。
+   目前已批准:Claude Fable 5(精确读取率 100%)。
+   已拦截并有实证:GPT-5.5(0/60)、Gemini 2.5-flash(会虚构),
+   Opus 4.8 仅在可选安全模式下可用(4 倍字形)。
+3. 渲染:重排 + 1-bit 5×8 字形图集 → 标准 1568×728 PNG 页面
+   (高分辨率档位是经测量的计费陷阱——未启用)。
+4. 以缓存友好的方式将页面拼回;字节精确的值(哈希/ID)以文本形式随之
+   传输;读取失败会主动弃权(约 300 次探测中零静默虚构)。
+5. 拒绝重试:如果模型拒绝渲染出的页面,原始请求会被自动重放。
+
+## 项目结构
+
+- `src/core/` —— 转换流水线、精确计费数学、渲染器、LRU 渲染缓存、
+  带拒绝重试的代理。计费数学在包根导出。
+- `src/node.ts` —— 带仪表盘的本地宿主(已节省的 token 数、并排对比的转换、
+  终止开关)。`src/worker.ts` —— Cloudflare Workers 宿主。
+- `benchmarks/` —— billing-sweep 与 density-frontier 测试套件;每个公开
+  发布的数字都在 `benchmarks/*/results/` 中有对应的 JSONL 凭据。
+- `docs/` —— architecture/、benchmarks/(方法论 + 结果)、ops/
+  (OmniRoute 运维手册)、i18n/pt-BR/。
+
+## LLM 需要注意的重要事项
+
+- 严格 TDD 与先测量后声明:没有基准测试凭据支撑的数字不予接受;
+  失败即关闭的门控绝不能为了让测试通过而被削弱。
+- 压缩只发生在请求侧——模型的响应会原样流式传输,不受影响。
+- 该代理是本地优先的:不会有额外内容被发送给任何第三方。
+
+## 链接
+
+- 代码仓库:https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute(内置原生引擎的家族网关):
+  https://github.com/diegosouzapw/OmniRoute
+- npm:https://www.npmjs.com/package/omniglyph

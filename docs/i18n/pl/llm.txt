@@ -1,0 +1,68 @@
+# OmniGlyph
+
+> Proxy kompresujący kontekst jako obraz dla LLM. Lokalny proxy, który
+> przepisuje rozbudowane części każdego zapytania (system prompt,
+> dokumentacja narzędzi, stara historia, duże wyniki narzędzi) na gęste
+> strony PNG 1-bit, zanim opuszczą maszynę, wykorzystując dokładną
+> matematykę rozliczeń per dostawca (Anthropic/OpenAI/Gemini), tak aby
+> konwertować tylko wtedy, gdy matematyka tokenów się opłaca. Zmierzona
+> redukcja rachunku end-to-end: 59–70%. Część rodziny OmniRoute; dostarczany
+> również jako silnik kompresji `omniglyph` wewnątrz OmniRoute.
+
+**Kluczowa wartość:** skieruj dowolne narzędzie kompatybilne z Anthropic na
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821`, a rozbudowany kontekst zostanie
+rozliczony jako tokeny obrazu (~19 znaków/token) zamiast tokenów tekstowych
+(~2 znaki/token).
+
+**Aktualna wersja:** 1.0.0 · **Licencja:** MIT · **Środowisko uruchomieniowe:**
+Node ≥18 i Cloudflare Workers.
+
+## Jak to działa
+
+1. Bramka opłacalności: oblicza dokładne rozliczenie obrazu dostawcy
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + narzut blokowy, zmierzone do zerowej
+   reszty) i konwertuje tylko wtedy, gdy oszczędza tokeny.
+2. Bramka modelu (zamknięta w razie awarii): tylko modele, które przeszły
+   benchmark odczytu, otrzymują obrazy. Zatwierdzony dziś: Claude Fable 5
+   (100% dokładnych odczytów). Zablokowane z dowodem: GPT-5.5 (0/60),
+   Gemini 2.5-flash (konfabuluje), Opus 4.8 tylko w opcjonalnym trybie
+   bezpiecznym (4× glify).
+3. Renderowanie: reflow + atlas glifów 1-bit 5×8 → standardowe strony PNG
+   1568×728 (poziom wysokiej rozdzielczości to zmierzona pułapka
+   rozliczeniowa — nieużywany).
+4. Sklejenie stron z powrotem w sposób przyjazny dla cache; wartości
+   dokładne co do bajtu (hashe/identyfikatory) jadą obok jako tekst;
+   nieudane odczyty się wstrzymują (zero cichych konfabulacji w ~300
+   próbach).
+5. Ponawianie przy odmowie: jeśli model odmawia renderowanej strony,
+   oryginalne zapytanie jest automatycznie odtwarzane.
+
+## Struktura projektu
+
+- `src/core/` — potok transformacji, dokładna matematyka rozliczeń,
+  renderer, pamięć podręczna LRU renderowania, proxy z ponawianiem przy
+  odmowie. Matematyka rozliczeń eksportowana w rdzeniu pakietu.
+- `src/node.ts` — lokalny host z panelem (zaoszczędzone tokeny, konwersje
+  obok siebie, wyłącznik awaryjny). `src/worker.ts` — host Cloudflare
+  Workers.
+- `benchmarks/` — zestawy billing-sweep i density-frontier; każda
+  opublikowana liczba ma dowód JSONL w `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodologia + wyniki), ops/
+  (podręcznik OmniRoute), i18n/pt-BR/.
+
+## Ważne uwagi dla LLM
+
+- Ścisłe TDD i pomiar przed twierdzeniami: liczby bez dowodów z
+  benchmarków nie są akceptowane; bramki zamknięte w razie awarii nigdy nie
+  mogą być osłabiane, aby testy przeszły.
+- Kompresja dotyczy wyłącznie strony zapytania — odpowiedzi modelu
+  strumieniują bez zmian.
+- Proxy jest lokalny w pierwszej kolejności: nic dodatkowego nie jest
+  wysyłane do żadnej strony trzeciej.
+
+## Linki
+
+- Repozytorium: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (brama rodzinna z natywnym silnikiem):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

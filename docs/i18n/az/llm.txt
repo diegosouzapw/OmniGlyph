@@ -1,0 +1,61 @@
+# OmniGlyph
+
+> LLM-lər üçün kontekst-şəkil-kimi sıxma proksisi. Hər sorğunun həcmli hissələrini
+> (system prompt, alət sənədləri, köhnə tarixçə, böyük alət çıxışları) maşından
+> çıxmazdan əvvəl sıx 1-bit PNG səhifələrinə yenidən yazan lokal proksi, provayder
+> üzrə dəqiq billinq riyaziyyatından (Anthropic/OpenAI/Gemini) istifadə edərək, ona
+> görə yalnız token riyaziyyatı udanda çevirir. Ölçülmüş uçdan-uca hesab azalması:
+> 59–70%. OmniRoute ailəsinin bir hissəsidir; həmçinin OmniRoute daxilində
+> `omniglyph` sıxma mühərriki kimi çıxış edir.
+
+**Əsas dəyər:** hər hansı Anthropic-uyğun aləti
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` ünvanına yönləndirin və həcmli kontekst
+mətn tokenləri (~2 simvol/token) əvəzinə şəkil tokenləri kimi (~19 simvol/token)
+hesablanır.
+
+**Cari versiya:** 1.0.0 · **Lisenziya:** MIT · **İşləmə mühiti:** Node ≥18 və
+Cloudflare Workers.
+
+## Necə işləyir
+
+1. Sərfəlilik qapısı: provayderin dəqiq şəkil billinqini hesablayır (Anthropic:
+   ⌈w/28⌉ × ⌈h/28⌉ + blok yükü, sıfır qalığa qədər ölçülüb) və yalnız token qənaət
+   edəndə çevirir.
+2. Model qapısı (fail-closed): yalnız oxu benchmarkını keçmiş modellər şəkil alır.
+   Bu gün təsdiqlənib: Claude Fable 5 (100% dəqiq oxular). Sübutla bloklanıb:
+   GPT-5.5 (0/60), Gemini 2.5-flash (uydurur), Opus 4.8 yalnız könüllü təhlükəsiz
+   rejimdə (4× qliflər).
+3. Render: yenidən düzülüş + 1-bit 5×8 qlif atlası → standart 1568×728 PNG
+   səhifələri (yüksək-çözünürlük səviyyəsi ölçülmüş billinq tələsidir — istifadə
+   edilmir).
+4. Səhifələr geri calanır, keşə dost; bayt-dəqiq dəyərlər (hash/ID) mətn kimi
+   yanında gedir; uğursuz oxular imtina edir (~300 sınaqda sıfır sükutlu uydurma).
+5. İmtina üzrə təkrar cəhd: model render olunmuş səhifəni imtina edərsə, orijinal
+   sorğu avtomatik təkrarlanır.
+
+## Layihə strukturu
+
+- `src/core/` — transformasiya boru xətti, dəqiq billinq riyaziyyatı, renderer, LRU
+  render keşi, imtina-üzrə-təkrar-cəhdli proksi. Billinq riyaziyyatı paket kökündə
+  ixrac olunur.
+- `src/node.ts` — panel ilə lokal host (qənaət edilən tokenlər, yan-yana çevrilmələr,
+  öldürmə açarı). `src/worker.ts` — Cloudflare Workers hostu.
+- `benchmarks/` — billing-sweep və density-frontier hərnəsləri; hər dərc edilmiş
+  rəqəmin `benchmarks/*/results/`-da JSONL qəbzi var.
+- `docs/` — architecture/, benchmarks/ (metodologiya + nəticələr), ops/ (OmniRoute
+  runbook-u), i18n/pt-BR/.
+
+## LLM-lər üçün vacib qeydlər
+
+- Ciddi TDD və iddiadan-əvvəl-ölçmə: benchmark qəbzi olmayan rəqəmlər qəbul edilmir;
+  fail-closed qapılar testləri keçirmək üçün heç vaxt zəiflədilməməlidir.
+- Sıxma yalnız sorğu tərəfindədir — model cavabları toxunulmadan axır.
+- Proksi lokal-öncəliklidir: heç bir əlavə məlumat hər hansı üçüncü tərəfə
+  göndərilmir.
+
+## Bağlantılar
+
+- Repozitoriya: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (doğma mühərrikli ailə şlüzü):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

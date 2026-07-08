@@ -1,0 +1,12 @@
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - workerd
+
+# Supply-chain hardening: refuse to install any package version published
+# less than 3 days ago. Catches the typical malicious-package lifecycle
+# (publish → discovered → unpublished within hours/days). Legitimate
+# security patches also wait 3 days; that's a deliberate trade-off for a
+# repo we update manually.
+minimumReleaseAge: 4320  # minutes (= 3 days)
+# minimumReleaseAgeExclude:  # add packages here if a fast follow is needed

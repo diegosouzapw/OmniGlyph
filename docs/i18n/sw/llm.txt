@@ -1,0 +1,66 @@
+# OmniGlyph
+
+> Proxy ya ubanaji wa muktadha-kama-picha kwa LLM. Proxy ya ndani
+> inayobadilisha sehemu nzito za kila ombi (maelekezo ya mfumo, hati za zana,
+> historia ya zamani, matokeo makubwa ya zana) kuwa kurasa mnene za PNG za
+> bit-1 kabla hazijatoka kwenye kompyuta, kwa kutumia hesabu sahihi ya bili
+> kwa kila mtoa huduma (Anthropic/OpenAI/Gemini) ili ibadilishe tu pale
+> hesabu ya token inapofaidisha. Upunguzaji wa bili wa mwanzo hadi mwisho
+> uliopimwa: 59–70%. Sehemu ya familia ya OmniRoute; pia hutolewa kama injini
+> ya ubanaji ya `omniglyph` ndani ya OmniRoute.
+
+**Thamani kuu:** elekeza chombo chochote kinachooana na Anthropic kwenda
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` na muktadha mzito hutozwa kama
+token za picha (~herufi 19 kwa kila token) badala ya token za maandishi
+(~herufi 2 kwa kila token).
+
+**Toleo la sasa:** 1.0.0 · **Leseni:** MIT · **Muda wa uendeshaji:** Node ≥18
+na Cloudflare Workers.
+
+## Jinsi inavyofanya kazi
+
+1. Lango la faida: huhesabu bili sahihi ya picha ya mtoa huduma (Anthropic:
+   ⌈w/28⌉ × ⌈h/28⌉ + gharama ya kizuizi, iliyopimwa hadi mabaki sifuri) na
+   hubadilisha tu pale inapookoa token.
+2. Lango la muundo (kufunga-kushindwa): miundo iliyofaulu kigezo cha usomaji
+   pekee ndiyo hupokea picha. Iliyoidhinishwa leo: Claude Fable 5 (usomaji
+   sahihi 100%). Imezuiwa kwa uthibitisho: GPT-5.5 (0/60), Gemini 2.5-flash
+   (hubuni), Opus 4.8 katika hali salama ya hiari pekee (herufi mara 4).
+3. Uchoraji: upangaji upya + atlasi ya glyph ya bit-1 5×8 → kurasa za PNG za
+   ngazi ya kawaida 1568×728 (ngazi ya ubora wa juu ni mtego wa bili
+   uliopimwa — haitumiki).
+4. Kuunganisha kurasa nyuma kwa urafiki wa kache; thamani sahihi kabisa
+   (hashi/vitambulisho) husafiri pamoja kama maandishi; usomaji uliofeli
+   hujiepusha (uvumbuzi wa kimya sifuri katika majaribio ~300).
+5. Kujaribu tena baada ya kukataliwa: ikiwa muundo unakataa ukurasa
+   uliochorwa, ombi la asili hurudiwa moja kwa moja.
+
+## Muundo wa mradi
+
+- `src/core/` — mfumo wa ubadilishaji, hesabu sahihi ya bili, kichoraji,
+  kache ya LRU ya uchoraji, proxy yenye kujaribu tena baada ya kukataliwa.
+  Hesabu ya bili imesafirishwa kwenye mzizi wa pakiti.
+- `src/node.ts` — mwenyeji wa ndani na dashibodi (token zilizookolewa,
+  ubadilishaji bega kwa bega, kizima cha dharura). `src/worker.ts` — mwenyeji
+  wa Cloudflare Workers.
+- `benchmarks/` — mifumo ya billing-sweep na density-frontier; kila nambari
+  iliyochapishwa ina risiti ya JSONL katika `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (mbinu + matokeo), ops/ (mwongozo wa
+  uendeshaji wa OmniRoute), i18n/pt-BR/.
+
+## Maelezo muhimu kwa LLM
+
+- TDD kali na upimaji-kabla-ya-madai: nambari bila risiti za kipimo
+  hazikubaliwi; malango ya kufunga-kushindwa hayapaswi kamwe kudhoofishwa ili
+  majaribio yapite.
+- Ubanaji ni upande wa ombi pekee — majibu ya muundo hutiririka bila
+  kuguswa.
+- Proxy ni ya ndani kwanza: hakuna kitu cha ziada kinachotumwa kwa mhusika
+  wa tatu yeyote.
+
+## Viungo
+
+- Hazina: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (lango la familia lenye injini asilia):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

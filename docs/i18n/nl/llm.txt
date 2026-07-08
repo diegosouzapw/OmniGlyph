@@ -1,0 +1,65 @@
+# OmniGlyph
+
+> Context-als-afbeelding compressieproxy voor LLM's. Een lokale proxy die de
+> omvangrijke delen van elk verzoek (systeemprompt, tool-documentatie, oude
+> geschiedenis, grote tool-uitvoer) herschrijft naar dichte 1-bit
+> PNG-pagina's voordat ze de machine verlaten, met behulp van exacte
+> billing-wiskunde per provider (Anthropic/OpenAI/Gemini), zodat er alleen
+> wordt geconverteerd wanneer de token-wiskunde in het voordeel uitvalt.
+> Gemeten end-to-end rekeningreductie: 59–70%. Onderdeel van de OmniRoute-
+> familie; wordt ook geleverd als de `omniglyph`-compressie-engine binnen
+> OmniRoute.
+
+**Kernwaarde:** richt elke Anthropic-compatibele tool op
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` en omvangrijke context wordt
+gefactureerd als image-tokens (~19 tekens/token) in plaats van tekst-tokens
+(~2 tekens/token).
+
+**Huidige versie:** 1.0.0 · **Licentie:** MIT · **Runtime:** Node ≥18 en
+Cloudflare Workers.
+
+## Hoe het werkt
+
+1. Winstgevendheidspoort: berekent de exacte image-billing van de provider
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + blok-overhead, gemeten tot residueel nul)
+   en converteert alleen wanneer dit tokens bespaart.
+2. Modelpoort (fail-closed): alleen modellen die de leesbenchmark haalden,
+   ontvangen afbeeldingen. Vandaag goedgekeurd: Claude Fable 5 (100% exacte
+   lezingen). Geblokkeerd met bewijs: GPT-5.5 (0/60), Gemini 2.5-flash
+   (confabuleert), Opus 4.8 alleen in opt-in veilige modus (4× glyfen).
+3. Render: reflow + 1-bit 5×8 glyf-atlas → standaard 1568×728 PNG-pagina's
+   (de high-resolution tier is een gemeten billing-valkuil — niet gebruikt).
+4. Voeg pagina's cache-vriendelijk terug samen; byte-exacte waarden
+   (hashes/ID's) reizen als tekst mee; mislukte lezingen onthouden zich
+   (nul stille confabulaties in ~300 probes).
+5. Weigering-retry: als het model de gerenderde pagina weigert, wordt het
+   originele verzoek automatisch opnieuw afgespeeld.
+
+## Projectstructuur
+
+- `src/core/` — transformatiepijplijn, exacte billing-wiskunde, renderer,
+  LRU-rendercache, proxy met weigering-retry. Billing-wiskunde geëxporteerd
+  op de package-root.
+- `src/node.ts` — lokale host met dashboard (bespaarde tokens,
+  naast-elkaar-conversies, noodstop). `src/worker.ts` — Cloudflare
+  Workers-host.
+- `benchmarks/` — billing-sweep- en density-frontier-harnesses; elk
+  gepubliceerd cijfer heeft een JSONL-bewijs in `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (methodologie + resultaten), ops/
+  (OmniRoute-runbook), i18n/pt-BR/.
+
+## Belangrijke opmerkingen voor LLM's
+
+- Strikte TDD en meting-vóór-beweringen: cijfers zonder benchmarkbewijzen
+  worden niet geaccepteerd; fail-closed poorten mogen nooit worden verzwakt
+  om tests te laten slagen.
+- Compressie vindt alleen aan de verzoekzijde plaats — modelantwoorden
+  stromen ongewijzigd door.
+- De proxy is local-first: er wordt niets extra's naar derden verzonden.
+
+## Links
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (familie-gateway met de native engine):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

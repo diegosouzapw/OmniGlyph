@@ -1,0 +1,63 @@
+# OmniGlyph
+
+> LLMகளுக்கான Context-as-image compression proxy. ஒவ்வொரு requestன் அடர்த்தியான
+> பகுதிகளையும் (system prompt, tool docs, பழைய history, பெரிய tool outputs)
+> அவை மெஷினை விட்டு வெளியேறும் முன்பே அடர்த்தியான 1-bit PNG பக்கங்களாக
+> மீண்டும் எழுதும் ஒரு local proxy, ஒவ்வொரு providerக்கும் (Anthropic/OpenAI/Gemini)
+> exact billing math பயன்படுத்தி, token math வெற்றி பெறும்போது மட்டுமே
+> மாற்றுகிறது. அளவிடப்பட்ட end-to-end bill reduction: 59–70%. OmniRoute
+> குடும்பத்தின் ஒரு பகுதி; OmniRouteக்குள் `omniglyph` compression engineஆகவும்
+> அனுப்பப்படுகிறது.
+
+**முக்கிய மதிப்பு:** எந்த Anthropic-compatible toolஐயும்
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821`-இல் point செய்யுங்கள் மேலும்
+அடர்த்தியான context text tokens (~2 chars/token)க்கு பதிலாக image tokens
+(~19 chars/token) ஆக பில் செய்யப்படும்.
+
+**தற்போதைய version:** 1.0.0 · **License:** MIT · **Runtime:** Node ≥18 மற்றும்
+Cloudflare Workers.
+
+## இது எப்படி வேலை செய்கிறது
+
+1. Profitability gate: providerஇன் exact image billingஐ கணக்கிடுகிறது
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + block overhead, பூஜ்ஜிய residual வரை அளவிடப்பட்டது)
+   மேலும் tokens சேமிக்கும்போது மட்டுமே மாற்றுகிறது.
+2. Model gate (fail-closed): reading benchmarkஐ pass செய்த மாடல்கள் மட்டுமே
+   images பெறுகின்றன. இன்று அங்கீகரிக்கப்பட்டது: Claude Fable 5 (100% exact
+   reads). ஆதாரத்துடன் தடுக்கப்பட்டது: GPT-5.5 (0/60), Gemini 2.5-flash
+   (confabulates), Opus 4.8 opt-in safe modeஇல் மட்டும் (4× glyphs).
+3. Render: reflow + 1-bit 5×8 glyph atlas → standard 1568×728 PNG பக்கங்கள்
+   (high-resolution tier ஒரு அளவிடப்பட்ட billing trap — பயன்படுத்தப்படவில்லை).
+4. பக்கங்களை cache-friendly ஆக மீண்டும் இணைக்கிறது; byte-exact values
+   (hashes/IDs) உரையாக அருகில் பயணிக்கின்றன; தோல்வியுற்ற reads தவிர்க்கின்றன
+   (~300 probesஇல் பூஜ்ஜிய silent confabulations).
+5. Refusal retry: மாடல் rendered பக்கத்தை refuse செய்தால், அசல் request
+   தானாகவே replay செய்யப்படுகிறது.
+
+## திட்ட கட்டமைப்பு
+
+- `src/core/` — transform pipeline, exact billing math, renderer, LRU render
+  cache, refusal-retryஉடன் proxy. Package rootஇல் billing math export
+  செய்யப்பட்டது.
+- `src/node.ts` — dashboardஉடன் local host (சேமிக்கப்பட்ட tokens, side-by-side
+  conversions, kill switch). `src/worker.ts` — Cloudflare Workers host.
+- `benchmarks/` — billing-sweep மற்றும் density-frontier harnesses; ஒவ்வொரு
+  வெளியிடப்பட்ட எண்ணுக்கும் `benchmarks/*/results/`-இல் ஒரு JSONL ஆதாரம் உள்ளது.
+- `docs/` — architecture/, benchmarks/ (methodology + results), ops/
+  (OmniRoute runbook), i18n/pt-BR/.
+
+## LLMகளுக்கான முக்கியமான குறிப்புகள்
+
+- Strict TDD மற்றும் measurement-before-claims: benchmark ஆதாரங்கள் இல்லாத
+  எண்கள் ஏற்றுக்கொள்ளப்படாது; testsஐ pass செய்ய fail-closed gates ஒருபோதும்
+  பலவீனப்படுத்தப்படக்கூடாது.
+- Compression request-side மட்டுமே — model responses மாறாமல் stream செய்யப்படுகின்றன.
+- Proxy local-first: எந்த மூன்றாம் தரப்பினருக்கும் கூடுதலாக எதுவும்
+  அனுப்பப்படுவதில்லை.
+
+## Links
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (native engineஉடன் family gateway):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

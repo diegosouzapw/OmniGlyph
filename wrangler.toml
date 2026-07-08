@@ -1,0 +1,21 @@
+name = "omniglyph"
+main = "src/worker.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat_v2"]
+
+# Anthropic upstream is fetched via global fetch — no special bindings needed.
+# Set secrets via: wrangler secret put ANTHROPIC_API_KEY (optional passthrough)
+
+[vars]
+ANTHROPIC_UPSTREAM = "https://api.anthropic.com"
+COMPRESS = "1"
+MIN_COMPRESS_CHARS = "2000"
+FONT_PX = "15"
+
+# Uncomment to ship to a workers.dev subdomain
+# workers_dev = true
+
+# Or attach a custom route:
+# routes = [
+#   { pattern = "OmniGlyph.example.com/*", zone_name = "example.com" }
+# ]

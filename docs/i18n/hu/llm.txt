@@ -1,0 +1,67 @@
+# OmniGlyph
+
+> Kontextus-mint-kép tömörítési proxy LLM-ekhez. Egy helyi proxy, amely minden
+> kérés terjedelmes részeit (rendszerprompt, eszközdokumentáció, régi
+> előzmények, nagy eszközkimenetek) sűrű 1-bites PNG-oldalakká írja át,
+> mielőtt azok elhagynák a gépet, pontos szolgáltatónkénti számlázási
+> matematikát (Anthropic/OpenAI/Gemini) használva, így csak akkor konvertál,
+> ha a token-matematika megéri. Mért teljes körű számlacsökkentés: 59–70%. Az
+> OmniRoute család része; `omniglyph` tömörítési motorként is szállítva az
+> OmniRoute-on belül.
+
+**Fő érték:** irányítson bármely Anthropic-kompatibilis eszközt az
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821`-re, és a terjedelmes kontextus
+kép-tokenekként lesz számlázva (~19 karakter/token) szövegtokenek helyett
+(~2 karakter/token).
+
+**Jelenlegi verzió:** 1.0.0 · **Licenc:** MIT · **Futtatókörnyezet:**
+Node ≥18 és Cloudflare Workers.
+
+## Hogyan működik
+
+1. Nyereségességi kapu: kiszámítja a szolgáltató pontos kép-számlázását
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + blokk overhead, nulla maradékra mérve), és
+   csak akkor konvertál, ha az tokenmegtakarítást eredményez.
+2. Modell-kapu (fail-closed): csak azok a modellek kapnak képeket, amelyek
+   átmentek az olvasási benchmarkon. Ma jóváhagyott: Claude Fable 5 (100%
+   pontos olvasás). Bizonyítékkal blokkolt: GPT-5.5 (0/60), Gemini
+   2.5-flash (konfabulál), Opus 4.8 csak opt-in biztonságos módban
+   (4×-es glifek).
+3. Renderelés: reflow + 1-bites 5×8 glifatlasz → standard 1568×728-as
+   PNG-oldalak (a nagyfelbontású szint egy mért számlázási csapda — nincs
+   használatban).
+4. Az oldalak visszafűzése gyorsítótár-baráttá; a byte-pontos értékek
+   (hash-ek/azonosítók) szövegként utaznak mellette; a sikertelen olvasások
+   tartózkodnak (nulla néma konfabuláció ~300 próbában).
+5. Elutasítás-újrapróbálkozás: ha a modell elutasítja a renderelt oldalt, az
+   eredeti kérés automatikusan újrajátszásra kerül.
+
+## Projekt struktúra
+
+- `src/core/` — transzformációs pipeline, pontos számlázási matematika,
+  renderelő, LRU render gyorsítótár, proxy elutasítás-újrapróbálkozással. A
+  számlázási matematika a csomag gyökerénél exportálva.
+- `src/node.ts` — helyi host irányítópulttal (megtakarított tokenek,
+  egymás melletti konverziók, vészkapcsoló). `src/worker.ts` — Cloudflare
+  Workers host.
+- `benchmarks/` — billing-sweep és density-frontier harness-ek; minden
+  közzétett szám JSONL-bizonyítékkal rendelkezik a
+  `benchmarks/*/results/`-ban.
+- `docs/` — architecture/, benchmarks/ (módszertan + eredmények), ops/
+  (OmniRoute runbook), i18n/pt-BR/.
+
+## Fontos megjegyzések LLM-eknek
+
+- Szigorú TDD és mérés-az-állítás-előtt: benchmark-bizonyíték nélküli
+  számok nem elfogadottak; a fail-closed kapukat soha nem szabad
+  meggyengíteni a tesztek átmenetele érdekében.
+- A tömörítés csak a kérés oldalán történik — a modell válaszai
+  érintetlenül streamelnek át.
+- A proxy helyi-first: semmi extra nem kerül elküldésre harmadik félnek.
+
+## Linkek
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (családi átjáró a natív motorral):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

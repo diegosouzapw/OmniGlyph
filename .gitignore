@@ -1,0 +1,54 @@
+# Node / TS
+node_modules/
+dist/
+build/
+*.log
+# pnpm is the package manager — npm's lockfile is not the source of truth
+package-lock.json
+
+# Un-ignore pnpm-lock.yaml (global gitignore excludes it; this repo tracks it
+# as the source of truth for reproducible installs + supply-chain provenance)
+!pnpm-lock.yaml
+
+# Cloudflare Workers
+.wrangler/
+.dev.vars
+
+# OS
+.DS_Store
+
+# Python (defensive — no Python in this repo, but guard against stray scratch files)
+__pycache__/
+*.pyc
+*.pyo
+
+# Scratch diagrams from drawmode MCP — exploration artifacts, not part of the repo
+*.drawmode.ts
+*.excalidraw
+
+# Agent collaboration scratch — private session memory, never in git.
+# Includes long-form project memory for AI assistants (CLAUDE.md, AGENTS.md,
+# etc.) and per-tool workspace folders. These persist locally so successive
+# AI sessions retain context, but they should never ship to GitHub —
+# treat them like ~/.ssh: useful, local-only, never shared.
+CLAUDE.md
+AGENTS.md
+HANDOFF.md
+SESSION_PLAYBOOK.md
+.claude/
+.codex/
+.cursor/
+.aider*
+.continue/
+eval/gsm8k/novel_imgs/
+eval/gist-recall/work*/*.png
+# Eval corpus = real captured transcripts (PII: file paths, project names, and
+# message content). Keep a local copy for eval scripts, but never commit it.
+eval/corpus/
+
+# Bench artifacts (events.jsonl, PNG dumps, workspaces) — one dir per run
+bench/runs/
+
+# Local-only operational docs and reference checkouts — never published
+docs/ops/
+_references/

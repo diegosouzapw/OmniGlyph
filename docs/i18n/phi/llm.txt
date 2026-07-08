@@ -1,0 +1,68 @@
+# OmniGlyph
+
+> Context-as-image compression proxy para sa mga LLM. Isang lokal na proxy na
+> sumusulat-muli ng mga malalaking bahagi ng bawat request (system prompt,
+> dokumentasyon ng tool, lumang history, malalaking output ng tool) bilang
+> siksik na 1-bit PNG pages bago pa man ito umalis sa makina, gamit ang
+> eksaktong matematika ng billing kada provider (Anthropic/OpenAI/Gemini)
+> upang mag-convert lamang kapag mananalo ang matematika ng token. Sinukat na
+> pagbawas ng bayarin end-to-end: 59–70%. Bahagi ng pamilyang OmniRoute;
+> ipinapadala rin bilang ang `omniglyph` compression engine sa loob ng
+> OmniRoute.
+
+**Pangunahing halaga:** ituro ang anumang tool na compatible sa Anthropic sa
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` at ang malaking konteksto ay
+sisingilin bilang image tokens (~19 chars/token) sa halip na text tokens
+(~2 chars/token).
+
+**Kasalukuyang bersyon:** 1.0.0 · **Lisensya:** MIT · **Runtime:** Node ≥18 at
+Cloudflare Workers.
+
+## Paano ito gumagana
+
+1. Profitability gate: kinukuwenta ang eksaktong image billing ng provider
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + block overhead, sinukat hanggang residual
+   zero) at nagko-convert lamang kapag nakakatipid ito ng tokens.
+2. Model gate (fail-closed): mga modelo lamang na pumasa sa reading benchmark
+   ang tatanggap ng mga imahe. Aprubado sa ngayon: Claude Fable 5 (100%
+   eksaktong pagbasa). Hinarangan na may patunay: GPT-5.5 (0/60), Gemini
+   2.5-flash (nagko-confabulate), Opus 4.8 sa opt-in safe mode lamang (4×
+   glyphs).
+3. Render: reflow + 1-bit 5×8 glyph atlas → standard 1568×728 na PNG pages
+   (ang high-resolution tier ay isang sinukat na billing trap — hindi
+   ginagamit).
+4. Ibinabalik ang splice ng mga pahina nang cache-friendly; ang byte-exact na
+   mga value (hashes/IDs) ay sumasakay bilang text sa tabi; ang mga nabigong
+   pagbasa ay umaatras (zero tahimik na confabulations sa ~300 probes).
+5. Refusal retry: kung tumanggi ang modelo sa na-render na pahina, ang
+   orihinal na request ay awtomatikong inuulit.
+
+## Istraktura ng proyekto
+
+- `src/core/` — transform pipeline, eksaktong matematika ng billing,
+  renderer, LRU render cache, proxy na may refusal-retry. Na-export ang
+  matematika ng billing sa root ng package.
+- `src/node.ts` — lokal na host na may dashboard (mga natipid na token,
+  magkatabing conversions, kill switch). `src/worker.ts` — Cloudflare
+  Workers host.
+- `benchmarks/` — mga harness ng billing-sweep at density-frontier; bawat
+  publikadong numero ay may JSONL receipt sa `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodolohiya + resulta), ops/
+  (runbook ng OmniRoute), i18n/pt-BR/.
+
+## Mahahalagang tala para sa mga LLM
+
+- Mahigpit na TDD at pagsukat bago mag-claim: hindi tinatanggap ang mga
+  numerong walang benchmark receipt; ang mga fail-closed gate ay hindi
+  dapat kailanman pahinain para lang makapasa ang mga test.
+- Ang compression ay sa request side lamang — dumadaloy (stream) ang mga
+  tugon ng modelo nang hindi nagagalaw.
+- Ang proxy ay local-first: walang karagdagang ipinapadala sa anumang
+  ikatlong partido.
+
+## Mga Link
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (family gateway na may native engine):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

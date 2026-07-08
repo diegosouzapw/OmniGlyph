@@ -1,0 +1,67 @@
+# OmniGlyph
+
+> Konteksti kuvana -pakkausproxy LLM:ille. Paikallinen proxy, joka kirjoittaa
+> jokaisen pyynnön laajat osat (system prompt, työkaludokumentaatio, vanha
+> historia, suuret työkalutulosteet) uudelleen tiiviiksi 1-bittisiksi
+> PNG-sivuiksi ennen kuin ne lähtevät koneelta, käyttäen tarkkaa
+> palveluntarjoajakohtaista laskutusmatematiikkaa (Anthropic/OpenAI/Gemini),
+> jotta se muuntaa vain silloin, kun tokenmatematiikka voittaa. Mitattu
+> päästä päähän -laskun pieneneminen: 59–70 %. Osa OmniRoute-perhettä; toimii
+> myös `omniglyph`-pakkausmoottorina OmniRoute-järjestelmän sisällä.
+
+**Keskeinen arvo:** ohjaa mikä tahansa Anthropic-yhteensopiva työkalu
+osoitteeseen `ANTHROPIC_BASE_URL=http://127.0.0.1:47821`, ja laaja konteksti
+laskutetaan kuvatokeneina (~19 merkkiä/tokeni) tekstitokenien (~2
+merkkiä/tokeni) sijaan.
+
+**Nykyinen versio:** 1.0.0 · **Lisenssi:** MIT · **Ajoympäristö:** Node ≥18
+ja Cloudflare Workers.
+
+## Miten se toimii
+
+1. Kannattavuusportti: laskee palveluntarjoajan tarkan kuvalaskutuksen
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + lohko-yleiskustannus, mitattu residuaaliin
+   nolla) ja muuntaa vain, kun se säästää tokeneita.
+2. Malliportti (fail-closed): vain mallit, jotka läpäisivät
+   lukubenchmarkin, saavat kuvia. Hyväksytty tänään: Claude Fable 5 (100 %
+   tarkat lukukokeet). Estetty todisteiden kanssa: GPT-5.5 (0/60), Gemini
+   2.5-flash (konfabuloi), Opus 4.8 vain opt-in-turvatilassa (4× glyfit).
+3. Renderöinti: uudelleenrivitys + 1-bittinen 5×8-glyfiatlas →
+   standardikokoiset 1568×728 PNG-sivut (korkearesoluutiotaso on mitattu
+   laskutusansa — ei käytössä).
+4. Sivut liitetään takaisin välimuistiystävällisesti; tavan tarkat arvot
+   (hashit/id:t) kulkevat mukana tekstinä; epäonnistuneet lukukokeet
+   pidättäytyvät vastaamasta (nolla hiljaista konfabulaatiota ~300
+   lukukokeessa).
+5. Kieltäytymisen uudelleenyritys: jos malli kieltäytyy renderöidystä
+   sivusta, alkuperäinen pyyntö toistetaan automaattisesti.
+
+## Projektin rakenne
+
+- `src/core/` — muunnosputki, tarkka laskutusmatematiikka, renderöijä, LRU-
+  renderöintivälimuisti, proxy kieltäytymisen uudelleenyrityksellä.
+  Laskutusmatematiikka viety pakettijuuresta.
+- `src/node.ts` — paikallinen host kojelaudalla (säästetyt tokenit,
+  rinnakkaiset muunnokset, katkaisukytkin). `src/worker.ts` — Cloudflare
+  Workers -host.
+- `benchmarks/` — billing-sweep- ja density-frontier-työkalut; jokaisella
+  julkaistulla luvulla on JSONL-kuitti kansiossa `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodologia + tulokset), ops/
+  (OmniRoute-ajokirja), i18n/pt-BR/.
+
+## Tärkeitä huomioita LLM:ille
+
+- Tiukka TDD ja mittaus ennen väitteitä: lukuja ilman benchmark-kuitteja ei
+  hyväksytä; fail-closed-portteja ei koskaan saa heikentää testien
+  läpäisemiseksi.
+- Pakkaus tapahtuu vain pyyntöpuolella — mallin vastaukset striimataan läpi
+  koskemattomina.
+- Proxy on paikallinen ensin: mitään ylimääräistä ei lähetetä millekään
+  kolmannelle osapuolelle.
+
+## Linkit
+
+- Repositorio: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (perheen yhdyskäytävä natiivilla moottorilla):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

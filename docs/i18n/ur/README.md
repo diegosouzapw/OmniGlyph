@@ -1,0 +1,140 @@
+🌐 [English](../../../README.md) · [All languages](../README.md)
+
+<div align="center">
+
+<img src="../../../docs/assets/example-render.png" alt="A real render: system prompt + tool docs packed into one dense 1568×728 page" width="820"/>
+
+<br/>
+
+# 🖼️ OmniGlyph — سیاق و سباق بطور تصویر
+
+### اپنا Claude بل **59–70%** کم کریں، بھاری سیاق و سباق کو گھنے PNG صفحات کی صورت میں رینڈر کر کے — وہی مواد، ٹوکنز کے ایک حصے میں۔
+
+**ماڈلز متن کا بل ہر ٹوکن کے حساب سے کرتے ہیں، لیکن تصویر کا بل اس کے طول و عرض کے حساب سے کرتے ہیں — نہ کہ اس میں موجود متن کی مقدار کے حساب سے۔**
+
+<br/>
+
+[![59–70% Bill Cut](https://img.shields.io/badge/59--70%25-Bill_Cut-00B894?style=for-the-badge)](#-the-numbers--measured-not-estimated)
+[![10x Fewer Tokens](https://img.shields.io/badge/10%C3%97-Fewer_Tokens-6C5CE7?style=for-the-badge)](benchmarks/billing-sweep/README.md)
+[![100% Read Accuracy](https://img.shields.io/badge/100%25-Read_Accuracy-0984E3?style=for-the-badge)](benchmarks/density-frontier/README.md)
+[![Zero Confabulations](https://img.shields.io/badge/0-Silent_Confabulations-E17055?style=for-the-badge)](#-the-honest-part)
+
+[![CI](https://github.com/diegosouzapw/OmniGlyph/actions/workflows/ci.yml/badge.svg)](https://github.com/diegosouzapw/OmniGlyph/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/omniglyph?style=flat-square)](https://www.npmjs.com/package/omniglyph)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](../../../LICENSE)
+[![Node ≥18](https://img.shields.io/badge/node-%E2%89%A518-339933?style=flat-square&logo=node.js&logoColor=white)](../../../package.json)
+
+[**OmniRoute**](https://github.com/diegosouzapw/OmniRoute) خاندان کا حصہ · [🌐 تمام زبانیں](../README.md)
+
+</div>
+
+---
+
+# 📊 The numbers — measured, not estimated
+
+| پیمانہ | نتیجہ | رسید |
+|---|---|---|
+| اینڈ ٹو اینڈ بل میں کمی | **59–70%** | پروڈکشن ٹریس، 13,709 درخواستیں |
+| ہر تبدیل شدہ بلاک کے فی ٹوکن | **10× کم** (28,080 حروف: 14,040 → 1,460 ٹوکنز) | [billing sweep](benchmarks/billing-sweep/README.md) |
+| بلنگ فارمولے کی درستگی | 22 `count_tokens` پروبز، 2 ماڈلز × 2 درجات میں **صفر** بقیہ | `benchmarks/billing-sweep/results/` |
+| عین مطابق پڑھنے کی درستگی، پروڈکشن کنفیگ | Claude Fable 5 پر **30/30 (100%)** | [density frontier](benchmarks/density-frontier/README.md) |
+| تقریباً 300 ریڈ پروبز میں خاموش من گھڑت جوابات | **0** — ہر ناکامی `ILEGIVEL` کے طور پر گریز کرتی ہے | `benchmarks/density-frontier/results/` |
+
+**ماڈل اسکور کارڈ** (کیا یہ گھنے رینڈرز پڑھ سکتا ہے؟ فی بازو n=30، متعین اسکورنگ):
+
+| ماڈل | پڑھائی | فیصلہ |
+|---|---|---|
+| Claude **Fable 5** | **100%** عین مطابق | ✅ پروڈکشن ہدف |
+| Claude Opus 4.8 | 4× گلف سائز پر 77–87% | ⚠️ اختیاری محفوظ موڈ (بچت گھٹ کر ~2× ہو جاتی ہے) |
+| GPT-5.5 | 0/60 — اور کوشش میں اپنے جواب ~40× پھلا دیتا ہے | ❌ گیٹ کے ذریعے مسدود، ثبوت کے ساتھ |
+| Gemini 2.5-flash | 0/26 — اور گریز کرنے کے بجائے من گھڑت جواب دیتا ہے | ❌ مسدود (جزوی ٹیسٹ، کوٹے کی حد کے باعث) |
+
+یہ برتری آج **صرف Fable تک محدود** ہے — دیگر ویژن انکوڈرز ابھی تک گھنے گلفس کو حل نہیں کر پاتے۔ [بینچ مارک ہارنس](benchmarks/README.md) کسی بھی نئے ماڈل کو ایک کمانڈ میں دوبارہ جانچ لیتا ہے۔
+
+# 🤔 OmniGlyph کیوں؟
+
+ہر طویل چلنے والا ایجنٹ سیشن ہر درخواست پر وہی مردہ وزن کھینچتا ہے: سسٹم پرامپٹ، ٹول دستاویزات، اور پرانی تاریخ — جس کا ہر باری پر فی ٹوکن دوبارہ بل بنتا ہے۔ OmniGlyph ایک **لوکل پراکسی** ہے جو ان بھاری حصوں کو *آپ کی مشین سے نکلنے سے پہلے* گھنے PNG صفحات میں تبدیل کر دیتا ہے:
+
+- **عین بلنگ ریاضی، اندازہ نہیں** — یہ فراہم کنندہ کا حقیقی امیج-ٹوکن فارمولا (صفر بقیہ تک پیمائش شدہ) شمار کرتا ہے اور صرف اسی وقت تبدیل کرتا ہے جب ریاضی فائدہ مند ہو۔
+- **بہ نیت ناکام-بند (fail-closed)** — جو ماڈلز گھنے رینڈرز پڑھ نہیں سکتے انہیں بینچ مارک رسیدوں کے ساتھ ایک گیٹ روک دیتا ہے۔ کوئی خاموش معیار کا نقصان نہیں۔
+- **نجی اور مقامی-اولین** — تبدیلی `127.0.0.1` پر ہوتی ہے؛ کہیں اور کچھ بھی اضافی نہیں بھیجا جاتا۔
+- **قابل تکرار** — اوپر دیے گئے ہر عدد کی `benchmarks/*/results/` میں ایک رسید موجود ہے، جو ایک کمانڈ میں دوبارہ چلائی جا سکتی ہے۔
+
+# ⚡ فوری آغاز
+
+```bash
+npx omniglyph                                     # پراکسی 127.0.0.1:47821 پر
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # Claude Code کو اس کی طرف اشارہ کریں
+```
+
+![Quickstart: start the proxy, check the dashboard, point Claude Code at it](../../../docs/assets/demo-quickstart.gif)
+
+دونوں طریقوں سے کام کرتا ہے:
+- **API کلید** (فی ٹوکن ادائیگی): آپ کا بل اینڈ ٹو اینڈ 59–70% کم ہو جاتا ہے۔
+- **سبسکرپشن سیشن**: آپ کم ادائیگی نہیں کرتے، لیکن استعمال کی حدیں ٹوکنز کے حساب سے شمار ہوتی ہیں — اس لیے آپ کی حدیں **~2–3×** تک پھیل جاتی ہیں۔
+
+<http://127.0.0.1:47821/> پر ڈیش بورڈ: بچائے گئے ٹوکنز، ہر متن→تصویر تبدیلی شانہ بشانہ، کِل سوئچ، لائیو ماڈل چپس۔ جوابات معمول کے مطابق سٹریم ہوتے ہیں — صرف *درخواست* کمپریس ہوتی ہے، ماڈل کا آؤٹ پٹ کبھی نہیں۔
+
+# ⚙️ یہ کیسے کام کرتا ہے
+
+```
+bulky request block ──► profitability gate ──► reflow + render (1-bit 5×8 atlas)
+                       (exact billing math)     ──► 1568×728 PNG pages ──► splice back, cache-friendly
+```
+
+- **بلنگ کو تبدیلی سے پہلے عین طور پر شمار کیا جاتا ہے**: Anthropic فی امیج `⌈w/28⌉ × ⌈h/28⌉ + 4` ٹوکنز کا بل کرتا ہے (28 px پیچز — صفر بقیہ تک پیمائش شدہ)۔ ایک مکمل صفحہ 28,080 حروف کو 1,460 ٹوکنز میں لے جاتا ہے ≈ **19 حروف/ٹوکن**، جبکہ گھنے متن کے لیے یہ ~2 حروف/ٹوکن ہے۔ گیٹ صرف اسی وقت تبدیل کرتا ہے جب ریاضی فائدہ مند ہو۔
+- **کیا تبدیل ہوتا ہے**: مستقل سسٹم پرامپٹ + ٹول دستاویزات، پرانی سمیٹی ہوئی تاریخ، بڑے ٹول آؤٹ پٹس۔
+- **کیا کبھی تبدیل نہیں ہوتا**: آپ کے پیغامات، حالیہ باریاں، ماڈل کا آؤٹ پٹ، بکھرا ہوا نثر، بائٹ-عین اقدار (ہیشز/IDs متن کے طور پر ساتھ چلتی ہیں)، اور کوئی بھی ماڈل جو پڑھنے کے بینچ مارک میں ناکام رہا ہو۔
+
+# 🧭 The honest part
+
+- **یہ نقصان دہ (lossy) ہے۔** تصاویر سے بائٹ-عین بازیافت فطری طور پر ناقابلِ اعتماد ہے۔ نافذ شدہ تدارک: عین شناخت کنندگان تصویر کے ساتھ متن کے طور پر سفر کرتے ہیں، اور پیمائش شدہ پروڈکشن کنفیگ نے **صفر خاموش من گھڑت جوابات** پیدا کیے — ناکام ریڈز گریز کرتی ہیں۔
+- **آج صرف Fable 5 منظور شدہ ہے**، رسیدوں کے ساتھ۔ GPT-5.5 اور Gemini 2.5-flash قابلِ پیمائش طور پر گھنے رینڈرز پڑھ نہیں سکتے؛ Opus 4.8 کو 4× بڑے گلفس درکار ہیں۔ گیٹ اسے نافذ کرتا ہے۔
+- **ہم نے ایک بلنگ کا جال ڈھونڈ کر اس سے بچا**: ہائی ریزولوشن امیج درجہ فی صفحہ 3.3× زیادہ بل کرتا ہے، لیکن ویژن انکوڈر کو اضافی ریزولوشن نہیں ملتا — بڑے صفحات *بدتر* پڑھے جاتے ہیں۔ پیمائش شدہ، [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md) میں دستاویزی، فعال نہیں کیا گیا۔
+- قیمتیں بدلتی رہتی ہیں؛ دیرپا پیمانہ ٹوکن کٹوتی ہے، جسے پراکسی ہر درخواست پر ایک مفت `count_tokens` متضاد حقیقت کے مقابلے میں لاگ کرتا ہے۔
+
+# 🔬 ہر عدد کو دوبارہ پیدا کریں
+
+```bash
+pnpm install && pnpm test                                     # مکمل سویٹ
+node benchmarks/billing-sweep/run.mjs --dry-run               # بلنگ کی پیش گوئیاں، $0
+pnpm exec tsx benchmarks/density-frontier/run.ts --dry-run    # لاگت کا جدول، $0
+# کلیدوں کے ساتھ: ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY (یا Claude Code سبسکرپشن کے لیے --via-cli)
+```
+
+![The two benchmark harnesses running in dry-run mode](../../../docs/assets/demo-benchmarks.gif)
+
+مکمل طریقہ کار اور ہر نتیجے کا جدول: [docs/benchmarks/BENCHMARKS.md](docs/benchmarks/BENCHMARKS.md)۔ خام فی جواب رسیدیں: `benchmarks/*/results/*.jsonl`۔
+
+# 🚀 OmniRoute خاندان
+
+OmniGlyph ایک **مقامی کمپریشن انجن** کے طور پر بھی [OmniRoute](https://github.com/diegosouzapw/OmniRoute) — مفت AI گیٹ وے — کے اندر شپ ہوتا ہے۔ وہاں یہ `omniglyph` انجن کے طور پر چلتا ہے (اسٹینڈ ایلون سنگل موڈ یا دیگر انجنوں کے ساتھ اسٹیکڈ)، fail-closed گیٹس اور امیج-آگاہ ٹوکن اکاؤنٹنگ کے ساتھ۔
+
+# 🛠️ ٹیک اسٹیک
+
+| تہہ | ٹیکنالوجی |
+|---|---|
+| زبان | TypeScript (strict), ESM |
+| رن ٹائم | Node ≥18 · Cloudflare Workers (`wrangler.toml`) |
+| رینڈرنگ | اپنا 1-بٹ گلف ایٹلس (Spleen/Unifont سے ماخوذ، لائسنس `assets/` میں) → PNG |
+| ٹیسٹس | Vitest — TDD، نیز docs-integrity اور ری برانڈ گارڈز |
+| بینچ مارکس | `benchmarks/` ہارنسز (billing-sweep، density-frontier) JSONL رسیدوں کے ساتھ |
+
+## پروجیکٹ کی ترتیب
+
+| راستہ | کیا ہے |
+|---|---|
+| `src/` | پراکسی: تبدیلی پائپ لائن، فراہم کنندہ کے مطابق عین بلنگ، رینڈرر، ہوسٹس (Node + Cloudflare Workers) |
+| `benchmarks/` | وہ ہارنسز جنہوں نے اوپر دیے گئے ہر عدد کو پیدا کیا — دوبارہ چلانے کے قابل |
+| `docs/` | [BENCHMARKS](docs/benchmarks/BENCHMARKS.md) · [ARCHITECTURE](docs/architecture/ARCHITECTURE.md) · [ROADMAP](docs/ROADMAP.md) |
+
+# 📧 معاونت اور کمیونٹی
+
+- 🐛 [Issues](https://github.com/diegosouzapw/OmniGlyph/issues) — بگز اور فیچر کی درخواستیں
+- 🔒 [SECURITY.md](SECURITY.md) — خطرات کی اطلاع
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) — سخت TDD + دعوے سے پہلے پیمائش
+- 📜 [CHANGELOG.md](CHANGELOG.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+## 📄 لائسنس
+
+MIT — دیکھیں [LICENSE](../../../LICENSE)۔

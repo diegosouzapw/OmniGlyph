@@ -1,0 +1,62 @@
+# OmniGlyph
+
+> Proxy na kompresiu kontextu ako obrázka pre LLM. Lokálny proxy, ktorý
+> prepisuje objemné časti každej požiadavky (systémový prompt, dokumentáciu
+> nástrojov, starú históriu, veľké výstupy nástrojov) na husté 1-bitové PNG
+> stránky predtým, než opustia počítač, pomocou presnej účtovacej matematiky
+> na poskytovateľa (Anthropic/OpenAI/Gemini), takže konvertuje iba vtedy, keď
+> matematika tokenov vyhráva. Merané zníženie účtu end-to-end: 59 – 70 %.
+> Súčasť rodiny OmniRoute; tiež sa dodáva ako kompresný engine `omniglyph`
+> vnútri OmniRoute.
+
+**Kľúčová hodnota:** nasmerujte akýkoľvek nástroj kompatibilný s Anthropic na
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` a objemný kontext sa účtuje ako
+tokeny obrázka (~19 znakov/token) namiesto textových tokenov (~2 znaky/token).
+
+**Aktuálna verzia:** 1.0.0 · **Licencia:** MIT · **Runtime:** Node ≥18 a
+Cloudflare Workers.
+
+## Ako to funguje
+
+1. Brána ziskovosti: počíta presné účtovanie obrázkov poskytovateľa
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + réžia bloku, merané na nulové rezíduum) a
+   konvertuje iba vtedy, keď to šetrí tokeny.
+2. Brána modelov (fail-closed): iba modely, ktoré prešli benchmarkom
+   čítania, dostávajú obrázky. Dnes schválené: Claude Fable 5 (100 %
+   presné čítanie). Zablokované s dôkazom: GPT-5.5 (0/60), Gemini 2.5-flash
+   (konfabuluje), Opus 4.8 iba vo voliteľnom bezpečnom režime (4× glyfy).
+3. Render: reflow + 1-bitová atlasová mriežka glyfov 5×8 → štandardné PNG
+   stránky 1568×728 (vysokorozlišovacia úroveň je meraná účtovacia pasca —
+   nepoužíva sa).
+4. Spätné zošitie stránok priateľské k cache; hodnoty na úrovni bajtov
+   (hashe/ID) cestujú popri texte; neúspešné čítania sa zdržia (nulové
+   tiché konfabulácie v ~300 sondách).
+5. Opakovanie pri odmietnutí: ak model odmietne vykreslenú stránku, pôvodná
+   požiadavka sa automaticky prehrá znova.
+
+## Štruktúra projektu
+
+- `src/core/` — transformačný pipeline, presná účtovacia matematika,
+  renderer, LRU render cache, proxy s opakovaním pri odmietnutí. Účtovacia
+  matematika exportovaná na koreni balíka.
+- `src/node.ts` — lokálny host s dashboardom (ušetrené tokeny, konverzie
+  vedľa seba, vypínač). `src/worker.ts` — host Cloudflare Workers.
+- `benchmarks/` — harnessy billing-sweep a density-frontier; každé
+  publikované číslo má JSONL dôkaz v `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodika + výsledky), ops/
+  (návod na prevádzku OmniRoute), i18n/pt-BR/.
+
+## Dôležité poznámky pre LLM
+
+- Striktné TDD a meranie pred tvrdeniami: čísla bez benchmarkových dôkazov
+  sa neprijímajú; fail-closed brány sa nikdy nesmú oslabiť, aby prešli testy.
+- Kompresia je iba na strane požiadavky — odpovede modelu prechádzajú
+  nedotknuté.
+- Proxy je lokálne-first: nič navyše sa neposiela žiadnej tretej strane.
+
+## Odkazy
+
+- Repozitár: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (rodinná brána s natívnym enginom):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

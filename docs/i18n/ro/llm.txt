@@ -1,0 +1,65 @@
+# OmniGlyph
+
+> Proxy de compresie context-ca-imagine pentru LLM-uri. Un proxy local care
+> rescrie părțile voluminoase ale fiecărui request (system prompt, docs de
+> unelte, istoric vechi, ieșiri mari de unelte) în pagini PNG dense pe 1 bit
+> înainte să părăsească mașina, folosind matematică de facturare exactă per
+> furnizor (Anthropic/OpenAI/Gemini) astfel încât convertește doar când
+> matematica tokenilor câștigă. Reducere de factură de la un capăt la altul
+> măsurată: 59–70%. Parte a familiei OmniRoute; livrat de asemenea ca
+> motorul de compresie `omniglyph` în interiorul OmniRoute.
+
+**Valoare cheie:** direcționați orice unealtă compatibilă cu Anthropic către
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` iar contextul voluminos este
+facturat ca tokeni de imagine (~19 caractere/token) în loc de tokeni de text
+(~2 caractere/token).
+
+**Versiune curentă:** 1.0.0 · **Licență:** MIT · **Runtime:** Node ≥18 și
+Cloudflare Workers.
+
+## Cum funcționează
+
+1. Gate de profitabilitate: calculează facturarea exactă de imagine a
+   furnizorului (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + overhead de bloc, măsurat la
+   reziduu zero) și convertește doar când economisește tokeni.
+2. Gate de model (fail-closed): doar modelele care au trecut benchmark-ul de
+   citire primesc imagini. Aprobate astăzi: Claude Fable 5 (100% citiri
+   exacte). Blocate cu dovezi: GPT-5.5 (0/60), Gemini 2.5-flash
+   (confabulează), Opus 4.8 doar în modul sigur opțional (glife 4×).
+3. Randare: reflow + atlas de glife pe 1 bit 5×8 → pagini PNG standard
+   1568×728 (nivelul de rezoluție înaltă este o capcană de facturare
+   măsurată — nu este folosit).
+4. Reintroducerea paginilor prietenoasă cu cache-ul; valorile exacte pe bit
+   (hash-uri/ID-uri) călătoresc alături ca text; citirile eșuate se abțin
+   (zero confabulații silențioase în ~300 de sonde).
+5. Reîncercare la refuz: dacă modelul refuză pagina randată, request-ul
+   original este reluat automat.
+
+## Structura proiectului
+
+- `src/core/` — pipeline de transformare, matematică de facturare exactă,
+  randor, cache LRU de randare, proxy cu reîncercare-la-refuz. Matematica de
+  facturare exportată la rădăcina pachetului.
+- `src/node.ts` — host local cu dashboard (tokeni economisiți, conversii
+  alăturate, kill switch). `src/worker.ts` — host Cloudflare Workers.
+- `benchmarks/` — harness-uri billing-sweep și density-frontier; fiecare
+  cifră publicată are o dovadă JSONL în `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodologie + rezultate), ops/
+  (runbook OmniRoute), i18n/pt-BR/.
+
+## Note importante pentru LLM-uri
+
+- TDD strict și măsurare-înainte-de-afirmații: cifrele fără dovezi de
+  benchmark nu sunt acceptate; gate-urile fail-closed nu trebuie niciodată
+  slăbite pentru a face testele să treacă.
+- Compresia este doar pe partea de request — răspunsurile modelului fac
+  streaming neatinse.
+- Proxy-ul este local-first: nimic în plus nu este trimis către vreo terță
+  parte.
+
+## Linkuri
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (gateway-ul familiei cu motorul nativ):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

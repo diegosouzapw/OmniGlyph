@@ -1,0 +1,64 @@
+# OmniGlyph
+
+> Proxy de compressão contexto-como-imagem para LLMs. Um proxy local que
+> reescreve as partes volumosas de cada request (system prompt, docs de
+> ferramentas, histórico antigo, saídas grandes de ferramenta) em páginas PNG
+> densas de 1 bit antes de saírem da máquina, usando matemática de cobrança
+> exata por provedor (Anthropic/OpenAI/Gemini) para converter somente quando
+> a conta de tokens compensa. Redução medida da conta de ponta a ponta:
+> 59–70%. Parte da família OmniRoute; também distribuído como o motor de
+> compressão `omniglyph` dentro do OmniRoute.
+
+**Valor-chave:** aponte qualquer ferramenta compatível com Anthropic para
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` e o contexto volumoso é cobrado
+como tokens de imagem (~19 caracteres/token) em vez de tokens de texto
+(~2 caracteres/token).
+
+**Versão atual:** 1.0.0 · **Licença:** MIT · **Runtime:** Node ≥18 e
+Cloudflare Workers.
+
+## Como funciona
+
+1. Gate de rentabilidade: calcula a cobrança de imagem exata do provedor
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + overhead de bloco, medido com resíduo zero)
+   e converte somente quando economiza tokens.
+2. Gate de modelo (fail-closed): apenas modelos que passaram no benchmark de
+   leitura recebem imagens. Aprovado hoje: Claude Fable 5 (100% de leituras
+   exatas). Bloqueado com prova: GPT-5.5 (0/60), Gemini 2.5-flash (confabula),
+   Opus 4.8 somente em modo seguro opcional (glifos 4×).
+3. Render: reflow + atlas de glifos 1-bit 5×8 → páginas PNG padrão de
+   1568×728 (o tier de alta resolução é uma armadilha de cobrança medida —
+   não usado).
+4. Reinsere as páginas de forma cache-friendly; valores byte-exatos
+   (hashes/IDs) viajam junto como texto; leituras que falham se abstêm (zero
+   confabulações silenciosas em ~300 sondas).
+5. Retry de recusa: se o modelo recusa a página renderizada, o request
+   original é reproduzido automaticamente.
+
+## Estrutura do projeto
+
+- `src/core/` — pipeline de transformação, matemática de cobrança exata,
+  renderizador, cache LRU de render, proxy com retry de recusa. Matemática de
+  cobrança exportada na raiz do pacote.
+- `src/node.ts` — host local com dashboard (tokens economizados, conversões
+  lado a lado, kill switch). `src/worker.ts` — host para Cloudflare Workers.
+- `benchmarks/` — harnesses billing-sweep e density-frontier; todo número
+  publicado tem um comprovante JSONL em `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodologia + resultados), ops/
+  (runbook do OmniRoute), i18n/pt-BR/.
+
+## Notas importantes para LLMs
+
+- TDD estrito e medição antes de afirmações: números sem comprovante de
+  benchmark não são aceitos; gates fail-closed nunca devem ser enfraquecidos
+  para fazer testes passarem.
+- A compressão é apenas do lado do request — as respostas do modelo fazem
+  streaming sem alteração.
+- O proxy é local-first: nada extra é enviado a terceiros.
+
+## Links
+
+- Repositório: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (gateway da família com o motor nativo):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

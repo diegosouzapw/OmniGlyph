@@ -1,0 +1,65 @@
+# OmniGlyph
+
+> Kontext-als-Bild-Kompressionsproxy für LLMs. Ein lokaler Proxy, der die
+> umfangreichen Teile jedes Requests (System-Prompt, Tool-Doku, alter
+> Verlauf, große Tool-Ausgaben) in dichte 1-Bit-PNG-Seiten umschreibt, bevor
+> sie den Rechner verlassen, unter Verwendung exakter Billing-Mathematik pro
+> Anbieter (Anthropic/OpenAI/Gemini), sodass nur konvertiert wird, wenn sich
+> die Token-Rechnung lohnt. Gemessene Ende-zu-Ende-Reduktion der Rechnung:
+> 59–70 %. Teil der OmniRoute-Familie; wird außerdem als `omniglyph`-
+> Kompressions-Engine innerhalb von OmniRoute ausgeliefert.
+
+**Kernwert:** jedes Anthropic-kompatible Tool auf
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` verweisen, und umfangreicher
+Kontext wird als Bild-Tokens (~19 Zeichen/Token) statt als Text-Tokens
+(~2 Zeichen/Token) abgerechnet.
+
+**Aktuelle Version:** 1.0.0 · **Lizenz:** MIT · **Laufzeit:** Node ≥18 und
+Cloudflare Workers.
+
+## So funktioniert es
+
+1. Profitabilitäts-Gate: berechnet die exakte Bild-Billing des Anbieters
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + Block-Overhead, auf Residuum null
+   vermessen) und konvertiert nur, wenn dabei Tokens gespart werden.
+2. Modell-Gate (fail-closed): nur Modelle, die den Lese-Benchmark bestanden
+   haben, erhalten Bilder. Heute freigegeben: Claude Fable 5 (100 % exakte
+   Lesevorgänge). Mit Nachweis blockiert: GPT-5.5 (0/60), Gemini 2.5-flash
+   (konfabuliert), Opus 4.8 nur im Opt-in-Sicherheitsmodus (4× Glyphen).
+3. Rendering: Reflow + 1-Bit-5×8-Glyphenatlas → Standard-1568×728-PNG-Seiten
+   (die Hochauflösungsstufe ist eine gemessene Billing-Falle — nicht
+   verwendet).
+4. Seiten cache-freundlich zurücksplicen; byte-exakte Werte (Hashes/IDs)
+   reisen als Text mit; fehlgeschlagene Lesevorgänge enthalten sich (null
+   stille Konfabulationen in ~300 Proben).
+5. Refusal-Retry: wenn das Modell die gerenderte Seite ablehnt, wird der
+   ursprüngliche Request automatisch erneut abgespielt.
+
+## Projektstruktur
+
+- `src/core/` — Transform-Pipeline, exakte Billing-Mathematik, Renderer,
+  LRU-Render-Cache, Proxy mit Refusal-Retry. Billing-Mathematik an der
+  Paket-Wurzel exportiert.
+- `src/node.ts` — lokaler Host mit Dashboard (gesparte Tokens,
+  Nebeneinander-Vergleich der Konvertierungen, Kill-Switch). `src/worker.ts`
+  — Cloudflare-Workers-Host.
+- `benchmarks/` — billing-sweep- und density-frontier-Harnesses; jede
+  veröffentlichte Zahl hat einen JSONL-Beleg in `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (Methodik + Ergebnisse), ops/
+  (OmniRoute-Runbook), i18n/pt-BR/.
+
+## Wichtige Hinweise für LLMs
+
+- Strikte TDD und Messung-vor-Behauptungen: Zahlen ohne Benchmark-Belege
+  werden nicht akzeptiert; Fail-closed-Gates dürfen niemals abgeschwächt
+  werden, um Tests bestehen zu lassen.
+- Kompression findet nur auf der Request-Seite statt — Modellantworten
+  streamen unverändert durch.
+- Der Proxy ist lokal-first: es wird nichts zusätzlich an Dritte gesendet.
+
+## Links
+
+- Repository: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (Familien-Gateway mit der nativen Engine):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph

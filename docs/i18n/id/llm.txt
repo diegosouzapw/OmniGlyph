@@ -1,0 +1,62 @@
+# OmniGlyph
+
+> Proxy kompresi context-as-image untuk LLM. Sebuah proxy lokal yang menulis
+> ulang bagian-bagian besar dari setiap permintaan (system prompt, dokumentasi
+> tool, riwayat lama, output tool besar) menjadi halaman PNG 1-bit padat
+> sebelum meninggalkan mesin, menggunakan matematika penagihan eksak per
+> provider (Anthropic/OpenAI/Gemini) sehingga hanya mengonversi ketika
+> hitungan token menang. Pengurangan tagihan end-to-end terukur: 59–70%.
+> Bagian dari keluarga OmniRoute; juga hadir sebagai engine kompresi
+> `omniglyph` di dalam OmniRoute.
+
+**Nilai kunci:** arahkan tool mana pun yang kompatibel dengan Anthropic ke
+`ANTHROPIC_BASE_URL=http://127.0.0.1:47821` dan konteks besar ditagih sebagai
+token gambar (~19 karakter/token) alih-alih token teks (~2 karakter/token).
+
+**Versi saat ini:** 1.0.0 · **Lisensi:** MIT · **Runtime:** Node ≥18 dan
+Cloudflare Workers.
+
+## Cara kerjanya
+
+1. Gate profitabilitas: menghitung penagihan gambar eksak dari provider
+   (Anthropic: ⌈w/28⌉ × ⌈h/28⌉ + overhead blok, terukur hingga residual nol)
+   dan hanya mengonversi ketika itu menghemat token.
+2. Gate model (fail-closed): hanya model yang lolos benchmark pembacaan yang
+   menerima gambar. Disetujui hari ini: Claude Fable 5 (100% pembacaan
+   eksak). Diblokir dengan bukti: GPT-5.5 (0/60), Gemini 2.5-flash
+   (berkonfabulasi), Opus 4.8 hanya dalam mode aman opt-in (glyph 4×).
+3. Render: reflow + atlas glyph 1-bit 5×8 → halaman PNG standar 1568×728
+   (tingkatan resolusi tinggi adalah jebakan penagihan yang terukur — tidak
+   digunakan).
+4. Sambung kembali halaman secara ramah-cache; nilai byte-exact (hash/ID)
+   ikut sebagai teks; pembacaan yang gagal akan abstain (nol konfabulasi
+   diam-diam dalam ~300 probe).
+5. Retry penolakan: jika model menolak halaman yang dirender, permintaan asli
+   diputar ulang secara otomatis.
+
+## Struktur proyek
+
+- `src/core/` — pipeline transform, matematika penagihan eksak, renderer,
+  cache render LRU, proxy dengan retry-penolakan. Matematika penagihan
+  diekspor di root paket.
+- `src/node.ts` — host lokal dengan dashboard (token yang dihemat, konversi
+  berdampingan, kill switch). `src/worker.ts` — host Cloudflare Workers.
+- `benchmarks/` — harness billing-sweep dan density-frontier; setiap angka
+  yang dipublikasikan punya bukti JSONL di `benchmarks/*/results/`.
+- `docs/` — architecture/, benchmarks/ (metodologi + hasil), ops/ (runbook
+  OmniRoute), i18n/pt-BR/.
+
+## Catatan penting untuk LLM
+
+- TDD ketat dan pengukuran-sebelum-klaim: angka tanpa bukti benchmark tidak
+  diterima; gate fail-closed tidak boleh pernah dilemahkan agar test lolos.
+- Kompresi hanya di sisi permintaan — respons model mengalir tanpa disentuh.
+- Proxy bersifat local-first: tidak ada yang tambahan dikirim ke pihak
+  ketiga mana pun.
+
+## Tautan
+
+- Repositori: https://github.com/diegosouzapw/OmniGlyph
+- OmniRoute (gateway keluarga dengan engine native):
+  https://github.com/diegosouzapw/OmniRoute
+- npm: https://www.npmjs.com/package/omniglyph
