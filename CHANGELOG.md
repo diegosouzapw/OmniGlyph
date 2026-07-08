@@ -36,6 +36,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   byte-identical and stay out of the imaged Tool Reference; a new
   `deferred_tools_skipped` telemetry field reports how many were exempted.
   (thanks @byingyang)
+- **fix(openai):** stop double-billing native GPT tool descriptions. On the GPT
+  path the native `tools[]` keep their `description` (only schema annotations are
+  stripped), so imaging the description billed it twice — native text **and**
+  image pixels — while the savings baseline credited only the stripped-schema
+  delta. The imaged tool doc is now heading + schema only; the rendered-context
+  framing no longer claims the image holds "full tool" docs. (thanks @rldyourmnd)
 
 ## [1.2.0] — 2026-07-08
 
