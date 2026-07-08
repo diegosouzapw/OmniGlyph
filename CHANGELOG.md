@@ -4,12 +4,122 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- **feat(node):** the Node proxy's OpenAI leg falls back to the **Codex ChatGPT
+  login** (`~/.codex/auth.json`, override with `OMNIGLYPH_CODEX_AUTH_FILE`) when
+  `OPENAI_API_KEY` is unset. An explicit `OPENAI_API_KEY` still wins; only the
+  `chatgpt` auth mode is honored (an `api-key` file is ignored). `node.ts` runs
+  `main()` only as a direct entrypoint now, so the config can be unit-tested.
+  (thanks @ousamabenyounes)
+- **bench(gate-backtest):** a cache-aware realized-savings reconciliation and
+  gate-policy back-test (`benchmarks/gate-backtest/run.mjs`). Streams the proxy
+  log (`~/.omniglyph/events.jsonl` or `$OMNIGLYPH_LOG`), reconstructs sessions
+  from `first_user_sha8` + `ts`, and scores hypothetical passthrough gates using
+  only what the proxy knows at transform time — an honest test of a shippable
+  rule. Scoring mirrors `src/core/baseline.ts` exactly. (thanks @akigogikar)
+
+### Changed
+
+- **test:** raise the Vitest per-test timeout to 30s so genuinely slow render
+  e2e cases (full reflow + PNG encode) are not false-negative timeouts on
+  slower/CI machines. Assertions are unchanged. (thanks @ousamabenyounes)
+
 ### Fixed
 
 - **fix(prompting):** the imaged session-configuration banner and the
   history-transcript framing now instruct the model to defer exact identifiers,
   hashes, version strings, and numbers to the exact-value factsheet or the
   source text, instead of guessing a value seen only in an image. (thanks @rldyourmnd)
+- **fix(transform):** pass tool-search managed tools through the tool rewrite
+  untouched. A tool marked `defer_loading: true` (or the server `tool_search_tool_*`
+  itself) is not injected into context until the model searches for it — the API
+  bills it at ~zero until then. Imaging its docs materialized documentation the
+  API was keeping free, inflating every request (a large MCP surface ships
+  hundreds of deferred tools — ~477k chars observed). They now pass through
+  byte-identical and stay out of the imaged Tool Reference; a new
+  `deferred_tools_skipped` telemetry field reports how many were exempted.
+  (thanks @byingyang)
+- **fix(openai):** stop double-billing native GPT tool descriptions. On the GPT
+  path the native `tools[]` keep their `description` (only schema annotations are
+  stripped), so imaging the description billed it twice — native text **and**
+  image pixels — while the savings baseline credited only the stripped-schema
+  delta. The imaged tool doc is now heading + schema only; the rendered-context
+  framing no longer claims the image holds "full tool" docs. (thanks @rldyourmnd)
+
+## [1.2.0] — 2026-07-08
+
+Documentation and a test-only hardening pass. No change to the compression
+path, billing math or dashboard behavior.
+
+### Security
+
+- **Resolve a CodeQL `js/regex/missing-regexp-anchor` alert** in the
+  docs-integrity guard. The upstream-credit assertion matched its target link
+  with an unanchored regex; it now uses a literal, scheme-qualified substring
+  check instead — stricter (a bare host mention no longer satisfies it) and
+  regex-free. Test-only; no change to shipped behavior.
+
+### Docs
+
+- **Offline export, documented.** New README section (mirrored across the 41
+  translations) showing how to render context to PNG pages with `omniglyph
+  export` — no proxy, no Claude Code — for pasting into Cursor, ChatGPT, or any
+  chat that reads images. Two new FAQ entries cover using OmniGlyph outside
+  Claude Code and how the text→image render works. Documentation only; no
+  behavior change.
+
+## [1.1.0] — 2026-07-08
+
+Dashboard release. The compression path and billing math are unchanged; this is
+a full rebuild of the local dashboard plus documentation.
+
+### Added
+
+- **Multi-page dashboard**, visually aligned with the OmniRoute family (coral/
+  indigo palette, graph-paper backdrop, warm shadows). Six server-rendered
+  pages behind real routes: **Overview** (mission-control KPI grid — savings %,
+  $ saved, latency p95, first-byte, cache hits, errors, imaged chars — with a
+  savings sparkline and a live event feed), **Live Flow** (the pipeline as a
+  dependency-free SVG node graph with a particle per request), **Telemetry**
+  (a token/$ odometer and a live request timeline; the image-vs-text breakdown
+  and image↔source inspector live here), **Benchmarks**, **Sessions**, and
+  **History**.
+- **Benchmarks from the UI**: the harness receipts are rendered straight from
+  `benchmarks/*/results/*.jsonl` (one row per model·config experiment), and the
+  harnesses run from the page — `$0` dry-runs stream their stdout live; live
+  runs stay gated behind `ANTHROPIC_API_KEY` and an explicit cost confirmation.
+  Closed-enum, shell-less spawn, one run at a time; results stay append-only
+  through the harness.
+- **Live updates over SSE** (`GET /events/stream`): per-request frames and a
+  stats snapshot push from the proxy, refreshing fragments instantly and
+  driving the odometer and flow particles. Polling remains the fallback.
+- **Dashboard localized into 42 languages** with a flag language selector in the
+  top bar (`omniglyph_lang` cookie, falling back to `OMNIGLYPH_LANG`/`LC_ALL`/
+  `LANG`, English fail-closed). RTL locales (`ar`, `fa`, `he`, `ur`) render
+  mirrored.
+- Accessibility pass: skip-link, nav landmarks, focus-visible rings, an
+  `aria-live` odometer, consolidated `prefers-reduced-motion`, and AA contrast.
+
+### Changed
+
+- Every dashboard percentage still derives from the cache-weighted pair and a
+  weighted net loss renders as a loss — the same honesty invariant as before,
+  now applied across the KPI grid, flow ribbon and telemetry.
+
+### Fixed
+
+- Dashboard nav/KPI/theme icons use emoji glyphs instead of rare Unicode
+  symbols, so they render everywhere instead of falling back to tofu boxes on
+  font stacks that lack those symbols.
+
+### Docs
+
+- README gains a **dashboard** section (with screenshots) and an
+  **Acknowledgments** section crediting the upstream context-as-image discovery
+  and the Spleen/Unifont typefaces; both translated across the 41 locale
+  READMEs. New library-use and FAQ sections; refreshed ROADMAP, `llm.txt` and
+  wiki.
 
 ## [1.0.2] — 2026-07-08
 
@@ -89,3 +199,18 @@ First public release.
 - **gpt-4o-mini never imaged** (2833/5667 token floor makes it unprofitable).
 - **Gemini 2.5-flash confabulates** instead of abstaining on dense pages
   (0/26) — pending paid-quota retest.
+
+### Acknowledgments
+
+Several fixes that shipped in this first release originated with outside
+contributors; crediting them here retroactively:
+
+- **`/v1/models` auth-style routing:** never forward an `sk-ant` OAuth bearer
+  (Claude Code subscription auth) to the OpenAI upstream — a credential leak and
+  a guaranteed 401. (thanks @XyraSinclair)
+- **Schema stripper keeps `$schema`/`$id`:** stripping the dialect declaration
+  re-dialected draft-07 schemas to 2020-12 and 400'd legal tuple-form `items`.
+  (thanks @Monivancan)
+- **Dashboard `hx-vals` escaping:** a crafted model id could break out of the
+  single-quoted attribute; the value is now HTML-escaped, closing the JSON
+  injection and the attribute-breakout XSS. (thanks @dex0shubham)

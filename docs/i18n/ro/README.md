@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` fixează blocuri ca text; `options.emitRecoverable` returnează originalele blocurilor transformate în imagine. Matematica exactă de facturare este livrată și la rădăcina pachetului (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — asta este ce consumă [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Runtime Pure-JS (Node și edge/Workers). Suprafață completă: `src/core/index.ts`.
 
+# 📤 Export offline — fără proxy, fără Claude Code
+
+Nu folosiți Claude Code? Randați contextul în pagini PNG **local** și lipiți-le în Cursor, ChatGPT sau orice chat care acceptă încărcări de imagini. Fără proxy, fără cheie API, fără cont conectat:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Obțineți un singur folder cu tot ce vă trebuie pentru a-l pune în chat:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` randează diff-ul necomis, `--diff <ref>` un interval de commit-uri, `--open` dezvăluie folderul (macOS). Totul rulează pe mașina dumneavoastră — calea de export nu pornește niciodată proxy-ul și nu apelează niciodată un model. Rulați `omniglyph export --help` pentru fiecare flag.
+
 # 🧭 Partea onestă
 
 - **Este lossy.** Recall-ul byte-exact din imagini este nesigur prin natura sa. Atenuări deja implementate: identificatorii exacți călătoresc ca text lângă imagine, iar config-ul de producție măsurat a produs **zero confabulații silențioase** — citirile eșuate se abțin.
@@ -147,6 +168,12 @@ Turele recente și identificatorii exacți rămân text prin design. Pentru sarc
 
 **Nu a tranșat deja DeepSeek-OCR dacă asta funcționează?**
 A dovedit că *canalul* funcționează — cu o pereche encoder/decoder antrenată special pentru asta. Scepticismul datează de când niciun model de producție standard nu putea citi render-uri dense; asta s-a schimbat, iar [clasamentul modelelor](../../../README.md#-the-numbers--measured-not-estimated) de mai sus arată exact cine le citește astăzi, cu dovezi. [Harness-ul de benchmark](../../../benchmarks/README.md) retestează orice model nou într-o singură comandă — gate-ul urmează datele, nu hype-ul.
+
+**Îl pot folosi fără Claude Code — Cursor, ChatGPT, un simplu pipe?**
+Da, în două moduri. Ca **proxy**, funcționează cu orice client care vă permite să setați URL-ul de bază al API-ului (`ANTHROPIC_BASE_URL` sau URL-ul de bază OpenAI) — Claude Code, propriile dumneavoastră scripturi, orice funcționează prin HTTP. Iar pentru uneltele care nu pot folosi un proxy, **Export offline** de mai sus randează contextul în pagini PNG pe care le lipiți manual — `omniglyph export --stdin` chiar citește direct dintr-un pipe Unix.
+
+**Cum transformă de fapt textul într-o imagine?**
+Reflowează textul și îl pictează cu un atlas de glife 1-bit 5×8 pixeli pe pagini PNG dense de 1568×728 — un bit per pixel, fără anti-aliasing, astfel încât modelul facturează pagina în funcție de dimensiunile ei, nu în funcție de câte caractere conține. **Cum funcționează** de mai sus conține pipeline-ul; documentul de benchmark-uri conține geometria și motivul pentru care mai dens nu înseamnă întotdeauna mai ieftin.
 
 # 🔬 Reproduceți fiecare cifră
 
