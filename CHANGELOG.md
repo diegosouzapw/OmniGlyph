@@ -27,6 +27,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(factsheet):** capture transactional exact-token classes — email
+  addresses, IBAN-like account strings, and currency amounts (`$14,360`). They
+  join the protected tier-0 anchors (alongside SHAs, UUIDs, `CONST_IDS`, tickets,
+  flags, numbers) so they are never dropped from the exact-value factsheet.
+  (thanks @ousamabenyounes)
 - **fix(factsheet):** protect multi-hump camelCase/PascalCase identifiers
   (`tokenLedgerShard`, `extractFactSheetTokens`) — the residual OCR miss class
   from the legibility audit. They land in tier 1, strictly below the byte-critical
