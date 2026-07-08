@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` kiinnittää lohkot tekstiksi; `options.emitRecoverable` palauttaa kuvitettujen lohkojen alkuperäiset versiot. Tarkka laskutusmatematiikka toimitetaan myös paketin juuressa (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — juuri sitä [OmniRoute](https://github.com/diegosouzapw/OmniRoute) käyttää. Puhdas JS-ajoympäristö (Node ja edge/Workers). Koko rajapinta: `src/core/index.ts`.
 
+# 📤 Offline-vienti — ei proxya, ei Claude Codea
+
+Etkö käytä Claude Codea? Renderöi konteksti PNG-sivuiksi **paikallisesti** ja liitä ne Cursoriin, ChatGPT:hen tai mihin tahansa keskusteluun, johon voi ladata kuvia. Ei proxya, ei API-avainta, ei kytkettyä tiliä:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Saat yhden kansion, jossa on kaikki tarvittava keskusteluun pudotettavaksi:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` renderöi committoimattoman diffisi, `--diff <ref>` commit-alueen, `--open` avaa kansion näkyviin (macOS). Kaikki tapahtuu koneellasi — vientipolku ei koskaan käynnistä proxya eikä koskaan kutsu mallia. Aja `omniglyph export --help` nähdäksesi kaikki valitsimet.
+
 # 🧭 Rehellinen osuus
 
 - **Se on häviöllistä.** Tavan tarkka muistaminen kuvista on luonteeltaan epäluotettavaa. Toteutetut lieventimet: tarkat tunnisteet kulkevat tekstinä kuvan vieressä, ja mitattu tuotantokonfiguraatio tuotti **nolla hiljaista konfabulaatiota** — epäonnistuneet lukukokeet pidättäytyvät vastaamasta.
@@ -147,6 +168,12 @@ Viimeisimmät vuorot ja tarkat tunnisteet pysyvät tekstinä suunnittelun mukaan
 
 **Eikö DeepSeek-OCR jo ratkaissut, toimiiko tämä?**
 Se todisti, että *kanava* toimii — koodaaja/dekoodaaja-parilla, joka on koulutettu juuri siihen tehtävään. Epäily on peräisin ajalta, jolloin mikään valmis tuotantomalli ei osannut lukea tiheitä renderöintejä; se on muuttunut, ja yllä oleva [mallien tulostaulu](../../../README.md#-the-numbers--measured-not-estimated) näyttää tarkalleen, ketkä osaavat lukea niitä tänään, kuitteineen. [Benchmark-työkalu](../../../benchmarks/README.md) testaa minkä tahansa uuden mallin uudelleen yhdellä komennolla — portti seuraa dataa, ei hypeä.
+
+**Voinko käyttää sitä ilman Claude Codea — Cursor, ChatGPT, pelkkä putki?**
+Kyllä, kahdella tavalla. **Proxyna** se toimii minkä tahansa asiakkaan kanssa, jonka avulla voit asettaa API:n perusosoitteen (`ANTHROPIC_BASE_URL` tai OpenAI:n perusosoite) — Claude Code, omat skriptisi, mikä tahansa HTTP. Ja työkaluille, jotka eivät osaa käyttää proxya, yllä oleva **Offline-vienti** renderöi kontekstin PNG-sivuiksi, jotka liität käsin — `omniglyph export --stdin` lukee jopa suoraan Unix-putkesta.
+
+**Miten se oikeastaan muuttaa tekstin kuvaksi?**
+Se latoo tekstin uudelleen ja maalaa sen 1-bittisellä 5×8-pikselin glyfiatlaalla tiiviille 1568×728 PNG-sivuille — yksi bitti per pikseli, ei antialiasointia, joten malli laskuttaa sivun sen mittojen perusteella, ei sen mukaan, montako merkkiä sen sisällä on. Yllä oleva **Miten se toimii** sisältää putken; benchmark-dokumentti sisältää geometrian ja sen, miksi tiheämpi ei aina ole halvempi.
 
 # 🔬 Toista jokainen luku
 

@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` blokları metin olarak sabitler; `options.emitRecoverable` görüntülenmiş blokların orijinallerini döndürür. Tam faturalama matematiği paket kökünde de gönderilir (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — [OmniRoute](https://github.com/diegosouzapw/OmniRoute)'un tükettiği de budur. Saf JS runtime (Node ve edge/Workers). Tam yüzey: `src/core/index.ts`.
 
+# 📤 Çevrimdışı dışa aktarma — proxy yok, Claude Code yok
+
+Claude Code kullanmıyor musunuz? Bağlamı **yerel olarak** PNG sayfalara render edin ve bunları Cursor'a, ChatGPT'ye veya görüntü yüklemeyi kabul eden herhangi bir sohbete yapıştırın. Proxy yok, API anahtarı yok, bağlı bir hesap yok:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Sohbete bırakmak için gereken her şeyi içeren tek bir klasör elde edersiniz:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` işlenmemiş diff'inizi render eder, `--diff <ref>` bir commit aralığını, `--open` klasörü gösterir (macOS). Hepsi makinenizde çalışır — dışa aktarma yolu asla proxy'yi başlatmaz ve asla bir model çağırmaz. Her bayrak için `omniglyph export --help` komutunu çalıştırın.
+
 # 🧭 Dürüst kısım
 
 - **Kayıplıdır.** Görüntülerden byte-tam geri çağırma doğası gereği güvenilmezdir. Sevk edilen önlemler: tam kimlikler görüntünün yanında metin olarak taşınır ve ölçülen üretim yapılandırması **sıfır sessiz uydurma** üretti — başarısız okumalar çekimser kalır.
@@ -147,6 +168,12 @@ Son turlar ve tam kimlikler tasarım gereği metin olarak kalır. Tamamen byte-t
 
 **DeepSeek-OCR bunun işe yarayıp yaramadığını çözmedi mi?**
 *Kanalın* işe yaradığını kanıtladı — iş için eğitilmiş bir kodlayıcı/kod çözücü çiftiyle. Şüphecilik, hiçbir stok üretim modelinin yoğun render'ları okuyamadığı dönemden kalma; bu değişti ve yukarıdaki [model karnesi](../../../README.md#-the-numbers--measured-not-estimated) bugün bunları tam olarak kimin okuduğunu, kanıtlarla gösteriyor. [Benchmark harness](../../../benchmarks/README.md) yeni herhangi bir modeli tek komutla yeniden test eder — kapı hype'ı değil veriyi izler.
+
+**Claude Code olmadan kullanabilir miyim — Cursor, ChatGPT, düz bir pipe?**
+Evet, iki yolla. Bir **proxy** olarak, API taban URL'sini ayarlamanıza izin veren herhangi bir istemciyle çalışır (`ANTHROPIC_BASE_URL` veya OpenAI taban URL'si) — Claude Code, kendi scriptleriniz, HTTP olan her şey. Ve proxy yapamayan araçlar için, yukarıdaki **Çevrimdışı dışa aktarma** bağlamı elle yapıştırdığınız PNG sayfalara render eder — `omniglyph export --stdin` bir Unix pipe'ından bile doğrudan okur.
+
+**Metni gerçekte nasıl bir görüntüye dönüştürüyor?**
+Metni yeniden akıtır ve onu 1-bit 5×8 piksel glif atlasıyla yoğun 1568×728 PNG sayfalara boyar — piksel başına bir bit, kenar yumuşatma yok, böylece model sayfayı içindeki karakter sayısına göre değil, boyutlarına göre faturalandırır. Yukarıdaki **Nasıl çalışır** pipeline'ı içerir; benchmark dokümanı ise geometriyi ve neden daha yoğun olanın her zaman daha ucuz olmadığını içerir.
 
 # 🔬 Her rakamı yeniden üretin
 

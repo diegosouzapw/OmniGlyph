@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` blokları mətn kimi sabitləyir; `options.emitRecoverable` şəklə çevrilmiş blokların orijinallarını qaytarır. Dəqiq billinq riyaziyyatı paket kökündə də mövcuddur (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — [OmniRoute](https://github.com/diegosouzapw/OmniRoute) məhz bunu istifadə edir. Təmiz JS runtime (Node və edge/Workers). Tam səth: `src/core/index.ts`.
 
+# 📤 Oflayn eksport — proksisiz, Claude Code-suz
+
+Claude Code-da deyilsiniz? Konteksti **lokal olaraq** PNG səhifələrinə render edin və onları Cursor, ChatGPT və ya şəkil yükləmələrini qəbul edən istənilən çata yapışdırın. Proksi yox, API açarı yox, qoşulmuş hesab yox:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Çata atmaq üçün hər şeyi bir qovluqda alırsınız:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` commit edilməmiş diff-inizi render edir, `--diff <ref>` bir commit aralığını, `--open` isə qovluğu üzə çıxarır (macOS). Hamısı sizin maşınınızda işləyir — eksport yolu heç vaxt proksini başlatmır və heç vaxt modelə müraciət etmir. Bütün bayraqlar üçün `omniglyph export --help` işə salın.
+
 # 🧭 Dürüst hissə
 
 - **Bu, itkilidir.** Şəkillərdən bayt-dəqiq bərpa təbiətcə etibarlı deyil. Tətbiq olunan tədbirlər: dəqiq identifikatorlar şəklin yanında mətn kimi gedir və ölçülən istehsalat konfiqurasiyası **sıfır sükutlu uydurma** verdi — uğursuz oxular imtina edir.
@@ -147,6 +168,12 @@ Son növbələr və dəqiq identifikatorlar dizayn üzrə mətn olaraq qalır. *
 
 **DeepSeek-OCR bunun işlədiyini artıq sübut etmədimi?**
 O, *kanalın* işlədiyini sübut etdi — bu iş üçün öyrədilmiş encoder/decoder cütü ilə. Şübhəçilik heç bir hazır istehsalat modelinin sıx renderləri oxuya bilmədiyi dövrdən qalıb; bu dəyişdi, və yuxarıdakı [model qiymətləndirmə cədvəli](../../../README.md#-the-numbers--measured-not-estimated) bu gün onları kimin oxuduğunu, qəbzlərlə göstərir. [Benchmark hərnəsi](../../../benchmarks/README.md) hər hansı yeni modeli bir əmrlə yenidən sınayır — qapı hipe deyil, məlumatı izləyir.
+
+**Onu Claude Code olmadan istifadə edə bilərəmmi — Cursor, ChatGPT, sadə pipe?**
+Bəli, iki yolla. **Proksi** kimi o, API baza URL-ni təyin etməyə imkan verən istənilən müştəri ilə işləyir (`ANTHROPIC_BASE_URL` və ya OpenAI baza URL-i) — Claude Code, öz skriptləriniz, istənilən HTTP şey. Və proksi edə bilməyən alətlər üçün yuxarıdakı **Oflayn eksport** konteksti əllə yapışdırdığınız PNG səhifələrinə render edir — `omniglyph export --stdin` hətta birbaşa Unix pipe-dan oxuyur.
+
+**O, mətni əslində necə şəklə çevirir?**
+O, mətni yenidən düzür və onu 1-bit 5×8 piksel qlif atlası ilə sıx 1568×728 PNG səhifələrinə çəkir — hər piksel üçün bir bit, anti-aliasing yoxdur, ona görə model səhifəni ölçüləri üzrə hesablayır, içində neçə simvol olduğuna görə yox. Yuxarıdakı **Necə işləyir** boru xəttini göstərir; benchmark sənədi isə həndəsəni və nə üçün daha sıxın həmişə daha ucuz olmadığını izah edir.
 
 # 🔬 Hər rəqəmi təkrarlayın
 

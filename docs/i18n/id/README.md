@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` mengunci blok sebagai teks; `options.emitRecoverable` mengembalikan versi asli dari blok yang sudah dijadikan gambar. Matematika penagihan eksak juga dikirim di root paket (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — itulah yang dikonsumsi [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Runtime murni JS (Node dan edge/Workers). Permukaan lengkap: `src/core/index.ts`.
 
+# 📤 Ekspor offline — tanpa proxy, tanpa Claude Code
+
+Tidak pakai Claude Code? Render konteks menjadi halaman PNG **secara lokal** dan tempelkan ke Cursor, ChatGPT, atau chat apa pun yang menerima unggahan gambar. Tanpa proxy, tanpa API key, tanpa akun yang perlu disambungkan:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Anda mendapat satu folder berisi semua yang perlu ditempelkan ke chat:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` merender diff Anda yang belum di-commit, `--diff <ref>` sebuah rentang commit, `--open` membuka folder-nya (macOS). Semuanya berjalan di mesin Anda — jalur ekspor tidak pernah menjalankan proxy dan tidak pernah memanggil model. Jalankan `omniglyph export --help` untuk setiap flag.
+
 # 🧭 Bagian jujur
 
 - **Ini lossy.** Recall byte-exact dari gambar secara alami tidak dapat diandalkan. Mitigasi yang sudah dikirim: identifier eksak berjalan sebagai teks di samping gambar, dan konfigurasi produksi yang terukur menghasilkan **nol konfabulasi diam-diam** — pembacaan yang gagal akan abstain.
@@ -147,6 +168,12 @@ Giliran terbaru dan identifier eksak tetap berupa teks by design. Untuk beban ke
 
 **Bukankah DeepSeek-OCR sudah menyelesaikan pertanyaan apakah ini bekerja?**
 Itu membuktikan *jalurnya* bekerja — dengan pasangan encoder/decoder yang dilatih khusus untuk tugas itu. Skeptisisme itu berasal dari masa ketika belum ada model produksi standar yang bisa membaca render padat; itu sudah berubah, dan [kartu skor model](../../../README.md#-the-numbers--measured-not-estimated) di atas menunjukkan persis siapa yang bisa membacanya hari ini, dengan bukti. [Harness benchmark](../../../benchmarks/README.md) menguji ulang model baru mana pun dalam satu perintah.
+
+**Bisakah saya memakainya tanpa Claude Code — Cursor, ChatGPT, atau pipe biasa?**
+Bisa, dengan dua cara. Sebagai **proxy**, ia bekerja dengan client apa pun yang memungkinkan Anda menyetel API base URL (`ANTHROPIC_BASE_URL`, atau OpenAI base URL) — Claude Code, skrip Anda sendiri, apa pun yang berbasis HTTP. Dan untuk tool yang tidak bisa mem-proxy, **Ekspor offline** di atas merender konteks menjadi halaman PNG yang Anda tempelkan secara manual — `omniglyph export --stdin` bahkan membaca langsung dari pipe Unix.
+
+**Bagaimana sebenarnya ia mengubah teks menjadi gambar?**
+Ia me-reflow teks dan melukisnya dengan atlas glyph 1-bit 5×8 piksel ke halaman PNG 1568×728 yang padat — satu bit per piksel, tanpa anti-aliasing, sehingga model menagih halaman berdasarkan dimensinya, bukan berdasarkan berapa banyak karakter di dalamnya. **Cara kerjanya** di atas memuat pipeline-nya; dokumen benchmark memuat geometri dan alasan kenapa lebih padat tidak selalu lebih murah.
 
 # 🔬 Reproduksi setiap angka
 

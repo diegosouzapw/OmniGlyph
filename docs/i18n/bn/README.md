@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` ব্লকগুলোকে টেক্সট হিসেবে পিন করে রাখে; `options.emitRecoverable` ইমেজ করা ব্লকগুলোর মূল সংস্করণ ফেরত দেয়। এক্সাক্ট বিলিং গণিতও প্যাকেজ রুটে পাওয়া যায় (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — এটিই [OmniRoute](https://github.com/diegosouzapw/OmniRoute) ব্যবহার করে। বিশুদ্ধ-JS রানটাইম (Node এবং edge/Workers)। সম্পূর্ণ সারফেস: `src/core/index.ts`।
 
+# 📤 অফলাইন এক্সপোর্ট — কোনো প্রক্সি নেই, কোনো Claude Code নেই
+
+Claude Code ব্যবহার করছেন না? কনটেক্সটকে **লোকালি** PNG পৃষ্ঠায় রেন্ডার করুন এবং সেগুলো Cursor, ChatGPT, বা ইমেজ আপলোড গ্রহণ করে এমন যেকোনো চ্যাটে পেস্ট করুন। কোনো প্রক্সি নেই, কোনো API কী নেই, কোনো অ্যাকাউন্ট সেট আপ করা নেই:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+আপনি একটি ফোল্ডার পাবেন যাতে চ্যাটে ড্রপ করার জন্য সবকিছু থাকে:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` আপনার আনকমিটেড diff রেন্ডার করে, `--diff <ref>` একটি কমিট রেঞ্জ, `--open` ফোল্ডারটি দেখায় (macOS)। সবকিছু আপনার মেশিনে চলে — এক্সপোর্ট পাথ কখনো প্রক্সি চালু করে না এবং কখনো কোনো মডেল কল করে না। প্রতিটি ফ্ল্যাগের জন্য `omniglyph export --help` চালান।
+
 # 🧭 The honest part
 
 - **এটি লসি।** ছবি থেকে বাইট-এক্সাক্ট রিকল স্বভাবতই অনির্ভরযোগ্য। প্রশমন ব্যবস্থা চালু আছে: এক্সাক্ট আইডেন্টিফায়ার ছবির পাশে টেক্সট হিসেবে চলে, এবং মাপা প্রোডাকশন কনফিগে **শূন্য নীরব কনফ্যাবুলেশন** হয়েছে — ব্যর্থ রিড বিরত থাকে।
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **DeepSeek-OCR কি ইতিমধ্যে প্রমাণ করেনি যে এটি কাজ করে?**
 এটি প্রমাণ করেছে যে *চ্যানেলটি* কাজ করে — এই কাজের জন্য প্রশিক্ষিত একটি এনকোডার/ডিকোডার জোড়া দিয়ে। সংশয়টি সেই সময় থেকে, যখন কোনো স্টক প্রোডাকশন মডেল ঘন রেন্ডার পড়তে পারত না; সেটি বদলে গেছে, এবং ওপরের [মডেল স্কোরকার্ড](../../../README.md#-the-numbers--measured-not-estimated) আজ ঠিক কারা এগুলো পড়তে পারে তা রসিদসহ দেখায়। [বেঞ্চমার্ক হার্নেস](../../../benchmarks/README.md) এক কমান্ডে যেকোনো নতুন মডেল পুনরায় টেস্ট করে — গেট হাইপ নয়, ডেটা অনুসরণ করে।
+
+**Claude Code ছাড়া কি এটি ব্যবহার করা যায় — Cursor, ChatGPT, একটি সাধারণ pipe?**
+হ্যাঁ, দুইভাবে। একটি **প্রক্সি** হিসেবে এটি যেকোনো ক্লায়েন্টের সাথে কাজ করে যা আপনাকে API বেস URL সেট করতে দেয় (`ANTHROPIC_BASE_URL`, বা OpenAI বেস URL) — Claude Code, আপনার নিজের স্ক্রিপ্ট, HTTP-এর যেকোনো কিছু। আর যেসব টুল প্রক্সি করতে পারে না, তাদের জন্য উপরের **অফলাইন এক্সপোর্ট** কনটেক্সটকে PNG পৃষ্ঠায় রেন্ডার করে যা আপনি হাতে পেস্ট করেন — `omniglyph export --stdin` এমনকি সরাসরি একটি Unix pipe থেকে পড়ে।
+
+**এটি আসলে কীভাবে টেক্সটকে একটি ছবিতে রূপান্তর করে?**
+এটি টেক্সটকে রিফ্লো করে এবং একটি 1-bit 5×8 পিক্সেল গ্লিফ অ্যাটলাস দিয়ে ঘন 1568×728 PNG পৃষ্ঠায় আঁকে — প্রতি পিক্সেলে এক বিট, কোনো অ্যান্টি-এলিয়াসিং নেই, তাই মডেল পৃষ্ঠাটিকে তার মাত্রা অনুযায়ী বিল করে, ভেতরে কতগুলো অক্ষর আছে তার ওপর নয়। উপরের **এটি কীভাবে কাজ করে** অংশে পাইপলাইনটি আছে; বেঞ্চমার্ক ডকে জ্যামিতি এবং কেন ঘনতর সবসময় সস্তা নয় তা আছে।
 
 # 🔬 প্রতিটি সংখ্যা পুনরুৎপাদন করুন
 

@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` બ્લોક્સને ટેક્સ્ટ તરીકે pin કરે છે; `options.emitRecoverable` imaged બ્લોક્સના originals પરત આપે છે. ચોક્કસ બિલિંગ મેથ package root પર પણ મોકલાય છે (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — એ જ [OmniRoute](https://github.com/diegosouzapw/OmniRoute) વાપરે છે. Pure-JS runtime (Node અને edge/Workers). પૂરો surface: `src/core/index.ts`.
 
+# 📤 ઑફલાઇન એક્સપોર્ટ — proxy નહીં, Claude Code નહીં
+
+Claude Code પર નથી? કૉન્ટેક્સ્ટને **લોકલી** PNG પેજ તરીકે રેન્ડર કરો અને તેમને Cursor, ChatGPT, અથવા image uploads સ્વીકારતી કોઈપણ ચેટમાં પેસ્ટ કરો. કોઈ પ્રોક્સી નહીં, કોઈ API key નહીં, કોઈ account જોડેલું નહીં:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+તમને એક ફોલ્ડર મળે છે જેમાં ચેટમાં મૂકવા માટે બધું જ છે:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` તમારો uncommitted diff રેન્ડર કરે છે, `--diff <ref>` એક commit range, `--open` ફોલ્ડર બતાવે છે (macOS). આ બધું તમારા મશીન પર જ ચાલે છે — export path ક્યારેય પ્રોક્સી શરૂ કરતું નથી અને ક્યારેય કોઈ model ને કૉલ કરતું નથી. દરેક flag માટે `omniglyph export --help` ચલાવો.
+
 # 🧭 પ્રામાણિક ભાગ
 
 - **તે lossy છે.** ઇમેજમાંથી byte-exact recall સ્વભાવે અવિશ્વસનીય છે. મોકલેલા ઉકેલો: ચોક્કસ identifiers ઇમેજની બાજુમાં ટેક્સ્ટ તરીકે જાય છે, અને માપેલા પ્રોડક્શન કન્ફિગે **શૂન્ય silent confabulations** આપ્યા — નિષ્ફળ reads abstain કરે છે.
@@ -147,6 +168,12 @@ End-to-end — આખું બિલ. મોટા ભાગના compression 
 
 **શું DeepSeek-OCR એ પહેલેથી જ નક્કી નહોતું કર્યું કે આ કામ કરે છે?**
 તેણે સાબિત કર્યું કે *channel* કામ કરે છે — એ કામ માટે trained encoder/decoder pair સાથે. Skepticism ત્યારથી છે જ્યારે કોઈ stock પ્રોડક્શન મોડેલ ઘટ્ટ રેન્ડર વાંચી શકતું નહોતું; તે બદલાયું, અને ઉપરનું [model scorecard](../../../README.md#-the-numbers--measured-not-estimated) બરાબર બતાવે છે કે આજે કોણ તેમને રસીદ સાથે વાંચે છે. [benchmark harness](../../../benchmarks/README.md) એક જ કમાન્ડમાં કોઈપણ નવા મોડેલને ફરીથી ટેસ્ટ કરે છે — gate hype ને નહીં, data ને અનુસરે છે.
+
+**શું હું તેને Claude Code વગર વાપરી શકું — Cursor, ChatGPT, એક સાદો pipe?**
+હા, બે રીતે. **પ્રોક્સી** તરીકે તે એવા કોઈપણ client સાથે કામ કરે છે જે તમને API base URL સેટ કરવા દે (`ANTHROPIC_BASE_URL`, અથવા OpenAI base URL) — Claude Code, તમારી પોતાની scripts, કંઈપણ HTTP. અને જે tools proxy નથી કરી શકતા, તેમના માટે ઉપરનું **ઑફલાઇન એક્સપોર્ટ** કૉન્ટેક્સ્ટને PNG પેજ તરીકે રેન્ડર કરે છે જેને તમે હાથથી પેસ્ટ કરો છો — `omniglyph export --stdin` તો સીધું Unix pipe માંથી પણ વાંચે છે.
+
+**તે ખરેખર ટેક્સ્ટને ઇમેજમાં કેવી રીતે ફેરવે છે?**
+તે ટેક્સ્ટને reflow કરે છે અને તેને 1-bit 5×8 pixel glyph atlas વડે ઘટ્ટ 1568×728 PNG પેજ પર દોરે છે — pixel દીઠ એક bit, કોઈ anti-aliasing નહીં, તેથી model પેજને તેના પરિમાણો પ્રમાણે બિલ કરે છે, અંદર કેટલા characters છે તેના આધારે નહીં. ઉપરનું **તે કેવી રીતે કામ કરે છે** pipeline આપે છે; benchmarks દસ્તાવેજ geometry આપે છે અને શા માટે વધુ ઘટ્ટ હંમેશા સસ્તું નથી હોતું તે પણ.
 
 # 🔬 દરેક સંખ્યાનું પુનઃઉત્પાદન કરો
 
