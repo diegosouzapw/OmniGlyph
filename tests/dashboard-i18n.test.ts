@@ -89,11 +89,17 @@ describe('renderPage() — locale selector', () => {
   it('renders the 42-option language selector with the current locale selected', () => {
     const html = renderPage(47821, 'overview', 'pt-BR');
     expect(html).toContain('id="lang-select"');
-    expect(html).toContain('aria-label="Language"');
+    // The aria-label is itself localized (dash.common.langSelectLabel), so it
+    // reads "Language" only in English; on a pt-BR page it is translated.
+    expect(html).toMatch(/id="lang-select"[^>]*aria-label="[^"]+"/);
     const optionCount = (html.match(/<option value="/g) ?? []).length;
     expect(optionCount).toBe(42);
     expect(html).toContain('🇧🇷 Português (Brasil)');
     expect(html).toMatch(/<option value="pt-BR"[^>]*selected[^>]*>/);
+  });
+
+  it('renders the language-selector aria-label in English on the default page', () => {
+    expect(renderPage(47821, 'overview')).toContain('aria-label="Language"');
   });
 
   it('does not mark a different locale as selected', () => {
