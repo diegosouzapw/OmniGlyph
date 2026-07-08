@@ -75,6 +75,24 @@ Funciona de las dos formas:
 
 Dashboard en <http://127.0.0.1:47821/>: tokens ahorrados, cada conversión texto→imagen lado a lado, kill switch, chips de modelo en vivo. Las respuestas hacen streaming normal — solo el *request* se comprime, nunca la salida del modelo.
 
+# 🖥️ El dashboard
+
+Un dashboard local completo viene incluido en el paquete — offline, de un solo archivo, cero requests externos. Seis páginas, actualizadas en vivo vía SSE a medida que fluyen los requests:
+
+![Overview: tarjetas KPI de control de misión, sparkline de ahorros y feed de eventos en vivo](../../assets/dashboard-overview.png)
+
+- **Overview** — control de misión: % de ahorro, $ ahorrados, latencia p95, cache hits, errores, feed en vivo.
+- **Live Flow** — el pipeline como un grafo de nodos: cliente → gate → renderer / passthrough → API, con una partícula por cada request real.
+- **Telemetry** — un odómetro de tokens/$ y una línea de tiempo de requests en vivo; haz clic en cualquier request para ver exactamente qué partes se convirtieron en imágenes y leer el texto fuente detrás de cada página.
+- **Benchmarks** — los comprobantes del harness renderizados desde `benchmarks/*/results/`, una fila por experimento modelo·config, y **corre los benchmarks desde la UI**: los dry-runs de `$0` hacen streaming de su salida en vivo; las corridas en vivo quedan protegidas detrás de tu clave de API más una confirmación explícita de costo.
+- **Sessions / History** — las sesiones principales por tokens ahorrados y cada evento en disco.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![El pipeline de requests como un grafo de nodos en vivo](../../assets/dashboard-flow.png) | ![Comprobantes de benchmarks y dry-runs en la UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odómetro y línea de tiempo de requests en vivo](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Cómo funciona
 
 ```

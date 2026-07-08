@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./docs/assets/example-render.png" alt="A real render: system prompt + tool docs packed into one dense 1568×728 page" width="820"/>
+<img src="./docs/assets/example-render.png" alt="A real render: system prompt + tool docs packed into one dense 1568×728 page" width="520"/>
 
 <br/>
 
@@ -123,6 +123,24 @@ Works both ways:
 - **Subscription session**: you don't pay less, but usage limits are counted in tokens — so your limits stretch **~2–3×**.
 
 Dashboard at <http://127.0.0.1:47821/>: tokens saved, every text→image conversion side by side, kill switch, live model chips. Responses stream normally — only the *request* is compressed, never the model's output.
+
+# 🖥️ The dashboard
+
+A full local dashboard ships inside the package — offline, single-file, zero external requests. Six pages, updated live over SSE as requests flow:
+
+![Overview: mission-control KPI cards, savings sparkline and live event feed](docs/assets/dashboard-overview.png)
+
+- **Overview** — mission control: savings %, $ saved, latency p95, cache hits, errors, live feed.
+- **Live Flow** — the pipeline as a node graph: client → gate → renderer / passthrough → API, with a particle per real request.
+- **Telemetry** — a token/$ odometer and a live request timeline; click any request to see exactly which parts became images and read the source text behind every page.
+- **Benchmarks** — the harness receipts rendered from `benchmarks/*/results/`, one row per model·config experiment, and **run the benchmarks from the UI**: `$0` dry-runs stream their output live; live runs stay gated behind your API key plus an explicit cost confirmation.
+- **Sessions / History** — top sessions by tokens saved and every event on disk.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![The request pipeline as a live node graph](docs/assets/dashboard-flow.png) | ![Benchmark receipts and in-UI dry-runs](docs/assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer and live request timeline](docs/assets/dashboard-telemetry.png)
 
 # ⚙️ How it works
 

@@ -75,6 +75,24 @@ Berfungsi dua arah:
 
 Dashboard di <http://127.0.0.1:47821/>: token yang dihemat, setiap konversi teks→gambar berdampingan, kill switch, chip model langsung. Respons streaming berjalan normal — hanya *permintaan* yang dikompresi, tidak pernah output model.
 
+# 🖥️ Dashboard
+
+Dashboard lokal lengkap disertakan di dalam paket — offline, single-file, tanpa permintaan eksternal. Enam halaman, diperbarui secara langsung lewat SSE seiring permintaan mengalir:
+
+![Overview: kartu KPI mission-control, sparkline penghematan, dan feed event langsung](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: persentase penghematan, $ yang dihemat, latensi p95, cache hits, error, live feed.
+- **Live Flow** — pipeline sebagai node graph: client → gate → renderer / passthrough → API, dengan satu partikel per permintaan nyata.
+- **Telemetry** — odometer token/$ dan linimasa permintaan langsung; klik permintaan mana pun untuk melihat persis bagian mana yang menjadi gambar dan membaca teks sumber di balik setiap halaman.
+- **Benchmarks** — bukti harness yang dirender dari `benchmarks/*/results/`, satu baris per eksperimen model·config, dan **jalankan benchmark langsung dari UI**: dry-run `$0` menstream outputnya secara langsung; live run tetap terkunci di balik API key Anda plus konfirmasi biaya eksplisit.
+- **Sessions / History** — sesi teratas berdasarkan token yang dihemat dan setiap event di disk.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Pipeline permintaan sebagai node graph langsung](../../assets/dashboard-flow.png) | ![Bukti benchmark dan dry-run di dalam UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer dan linimasa permintaan langsung](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Cara kerjanya
 
 ```

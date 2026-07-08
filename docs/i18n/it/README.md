@@ -75,6 +75,24 @@ Funziona in entrambi i modi:
 
 Dashboard su <http://127.0.0.1:47821/>: token risparmiati, ogni conversione testo→immagine affiancata, interruttore di emergenza, chip dei modelli in tempo reale. Le risposte vengono trasmesse in streaming normalmente — solo la *richiesta* viene compressa, mai l'output del modello.
 
+# 🖥️ La dashboard
+
+Una dashboard locale completa è inclusa nel pacchetto — offline, a file singolo, zero richieste esterne. Sei pagine, aggiornate in tempo reale via SSE man mano che le richieste scorrono:
+
+![Overview: card KPI da centro di controllo, sparkline dei risparmi e feed eventi in tempo reale](../../assets/dashboard-overview.png)
+
+- **Overview** — centro di controllo: % di risparmio, $ risparmiati, latenza p95, cache hit, errori, feed in tempo reale.
+- **Live Flow** — la pipeline come grafo di nodi: client → gate → renderer / passthrough → API, con una particella per ogni richiesta reale.
+- **Telemetry** — un odometro di token/$ e una timeline delle richieste in tempo reale; clicca su qualsiasi richiesta per vedere esattamente quali parti sono diventate immagini e leggere il testo sorgente dietro ogni pagina.
+- **Benchmarks** — i riscontri dell'harness renderizzati da `benchmarks/*/results/`, una riga per ogni esperimento modello·config, e **esegui i benchmark direttamente dalla UI**: i dry-run da `$0` trasmettono il loro output in tempo reale; le esecuzioni reali restano bloccate dietro la tua chiave API più una conferma esplicita dei costi.
+- **Sessions / History** — le sessioni principali per token risparmiati e ogni evento su disco.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![La pipeline delle richieste come grafo di nodi in tempo reale](../../assets/dashboard-flow.png) | ![Riscontri dei benchmark e dry-run nella UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometro e timeline delle richieste in tempo reale](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Come funziona
 
 ```

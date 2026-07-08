@@ -75,6 +75,24 @@ Fungerar på båda sätten:
 
 Instrumentpanel på <http://127.0.0.1:47821/>: sparade tokens, varje text-till-bild-konvertering sida vid sida, dödomkopplare, live-modellchips. Svar strömmas normalt — endast *förfrågan* komprimeras, aldrig modellens utdata.
 
+# 🖥️ Instrumentpanelen
+
+En fullständig lokal instrumentpanel ingår i paketet — offline, en enda fil, inga externa förfrågningar. Sex sidor, uppdaterade live över SSE i takt med att förfrågningar flödar:
+
+![Overview: KPI-kort för mission control, sparande-sparklinje och live händelseflöde](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: sparande i %, $ sparat, latens p95, cache-träffar, fel, live-flöde.
+- **Live Flow** — pipelinen som en nodgraf: klient → spärr → renderare / passthrough → API, med en partikel per verklig förfrågan.
+- **Telemetry** — en token/$-mätare och en live-tidslinje för förfrågningar; klicka på valfri förfrågan för att se exakt vilka delar som blev bilder och läsa källtexten bakom varje sida.
+- **Benchmarks** — belägg från testverktyget renderade från `benchmarks/*/results/`, en rad per modell·konfiguration-experiment, och **kör benchmarks direkt i gränssnittet**: `$0`-dry-runs strömmar sin utdata live; live-körningar förblir spärrade bakom din API-nyckel plus en uttrycklig kostnadsbekräftelse.
+- **Sessions / History** — de sessioner som sparat mest tokens och varje händelse på disk.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Förfrågningspipelinen som en live nodgraf](../../assets/dashboard-flow.png) | ![Benchmark-belägg och dry-runs direkt i gränssnittet](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: mätare och live-tidslinje för förfrågningar](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Hur det fungerar
 
 ```

@@ -75,6 +75,24 @@ Werkt op beide manieren:
 
 Dashboard op <http://127.0.0.1:47821/>: bespaarde tokens, elke tekst-naar-afbeelding-conversie naast elkaar, noodstop, live modelchips. Antwoorden worden normaal gestreamd — alleen het *verzoek* wordt gecomprimeerd, nooit de uitvoer van het model.
 
+# 🖥️ Het dashboard
+
+Een volledig lokaal dashboard zit ingebouwd in het pakket — offline, single-file, zonder externe requests. Zes pagina's, live bijgewerkt via SSE terwijl requests binnenkomen:
+
+![Overview: mission-control KPI-kaarten, besparingssparkline en live event-feed](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: besparing %, bespaarde $, latentie p95, cache hits, fouten, live feed.
+- **Live Flow** — de pipeline als een node graph: client → gate → renderer / passthrough → API, met een deeltje per echt request.
+- **Telemetry** — een token/$-teller en een live requesttijdlijn; klik op een willekeurig request om precies te zien welke onderdelen afbeeldingen zijn geworden en lees de brontekst achter elke pagina.
+- **Benchmarks** — de harness-bewijzen gerenderd vanuit `benchmarks/*/results/`, één rij per model·configuratie-experiment, en **draai de benchmarks vanuit de UI**: `$0`-dry-runs streamen hun uitvoer live; live runs blijven vergrendeld achter uw API-sleutel plus een expliciete kostenbevestiging.
+- **Sessions / History** — de sessies met de meeste bespaarde tokens en elke gebeurtenis op schijf.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![De requestpipeline als live node graph](../../assets/dashboard-flow.png) | ![Benchmark-bewijzen en dry-runs in de UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: teller en live requesttijdlijn](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Hoe het werkt
 
 ```

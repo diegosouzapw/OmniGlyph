@@ -75,6 +75,24 @@ Fonctionne dans les deux cas :
 
 Tableau de bord sur <http://127.0.0.1:47821/> : tokens économisés, chaque conversion texte→image côte à côte, interrupteur d'urgence, puces de modèles en direct. Les réponses sont diffusées normalement — seule la *requête* est compressée, jamais la sortie du modèle.
 
+# 🖥️ Le tableau de bord
+
+Un tableau de bord local complet est fourni dans le package — hors ligne, fichier unique, aucune requête externe. Six pages, mises à jour en direct via SSE au fil des requêtes :
+
+![Vue d'ensemble : cartes KPI de poste de contrôle, sparkline des économies et flux d'événements en direct](../../assets/dashboard-overview.png)
+
+- **Vue d'ensemble** — poste de contrôle : % d'économies, $ économisés, latence p95, cache hits, erreurs, flux en direct.
+- **Live Flow** — le pipeline sous forme de graphe de nœuds : client → gate → renderer / passthrough → API, avec une particule par requête réelle.
+- **Télémétrie** — un odomètre tokens/$ et une chronologie des requêtes en direct ; cliquez sur n'importe quelle requête pour voir exactement quelles parties sont devenues des images et lire le texte source derrière chaque page.
+- **Benchmarks** — les reçus du harnais rendus à partir de `benchmarks/*/results/`, une ligne par expérience modèle·configuration, et **lancez les benchmarks depuis l'interface** : les dry-runs à `$0` diffusent leur sortie en direct ; les runs réels restent verrouillés derrière votre clé API plus une confirmation explicite du coût.
+- **Sessions / Historique** — les sessions ayant économisé le plus de tokens et chaque événement sur disque.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Le pipeline de requêtes sous forme de graphe de nœuds en direct](../../assets/dashboard-flow.png) | ![Reçus de benchmarks et dry-runs dans l'interface](../../assets/dashboard-benchmarks.png) |
+
+![Télémétrie : odomètre et chronologie des requêtes en direct](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Fonctionnement
 
 ```

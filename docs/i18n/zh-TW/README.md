@@ -75,6 +75,24 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 儀表板位於 <http://127.0.0.1:47821/>:節省的 token 數、每一次文字→圖像轉換的並排比較、終止開關、即時模型標籤。回應照常串流輸出——只有*請求*被壓縮,模型的輸出從不受影響。
 
+# 🖥️ The dashboard
+
+套件內建一個完整的本地儀表板——離線運作、單一檔案、零對外連線。共六個頁面,隨請求流動透過 SSE 即時更新:
+
+![Overview:任務指揮中心風格的 KPI 卡片、節省趨勢圖與即時事件動態消息](../../assets/dashboard-overview.png)
+
+- **Overview**——任務指揮中心:節省百分比、節省金額、延遲 p95、快取命中數、錯誤數、即時動態消息。
+- **Live Flow**——以節點圖呈現的處理流程:client → gate → renderer / passthrough → API,每個真實請求對應一個粒子。
+- **Telemetry**——token/$ 里程表與即時請求時間軸;點擊任一請求即可看到哪些部分變成了圖像,並讀取每一頁背後的原始文字。
+- **Benchmarks**——從 `benchmarks/*/results/` 渲染出的測試套件憑證,每個 model·config 實驗一列,並且**可直接在介面中執行基準測試**:`$0` 的 dry-run 會即時串流其輸出;正式執行則需要你的 API key 加上明確的費用確認才會解鎖。
+- **Sessions / History**——依節省 token 數排名的熱門工作階段,以及磁碟上的每一筆事件記錄。
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![以即時節點圖呈現的請求處理流程](../../assets/dashboard-flow.png) | ![基準測試憑證與介面內建的 dry-run](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry:里程表與即時請求時間軸](../../assets/dashboard-telemetry.png)
+
 # ⚙️ How it works
 
 ```

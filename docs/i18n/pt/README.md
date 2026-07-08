@@ -75,6 +75,24 @@ Funciona nos dois sentidos:
 
 Dashboard em <http://127.0.0.1:47821/>: tokens poupados, cada conversão texto→imagem lado a lado, interruptor de emergência, chips de modelos em direto. As respostas fazem streaming normalmente — apenas o *pedido* é comprimido, nunca a saída do modelo.
 
+# 🖥️ O dashboard
+
+O pacote inclui um dashboard local completo — offline, num único ficheiro, sem pedidos externos. Seis páginas, atualizadas em direto via SSE à medida que os pedidos fluem:
+
+![Visão geral: cartões de KPI de centro de controlo, sparkline de poupança e feed de eventos em direto](../../assets/dashboard-overview.png)
+
+- **Overview** — centro de controlo: % de poupança, $ poupados, latência p95, acertos de cache, erros, feed em direto.
+- **Live Flow** — o pipeline como um grafo de nós: client → gate → renderer / passthrough → API, com uma partícula por pedido real.
+- **Telemetry** — um hodómetro de tokens/$ e uma linha temporal de pedidos em direto; clique em qualquer pedido para ver exatamente que partes se tornaram imagens e ler o texto de origem por trás de cada página.
+- **Benchmarks** — os recibos do harness renderizados a partir de `benchmarks/*/results/`, uma linha por experiência de modelo·configuração, e **execute os benchmarks a partir da UI**: os dry-runs de `$0` transmitem a sua saída em direto; as execuções reais ficam bloqueadas atrás da sua chave de API mais uma confirmação explícita de custo.
+- **Sessions / History** — as sessões principais por tokens poupados e todos os eventos em disco.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![O pipeline de pedidos como um grafo de nós em direto](../../assets/dashboard-flow.png) | ![Recibos de benchmarks e dry-runs na UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: hodómetro e linha temporal de pedidos em direto](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Como funciona
 
 ```

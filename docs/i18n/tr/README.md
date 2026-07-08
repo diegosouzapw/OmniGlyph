@@ -75,6 +75,24 @@ Her iki şekilde de çalışır:
 
 <http://127.0.0.1:47821/> adresindeki dashboard: kaydedilen tokenlar, yan yana her metin→görüntü dönüşümü, kill switch, canlı model çipleri. Yanıtlar normal şekilde stream edilir — yalnızca *istek* sıkıştırılır, modelin çıktısı asla değil.
 
+# 🖥️ Dashboard
+
+Paketin içinde tam bir yerel dashboard gelir — offline, tek dosya, sıfır harici istek. Requestler aktıkça SSE üzerinden canlı güncellenen altı sayfa:
+
+![Overview: mission-control KPI kartları, tasarruf sparkline'ı ve canlı olay akışı](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: tasarruf %'si, tasarruf edilen $, p95 gecikme, cache hit'leri, hatalar, canlı akış.
+- **Live Flow** — pipeline'ın bir node grafiği olarak gösterimi: client → gate → renderer / passthrough → API, her gerçek request için bir parçacık.
+- **Telemetry** — bir token/$ kilometre sayacı ve canlı bir request zaman çizelgesi; hangi kısımların görüntüye dönüştüğünü görmek ve her sayfanın arkasındaki kaynak metni okumak için herhangi bir request'e tıklayın.
+- **Benchmarks** — `benchmarks/*/results/` içinden render edilen harness makbuzları, model·config deneyi başına bir satır, ve **benchmarkları UI'dan çalıştırın**: `$0` dry-run'lar çıktılarını canlı stream eder; canlı çalıştırmalar API anahtarınız artı açık bir maliyet onayının arkasında kilitli kalır.
+- **Sessions / History** — kaydedilen tokenlara göre en iyi sessionlar ve diskteki her olay.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Request pipeline'ı canlı bir node grafiği olarak](../../assets/dashboard-flow.png) | ![Benchmark makbuzları ve UI içi dry-run'lar](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: kilometre sayacı ve canlı request zaman çizelgesi](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Nasıl çalışır
 
 ```

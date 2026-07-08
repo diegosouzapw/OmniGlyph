@@ -75,6 +75,24 @@ Berfungsi dalam kedua-dua cara:
 
 Papan pemuka di <http://127.0.0.1:47821/>: token dijimatkan, setiap penukaran teks→imej bersebelahan, suis kill, cip model langsung. Respons mengalir seperti biasa — hanya *permintaan* yang dimampatkan, tidak pernah output model.
 
+# 🖥️ Papan pemuka
+
+Papan pemuka tempatan yang lengkap disertakan dalam pakej — luar talian, fail tunggal, sifar permintaan luaran. Enam halaman, dikemas kini secara langsung melalui SSE apabila permintaan mengalir:
+
+![Overview: kad KPI kawalan misi, sparkline penjimatan dan feed peristiwa langsung](../../assets/dashboard-overview.png)
+
+- **Overview** — kawalan misi: % penjimatan, $ dijimatkan, latensi p95, cache hits, ralat, feed langsung.
+- **Live Flow** — saluran paip sebagai graf nod: klien → gate → renderer / passthrough → API, dengan satu zarah bagi setiap permintaan sebenar.
+- **Telemetry** — odometer token/$ dan garis masa permintaan langsung; klik mana-mana permintaan untuk melihat dengan tepat bahagian mana yang menjadi imej dan baca teks sumber di sebalik setiap halaman.
+- **Benchmarks** — bukti harness yang dirender daripada `benchmarks/*/results/`, satu baris bagi setiap eksperimen model·konfigurasi, dan **jalankan benchmark terus dari UI**: dry-run `$0` menstrim outputnya secara langsung; larian langsung kekal terkunci di sebalik kunci API anda serta pengesahan kos yang eksplisit.
+- **Sessions / History** — sesi teratas mengikut token dijimatkan dan setiap peristiwa pada cakera.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Saluran paip permintaan sebagai graf nod langsung](../../assets/dashboard-flow.png) | ![Bukti benchmark dan dry-run dalam UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer dan garis masa permintaan langsung](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Bagaimana ia berfungsi
 
 ```

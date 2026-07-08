@@ -75,6 +75,24 @@ Fungerer begge veier:
 
 Dashboard på <http://127.0.0.1:47821/>: tokens spart, hver tekst→bilde-konvertering side om side, kill switch, live modell-chips. Svar strømmer normalt — kun *forespørselen* komprimeres, aldri modellens utdata.
 
+# 🖥️ Dashboardet
+
+Et fullstendig lokalt dashboard følger med i pakken — offline, én fil, ingen eksterne forespørsler. Seks sider, oppdatert live over SSE mens forespørsler strømmer gjennom:
+
+![Overview: KPI-kort for mission control, sparklinje for besparelser og live event-feed](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: besparelse i %, spart $, latency p95, cache-treffer, feil, live feed.
+- **Live Flow** — pipelinen som en nodegraf: client → gate → renderer / passthrough → API, med en partikkel per reell forespørsel.
+- **Telemetry** — et token/$-odometer og en live forespørselstidslinje; klikk på en hvilken som helst forespørsel for å se nøyaktig hvilke deler som ble til bilder, og les kildeteksten bak hver side.
+- **Benchmarks** — kvitteringene fra rammeverket, rendret fra `benchmarks/*/results/`, én rad per modell·konfig-eksperiment, og **kjør benchmarks fra UI-en**: `$0`-dry-runs strømmer utdataene sine live; live-kjøringer forblir sperret bak API-nøkkelen din pluss en eksplisitt kostnadsbekreftelse.
+- **Sessions / History** — øktene som har spart flest tokens, og hver eneste hendelse på disk.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Forespørselspipelinen som en live nodegraf](../../assets/dashboard-flow.png) | ![Benchmark-kvitteringer og dry-runs i UI-en](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer og live forespørselstidslinje](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Slik fungerer det
 
 ```

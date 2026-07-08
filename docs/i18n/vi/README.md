@@ -75,6 +75,24 @@ Hoạt động theo cả hai cách:
 
 Dashboard tại <http://127.0.0.1:47821/>: token đã tiết kiệm, từng lần chuyển đổi văn bản→hình ảnh đặt cạnh nhau, công tắc tắt khẩn cấp, chip mô hình trực tiếp. Phản hồi vẫn stream bình thường — chỉ *request* bị nén, không bao giờ là đầu ra của mô hình.
 
+# 🖥️ Dashboard
+
+Một dashboard cục bộ đầy đủ được đóng gói sẵn trong package — hoạt động offline, một tệp duy nhất, không có request ra bên ngoài. Sáu trang, cập nhật trực tiếp qua SSE khi request diễn ra:
+
+![Overview: các thẻ KPI kiểu trung tâm điều hành, biểu đồ tiết kiệm dạng sparkline và luồng sự kiện trực tiếp](../../assets/dashboard-overview.png)
+
+- **Overview** — trung tâm điều hành: % tiết kiệm, số tiền tiết kiệm, độ trễ p95, cache hit, lỗi, luồng sự kiện trực tiếp.
+- **Live Flow** — pipeline hiển thị dưới dạng đồ thị node: client → gate → renderer / passthrough → API, với một hạt cho mỗi request thực.
+- **Telemetry** — đồng hồ đo token/$ và dòng thời gian request trực tiếp; nhấp vào bất kỳ request nào để xem chính xác phần nào đã trở thành hình ảnh và đọc văn bản gốc đằng sau mỗi trang.
+- **Benchmarks** — các bằng chứng của harness được hiển thị từ `benchmarks/*/results/`, mỗi dòng ứng với một thử nghiệm mô hình·cấu hình, và **chạy benchmark ngay từ UI**: dry-run `$0` stream kết quả trực tiếp; các lần chạy thật vẫn bị khóa sau khóa API của bạn cộng với xác nhận chi phí rõ ràng.
+- **Sessions / History** — các session tiết kiệm token nhiều nhất và mọi sự kiện lưu trên đĩa.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Pipeline request dưới dạng đồ thị node trực tiếp](../../assets/dashboard-flow.png) | ![Bằng chứng benchmark và dry-run ngay trong UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: đồng hồ đo và dòng thời gian request trực tiếp](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Cách hoạt động
 
 ```

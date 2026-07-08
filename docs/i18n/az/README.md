@@ -75,6 +75,24 @@ Hər iki halda işləyir:
 
 Panel <http://127.0.0.1:47821/> ünvanındadır: qənaət edilən tokenlər, hər mətn→şəkil çevrilməsi yan-yana, öldürmə açarı, canlı model çipləri. Cavablar normal axır — yalnız *sorğu* sıxılır, heç vaxt modelin çıxışı yox.
 
+# 🖥️ Panel
+
+Paketin daxilində tam lokal panel gəlir — oflayn, tək fayl, sıfır xarici sorğu. Sorğular axarkən SSE üzərindən canlı yenilənən altı səhifə:
+
+![Ümumi baxış: missiya-nəzarət KPI kartları, qənaət sparkline-ı və canlı hadisə axını](../../assets/dashboard-overview.png)
+
+- **Ümumi baxış** — missiya nəzarəti: qənaət %, qənaət edilən $, gecikmə p95, keş uğurları, xətalar, canlı axın.
+- **Canlı Axın** — boru xəttinin node qrafiki kimi: müştəri → qapı → renderer / keçid → API, hər həqiqi sorğu üçün bir hissəcik.
+- **Telemetriya** — token/$ odometri və canlı sorğu zaman xətti; hər hansı sorğuya klikləyərək dəqiq hansı hissələrin şəklə çevrildiyini görün və hər səhifənin arxasındakı mənbə mətnini oxuyun.
+- **Benchmarklar** — `benchmarks/*/results/`-dan render olunan sınaq qəbzləri, hər model·konfiqurasiya eksperimenti üçün bir sətir, və **benchmarkları UI-dan işə salın**: `$0` dry-run-lar öz çıxışlarını canlı axıdır; canlı işlər isə API açarınızın üstəlik açıq xərc təsdiqi arxasında qapalı qalır.
+- **Sessiyalar / Tarixçə** — qənaət edilən tokenlərə görə ən yaxşı sessiyalar və diskdəki hər hadisə.
+
+| Canlı Axın | Benchmarklar |
+|---|---|
+| ![Sorğu boru xəttinin canlı node qrafiki kimi](../../assets/dashboard-flow.png) | ![Benchmark qəbzləri və UI daxilində dry-run-lar](../../assets/dashboard-benchmarks.png) |
+
+![Telemetriya: odometr və canlı sorğu zaman xətti](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Necə işləyir
 
 ```

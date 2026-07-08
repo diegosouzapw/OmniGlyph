@@ -75,6 +75,24 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/>의 대시보드: 절약된 토큰, 나란히 비교되는 모든 텍스트→이미지 변환, 킬 스위치, 실시간 모델 칩. 응답은 정상적으로 스트리밍됩니다 — 압축되는 것은 오직 *요청*뿐이며, 모델의 출력은 결코 압축되지 않습니다.
 
+# 🖥️ 대시보드
+
+패키지 안에 완전한 로컬 대시보드가 포함되어 있습니다 — 오프라인, 단일 파일, 외부 요청 없음. 요청이 흐름에 따라 SSE를 통해 실시간으로 업데이트되는 6개의 페이지:
+
+![Overview: 미션 컨트롤 KPI 카드, 절감 스파크라인, 실시간 이벤트 피드](../../assets/dashboard-overview.png)
+
+- **Overview** — 미션 컨트롤: 절감률(%), 절약된 금액($), 지연 시간 p95, 캐시 적중, 오류, 실시간 피드.
+- **Live Flow** — 파이프라인을 노드 그래프로 표현: client → gate → renderer / passthrough → API, 실제 요청마다 하나의 파티클로 표시됩니다.
+- **Telemetry** — 토큰/$ 주행계와 실시간 요청 타임라인; 어떤 요청이든 클릭하면 어떤 부분이 이미지로 변환되었는지 정확히 확인하고 모든 페이지 뒤에 있는 원본 텍스트를 읽을 수 있습니다.
+- **Benchmarks** — `benchmarks/*/results/`에서 렌더링된 하네스 근거로, 모델·설정 실험당 한 행씩 표시되며, **UI에서 직접 벤치마크를 실행**할 수 있습니다: `$0` dry-run은 출력을 실시간으로 스트리밍하고, 실제 실행은 API 키와 명시적인 비용 확인이 있어야만 진행됩니다.
+- **Sessions / History** — 절약된 토큰 기준 상위 세션과 디스크에 기록된 모든 이벤트.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![실시간 노드 그래프로 표현된 요청 파이프라인](../../assets/dashboard-flow.png) | ![벤치마크 근거와 UI 내 dry-run](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: 주행계와 실시간 요청 타임라인](../../assets/dashboard-telemetry.png)
+
 # ⚙️ How it works
 
 ```

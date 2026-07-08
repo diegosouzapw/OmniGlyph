@@ -75,6 +75,24 @@ Inafanya kazi kwa njia zote mbili:
 
 Dashibodi kwenye <http://127.0.0.1:47821/>: token zilizookolewa, kila ubadilishaji wa maandishi-kwenda-picha bega kwa bega, kizima cha dharura, chip za muundo za moja kwa moja. Majibu hutiririka kama kawaida — ni *ombi* pekee linalobanwa, kamwe si matokeo ya muundo.
 
+# 🖥️ Dashibodi
+
+Dashibodi kamili ya ndani inakuja ndani ya kifurushi — nje ya mtandao, faili moja, sifuri ya maombi ya nje. Kurasa sita, zinazosasishwa moja kwa moja kupitia SSE huku maombi yakiendelea kutiririka:
+
+![Overview: kadi za KPI mtindo wa kituo cha udhibiti, sparkline ya akiba na mtiririko wa matukio wa moja kwa moja](../../assets/dashboard-overview.png)
+
+- **Overview** — kituo cha udhibiti: % ya akiba, $ iliyookolewa, muda wa kusubiri (latency) p95, mafanikio ya kache, makosa, mtiririko wa moja kwa moja.
+- **Live Flow** — pipeline kama grafu ya nodi: mteja → lango → kichoraji / passthrough → API, ikiwa na chembe kwa kila ombi halisi.
+- **Telemetry** — odometa ya token/$ na ratiba ya moja kwa moja ya maombi; bofya ombi lolote kuona ni sehemu zipi hasa zilizogeuka kuwa picha na soma maandishi asili nyuma ya kila ukurasa.
+- **Benchmarks** — risiti za mfumo wa vipimo zinazoonyeshwa kutoka `benchmarks/*/results/`, safu moja kwa kila jaribio la muundo·usanidi, na **endesha vipimo kutoka kwenye UI**: dry-runs za `$0` hutiririsha matokeo yake moja kwa moja; uendeshaji halisi unabaki umezuiwa nyuma ya ufunguo wako wa API pamoja na uthibitisho wa gharama wa wazi.
+- **Sessions / History** — vipindi vya juu kwa token zilizookolewa na kila tukio kwenye diski.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Pipeline ya ombi kama grafu ya nodi ya moja kwa moja](../../assets/dashboard-flow.png) | ![Risiti za vipimo na majaribio ya dry-run ndani ya UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometa na ratiba ya moja kwa moja ya maombi](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Jinsi inavyofanya kazi
 
 ```

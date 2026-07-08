@@ -75,6 +75,24 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 仪表盘位于 <http://127.0.0.1:47821/>:节省的 token 数、每一次文本→图像转换的并排对比、终止开关、实时模型标签。响应照常流式输出——只有*请求*被压缩,模型的输出从不受影响。
 
+# 🖥️ 仪表盘
+
+包内自带一套完整的本地仪表盘——离线运行、单文件、零外部请求。六个页面,随请求流转通过 SSE 实时更新:
+
+![总览:任务控制台式的 KPI 卡片、节省趋势图和实时事件流](../../assets/dashboard-overview.png)
+
+- **Overview**——任务控制台:节省百分比、节省的 $ 金额、延迟 p95、缓存命中、错误数、实时事件流。
+- **Live Flow**——以节点图呈现的处理管线:client → gate → renderer / passthrough → API,每个真实请求对应一个粒子。
+- **Telemetry**——token/$ 里程表与实时请求时间线;点击任意请求即可精确查看哪些部分变成了图像,并读取每一页背后的源文本。
+- **Benchmarks**——从 `benchmarks/*/results/` 渲染出的基准测试凭据,每个 model·config 实验一行,并且**可以直接在界面中运行基准测试**:`$0` 的 dry-run 会实时流式输出;实时运行则需要你的 API key 加上明确的费用确认才会解锁。
+- **Sessions / History**——按节省 token 数排序的热门会话,以及磁盘上的每一个事件。
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![以实时节点图呈现的请求处理管线](../../assets/dashboard-flow.png) | ![基准测试凭据与界面内的 dry-run](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry:里程表与实时请求时间线](../../assets/dashboard-telemetry.png)
+
 # ⚙️ How it works
 
 ```

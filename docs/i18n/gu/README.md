@@ -75,6 +75,24 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/> પર ડેશબોર્ડ: બચેલા ટોકન્સ, દરેક text→image કન્વર્ઝન side by side, kill switch, live model chips. Responses સામાન્ય રીતે stream થાય છે — ફક્ત *request* કમ્પ્રેસ થાય છે, મોડેલનું output ક્યારેય નહીં.
 
+# 🖥️ ડેશબોર્ડ
+
+પેકેજની અંદર જ એક સંપૂર્ણ લોકલ ડેશબોર્ડ આવે છે — ઓફલાઇન, single-file, ઝીરો external requests. છ પેજ, requests વહેતાં SSE પર લાઇવ અપડેટ થાય છે:
+
+![ઓવરવ્યૂ: mission-control KPI કાર્ડ્સ, savings sparkline અને live event feed](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: savings %, $ saved, latency p95, cache hits, errors, live feed.
+- **Live Flow** — pipeline ને node graph તરીકે: client → gate → renderer / passthrough → API, દરેક વાસ્તવિક request દીઠ એક particle સાથે.
+- **Telemetry** — એક token/$ odometer અને લાઇવ request timeline; કોઈપણ request પર ક્લિક કરો એ બરાબર જોવા માટે કે કયા ભાગો images બન્યા, અને દરેક પેજ પાછળનું source text વાંચો.
+- **Benchmarks** — `benchmarks/*/results/` માંથી રેન્ડર થયેલી harness રસીદો, દરેક model·config experiment દીઠ એક row, અને **UI માંથી benchmarks ચલાવો**: `$0` dry-runs પોતાનું output લાઇવ stream કરે છે; live runs તમારી API key વત્તા સ્પષ્ટ cost confirmation પાછળ gated રહે છે.
+- **Sessions / History** — બચેલા ટોકન્સ પ્રમાણે ટોપ sessions અને ડિસ્ક પરની દરેક event.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![live node graph તરીકે request pipeline](../../assets/dashboard-flow.png) | ![Benchmark રસીદો અને in-UI dry-runs](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer અને live request timeline](../../assets/dashboard-telemetry.png)
+
 # ⚙️ તે કેવી રીતે કામ કરે છે
 
 ```

@@ -75,6 +75,24 @@ Funcționează în ambele moduri:
 
 Dashboard la <http://127.0.0.1:47821/>: tokeni economisiți, fiecare conversie text→imagine alăturată, kill switch, chip-uri de model live. Răspunsurile fac streaming normal — doar *request-ul* este comprimat, niciodată ieșirea modelului.
 
+# 🖥️ Dashboard-ul
+
+Un dashboard local complet vine inclus în pachet — offline, fișier unic, zero cereri externe. Șase pagini, actualizate live prin SSE pe măsură ce cererile curg:
+
+![Prezentare generală: carduri KPI de tip mission-control, sparkline de economii și flux de evenimente live](../../assets/dashboard-overview.png)
+
+- **Prezentare generală** — mission control: % economisit, $ economisiți, latență p95, cache hits, erori, flux live.
+- **Live Flow** — pipeline-ul ca graf de noduri: client → gate → renderer / passthrough → API, cu o particulă per cerere reală.
+- **Telemetrie** — un odometru token/$ și o cronologie live a cererilor; faceți clic pe orice cerere pentru a vedea exact ce părți au devenit imagini și pentru a citi textul sursă din spatele fiecărei pagini.
+- **Benchmarks** — chitanțele harness-ului randate din `benchmarks/*/results/`, un rând per experiment model·configurație, și **rulați benchmark-urile direct din UI**: dry-run-urile de `$0` fac streaming la rezultate live; rulările live rămân condiționate de cheia dumneavoastră API plus o confirmare explicită a costului.
+- **Sesiuni / Istoric** — sesiunile de top după tokeni economisiți și fiecare eveniment de pe disc.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Pipeline-ul de cereri ca graf de noduri live](../../assets/dashboard-flow.png) | ![Chitanțe de benchmark și dry-run-uri în UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetrie: odometru și cronologie live a cererilor](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Cum funcționează
 
 ```

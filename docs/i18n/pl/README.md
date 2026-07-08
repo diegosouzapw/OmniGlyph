@@ -75,6 +75,24 @@ Działa w obu przypadkach:
 
 Panel pod adresem <http://127.0.0.1:47821/>: zaoszczędzone tokeny, każda konwersja tekst→obraz obok siebie, wyłącznik awaryjny, żywe chipy modeli. Odpowiedzi strumieniują normalnie — kompresowane jest tylko *zapytanie*, nigdy wyjście modelu.
 
+# 🖥️ Panel (dashboard)
+
+Pełny lokalny panel dostarczany jest wewnątrz pakietu — offline, single-file, zero zewnętrznych zapytań. Sześć stron, aktualizowanych na żywo przez SSE w miarę napływu zapytań:
+
+![Overview: karty KPI mission-control, sparkline oszczędności i żywy feed zdarzeń](../../assets/dashboard-overview.png)
+
+- **Overview** — centrum dowodzenia: % oszczędności, $ zaoszczędzone, opóźnienie p95, trafienia cache, błędy, żywy feed.
+- **Live Flow** — potok jako graf węzłów: client → gate → renderer / passthrough → API, z cząstką na każde realne zapytanie.
+- **Telemetry** — licznik tokenów/$ oraz żywa oś czasu zapytań; kliknij dowolne zapytanie, aby zobaczyć dokładnie, które części stały się obrazami, i odczytać tekst źródłowy stojący za każdą stroną.
+- **Benchmarks** — dowody z harnessu wyrenderowane z `benchmarks/*/results/`, jeden wiersz na eksperyment model·konfiguracja, oraz **uruchamianie benchmarków bezpośrednio z UI**: przebiegi `$0` dry-run strumieniują swój output na żywo; przebiegi live pozostają zablokowane za Twoim kluczem API oraz jawnym potwierdzeniem kosztu.
+- **Sessions / History** — najlepsze sesje pod względem zaoszczędzonych tokenów oraz każde zdarzenie zapisane na dysku.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Potok zapytań jako żywy graf węzłów](../../assets/dashboard-flow.png) | ![Dowody benchmarków i dry-runy bezpośrednio w UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: licznik oraz żywa oś czasu zapytań](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Jak to działa
 
 ```

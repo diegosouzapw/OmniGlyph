@@ -75,6 +75,24 @@ Gumagana sa magkabilang paraan:
 
 Dashboard sa <http://127.0.0.1:47821/>: mga natipid na token, bawat text→image conversion nang magkatabi, kill switch, live na model chips. Normal na dumadaloy (stream) ang mga tugon — ang *request* lamang ang nakompress, hindi kailanman ang output ng modelo.
 
+# 🖥️ Ang dashboard
+
+May kasamang buong lokal na dashboard sa loob ng package — offline, single-file, walang external requests. Anim na pahina, na na-a-update nang live sa pamamagitan ng SSE habang dumadaloy ang mga request:
+
+![Overview: mission-control KPI cards, savings sparkline at live event feed](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: savings %, $ na natipid, latency p95, cache hits, errors, live feed.
+- **Live Flow** — ang pipeline bilang isang node graph: client → gate → renderer / passthrough → API, na may particle kada tunay na request.
+- **Telemetry** — isang token/$ odometer at isang live na request timeline; i-click ang anumang request para makita kung aling mga bahagi ang naging imahe at basahin ang source text sa likod ng bawat pahina.
+- **Benchmarks** — ang mga resibo ng harness na naka-render mula sa `benchmarks/*/results/`, isang row kada model·config na eksperimento, at **patakbuhin ang mga benchmark mula sa UI**: ang `$0` na dry-runs ay nag-i-stream ng kanilang output nang live; ang live runs ay nananatiling naka-gate sa likod ng iyong API key kasama ang isang tahasang pagkumpirma ng gastos.
+- **Sessions / History** — ang mga nangungunang session ayon sa natipid na token at bawat event na nasa disk.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Ang request pipeline bilang isang live na node graph](../../assets/dashboard-flow.png) | ![Mga resibo ng benchmark at in-UI na dry-runs](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer at live na request timeline](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Paano ito gumagana
 
 ```

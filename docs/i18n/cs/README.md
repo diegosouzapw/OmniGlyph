@@ -75,6 +75,24 @@ Funguje oběma způsoby:
 
 Dashboard na <http://127.0.0.1:47821/>: ušetřené tokeny, každá konverze text→obrázek vedle sebe, kill switch, živé čipy modelů. Odpovědi streamují normálně — komprimuje se pouze *request*, nikdy výstup modelu.
 
+# 🖥️ Dashboard
+
+Kompletní lokální dashboard je součástí balíčku — offline, jeden soubor, žádné externí requesty. Šest stránek, aktualizovaných živě přes SSE, jak requesty proudí:
+
+![Overview: KPI karty pro mission control, sparkline úspor a živý event feed](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: % úspory, ušetřené $, latence p95, cache hits, chyby, live feed.
+- **Live Flow** — pipeline jako graf uzlů: client → gate → renderer / passthrough → API, s částicí pro každý reálný request.
+- **Telemetry** — odometr tokenů/$ a živá časová osa requestů; klikněte na libovolný request a uvidíte přesně, které části se staly obrázky, a přečtete si zdrojový text za každou stránkou.
+- **Benchmarks** — protokoly harness testů vykreslené z `benchmarks/*/results/`, jeden řádek na experiment model·konfigurace, a **spouštějte benchmarky přímo z UI**: `$0` dry-runy streamují svůj výstup živě; ostré běhy zůstávají podmíněné vaším API klíčem a výslovným potvrzením nákladů.
+- **Sessions / History** — nejlepší session podle ušetřených tokenů a každý event na disku.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Pipeline requestů jako živý graf uzlů](../../assets/dashboard-flow.png) | ![Protokoly benchmarků a dry-runy přímo v UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometr a živá časová osa requestů](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Jak to funguje
 
 ```

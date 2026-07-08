@@ -75,6 +75,24 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 Dashboard <http://127.0.0.1:47821/>-இல்: சேமிக்கப்பட்ட tokens, ஒவ்வொரு text→image மாற்றமும் அருகருகே, kill switch, live model chips. பதில்கள் இயல்பாக stream ஆகின்றன — *request* மட்டுமே சுருக்கப்படுகிறது, மாடலின் output ஒருபோதும் இல்லை.
 
+# 🖥️ Dashboard
+
+முழுமையான ஒரு local dashboard package-க்குள்ளேயே வருகிறது — offline, single-file, வெளிப்புற requests எதுவும் இல்லை. ஆறு pages, requests பாயும்போது SSE வழியாக live-ஆக update ஆகின்றன:
+
+![Overview: mission-control KPI cards, savings sparkline மற்றும் live event feed](../../assets/dashboard-overview.png)
+
+- **Overview** — mission control: savings %, $ சேமிப்பு, latency p95, cache hits, errors, live feed.
+- **Live Flow** — pipeline-ஐ ஒரு node graph-ஆக: client → gate → renderer / passthrough → API, ஒவ்வொரு real request-க்கும் ஒரு particle உடன்.
+- **Telemetry** — ஒரு token/$ odometer மற்றும் ஒரு live request timeline; எந்தப் பகுதிகள் images ஆக மாறின என்பதைச் சரியாகப் பார்க்கவும், ஒவ்வொரு page-க்குப் பின்னாலும் உள்ள source text-ஐப் படிக்கவும் எந்த request-ஐயும் click செய்யுங்கள்.
+- **Benchmarks** — `benchmarks/*/results/`-இலிருந்து render செய்யப்படும் harness receipts, ஒவ்வொரு model·config experiment-க்கும் ஒரு row, மேலும் **UI-இலிருந்தே benchmarks-ஐ run செய்யுங்கள்**: `$0` dry-runs அவற்றின் output-ஐ live-ஆக stream செய்கின்றன; live runs உங்கள் API key மற்றும் ஒரு வெளிப்படையான cost confirmation-க்குப் பின்னால் gate செய்யப்பட்டே இருக்கும்.
+- **Sessions / History** — சேமிக்கப்பட்ட tokens அடிப்படையில் top sessions மற்றும் disk-இல் உள்ள ஒவ்வொரு event-உம்.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![The request pipeline-ஐ ஒரு live node graph-ஆக](../../assets/dashboard-flow.png) | ![Benchmark receipts மற்றும் in-UI dry-runs](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer மற்றும் live request timeline](../../assets/dashboard-telemetry.png)
+
 # ⚙️ இது எப்படி வேலை செய்கிறது
 
 ```

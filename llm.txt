@@ -36,8 +36,11 @@ Cloudflare Workers.
 
 - `src/core/` — transform pipeline, exact billing math, renderer, LRU render
   cache, proxy with refusal-retry. Billing math exported at package root.
-- `src/node.ts` — local host with dashboard (tokens saved, side-by-side
-  conversions, kill switch). `src/worker.ts` — Cloudflare Workers host.
+- `src/node.ts` + `src/dashboard/` — local host with a six-page dashboard
+  (Overview mission control, Live Flow pipeline graph, Telemetry
+  odometer/timeline, Benchmarks with in-UI $0 dry-runs, Sessions, History),
+  updated live over SSE (`/events/stream`), offline/single-file, kill switch.
+  `src/worker.ts` — Cloudflare Workers host (no SSE/bench runner).
 - `benchmarks/` — billing-sweep and density-frontier harnesses; every
   published number has a JSONL receipt in `benchmarks/*/results/`.
 - `docs/` — architecture/, benchmarks/ (methodology + results), and i18n/

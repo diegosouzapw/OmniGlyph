@@ -75,6 +75,24 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/>-এ ড্যাশবোর্ড: সাশ্রিত টোকেন, প্রতিটি টেক্সট→ইমেজ রূপান্তর পাশাপাশি, কিল সুইচ, লাইভ মডেল চিপ। রেসপন্স স্বাভাবিকভাবে স্ট্রিম হয় — শুধুমাত্র *রিকোয়েস্ট* কম্প্রেস করা হয়, মডেলের আউটপুট কখনো নয়।
 
+# 🖥️ ড্যাশবোর্ড
+
+একটি সম্পূর্ণ লোকাল ড্যাশবোর্ড প্যাকেজের ভেতরেই আসে — অফলাইন, সিঙ্গেল-ফাইল, শূন্য এক্সটার্নাল রিকোয়েস্ট। ছয়টি পৃষ্ঠা, রিকোয়েস্ট প্রবাহের সাথে সাথে SSE-এর মাধ্যমে লাইভ আপডেট হয়:
+
+![Overview: mission-control KPI cards, savings sparkline and live event feed](../../assets/dashboard-overview.png)
+
+- **Overview** — মিশন কন্ট্রোল: savings %, $ সাশ্রয়, লেটেন্সি p95, ক্যাশ হিট, এরর, লাইভ ফিড।
+- **Live Flow** — নোড গ্রাফ হিসেবে পাইপলাইন: client → gate → renderer / passthrough → API, প্রতিটি প্রকৃত রিকোয়েস্টের জন্য একটি পার্টিকেল।
+- **Telemetry** — একটি টোকেন/$ ওডোমিটার এবং একটি লাইভ রিকোয়েস্ট টাইমলাইন; ঠিক কোন অংশগুলো ইমেজে পরিণত হয়েছে দেখতে এবং প্রতিটি পৃষ্ঠার পেছনের সোর্স টেক্সট পড়তে যেকোনো রিকোয়েস্টে ক্লিক করুন।
+- **Benchmarks** — `benchmarks/*/results/` থেকে রেন্ডার করা হার্নেস রসিদ, প্রতি মডেল·কনফিগ এক্সপেরিমেন্টে একটি সারি, এবং **UI থেকে বেঞ্চমার্ক চালান**: `$0` dry-run লাইভ তাদের আউটপুট স্ট্রিম করে; লাইভ রান আপনার API কী এবং একটি স্পষ্ট কস্ট কনফার্মেশনের পেছনে গেটেড থাকে।
+- **Sessions / History** — সাশ্রিত টোকেন অনুযায়ী শীর্ষ সেশন এবং ডিস্কে থাকা প্রতিটি ইভেন্ট।
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![The request pipeline as a live node graph](../../assets/dashboard-flow.png) | ![Benchmark receipts and in-UI dry-runs](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer and live request timeline](../../assets/dashboard-telemetry.png)
+
 # ⚙️ এটি কীভাবে কাজ করে
 
 ```

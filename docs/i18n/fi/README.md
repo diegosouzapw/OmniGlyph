@@ -75,6 +75,24 @@ Toimii molemmin tavoin:
 
 Kojelauta osoitteessa <http://127.0.0.1:47821/>: säästetyt tokenit, jokainen teksti→kuva-muunnos rinnakkain, katkaisukytkin, mallit livenä. Vastaukset striimataan normaalisti — vain *pyyntö* pakataan, ei koskaan mallin tulostetta.
 
+# 🖥️ Kojelauta
+
+Paketin mukana tulee täysi paikallinen kojelauta — offline, yksitiedostoinen, ei ulkoisia pyyntöjä. Kuusi sivua, jotka päivittyvät livenä SSE:n kautta pyyntöjen virratessa:
+
+![Overview: ohjauskeskuksen KPI-kortit, säästöjen sparkline ja livetapahtumasyöte](../../assets/dashboard-overview.png)
+
+- **Overview** — ohjauskeskus: säästöt %, säästetyt $, latenssi p95, cache hits, virheet, livesyöte.
+- **Live Flow** — putki solmukaaviona: client → gate → renderer / passthrough → API, hiukkanen jokaista todellista pyyntöä kohti.
+- **Telemetry** — token/$-mittari ja livepyyntöjen aikajana; klikkaa mitä tahansa pyyntöä nähdäksesi tarkalleen, mitkä osat muutettiin kuviksi, ja lue jokaisen sivun taustalla oleva lähdeteksti.
+- **Benchmarks** — harness-kuitit renderöitynä kansiosta `benchmarks/*/results/`, yksi rivi per malli·konfiguraatio-koe, ja **aja benchmarkit käyttöliittymästä**: `$0` dry-run-ajot striimaavat tulosteensa livenä; live-ajot pysyvät lukittuina API-avaimesi ja nimenomaisen kustannusvahvistuksen taakse.
+- **Sessions / History** — top-sessiot säästettyjen tokenien mukaan ja jokainen levyllä oleva tapahtuma.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Pyyntöputki livenä solmukaaviona](../../assets/dashboard-flow.png) | ![Benchmark-kuitit ja käyttöliittymän dry-runit](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: mittari ja livepyyntöjen aikajana](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Miten se toimii
 
 ```

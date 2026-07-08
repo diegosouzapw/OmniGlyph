@@ -75,6 +75,24 @@ Mindkét módon működik:
 
 Irányítópult a <http://127.0.0.1:47821/> címen: megtakarított tokenek, minden szöveg→kép konverzió egymás mellett, vészkapcsoló, élő modell-chipek. A válaszok normálisan streamelnek — csak a *kérés* van tömörítve, a modell kimenete soha.
 
+# 🖥️ Az irányítópult
+
+A csomag egy teljes, helyi irányítópultot tartalmaz — offline, egyetlen fájlból áll, nulla külső kéréssel. Hat oldal, SSE-n keresztül élőben frissülve, ahogy a kérések áramlanak:
+
+![Overview: mission-control KPI cards, savings sparkline and live event feed](../../assets/dashboard-overview.png)
+
+- **Áttekintés (Overview)** — mission control: megtakarítás %, megtakarított $, latencia p95, cache-találatok, hibák, élő feed.
+- **Élő folyamat (Live Flow)** — a pipeline mint csomópontgráf: kliens → kapu (gate) → renderelő / átengedés (passthrough) → API, egy részecskével minden valós kérésért.
+- **Telemetria** — egy token/$ kilométeróra és egy élő kéréstimeline; kattintson bármely kérésre, hogy pontosan lássa, mely részek váltak képpé, és olvassa el a forrásszöveget minden oldal mögött.
+- **Benchmarkok** — a harness bizonylatai a `benchmarks/*/results/` alapján renderelve, soronként egy modell·konfiguráció kísérlettel, és **futtassa a benchmarkokat közvetlenül a felületről**: a `$0`-os dry-run-ok élőben streamelik a kimenetüket; az élő futtatások az Ön API-kulcsa mögé és egy explicit költség-megerősítés mögé vannak zárva.
+- **Munkamenetek / Előzmények (Sessions / History)** — a legtöbb megtakarított tokennel rendelkező munkamenetek és minden lemezen tárolt esemény.
+
+| Élő folyamat | Benchmarkok |
+|---|---|
+| ![The request pipeline as a live node graph](../../assets/dashboard-flow.png) | ![Benchmark receipts and in-UI dry-runs](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: odometer and live request timeline](../../assets/dashboard-telemetry.png)
+
 # ⚙️ Hogyan működik
 
 ```

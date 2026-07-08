@@ -75,6 +75,24 @@ Funktioniert auf beide Arten:
 
 Dashboard unter <http://127.0.0.1:47821/>: gesparte Tokens, jede Text-zu-Bild-Konvertierung im Vergleich nebeneinander, Kill-Switch, Live-Modell-Chips. Antworten werden normal gestreamt — nur der *Request* wird komprimiert, niemals die Ausgabe des Modells.
 
+# 🖥️ Das Dashboard
+
+Ein vollständiges lokales Dashboard ist im Paket enthalten — offline, Single-File, ohne externe Requests. Sechs Seiten, live aktualisiert über SSE, während Requests durchlaufen:
+
+![Overview: Mission-Control-KPI-Karten, Sparkline für Einsparungen und Live-Event-Feed](../../assets/dashboard-overview.png)
+
+- **Overview** — Mission Control: Einsparungen in %, gesparte $, Latenz p95, Cache-Treffer, Fehler, Live-Feed.
+- **Live Flow** — die Pipeline als Node-Graph: client → gate → renderer / passthrough → API, mit einem Partikel pro echtem Request.
+- **Telemetry** — ein Token/$-Zähler und eine Live-Request-Zeitleiste; klicken Sie auf einen beliebigen Request, um genau zu sehen, welche Teile zu Bildern wurden, und den Quelltext hinter jeder Seite zu lesen.
+- **Benchmarks** — die aus `benchmarks/*/results/` gerenderten Harness-Belege, eine Zeile pro Modell·Konfig-Experiment, und **Benchmarks direkt aus der UI ausführen**: `$0`-Dry-Runs streamen ihre Ausgabe live; Live-Runs bleiben hinter Ihrem API-Schlüssel plus einer expliziten Kostenbestätigung gesperrt.
+- **Sessions / History** — die Top-Sessions nach gesparten Tokens und jedes Event auf der Festplatte.
+
+| Live Flow | Benchmarks |
+|---|---|
+| ![Die Request-Pipeline als Live-Node-Graph](../../assets/dashboard-flow.png) | ![Benchmark-Belege und Dry-Runs direkt in der UI](../../assets/dashboard-benchmarks.png) |
+
+![Telemetry: Zähler und Live-Request-Zeitleiste](../../assets/dashboard-telemetry.png)
+
 # ⚙️ So funktioniert es
 
 ```
