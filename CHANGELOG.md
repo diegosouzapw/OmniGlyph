@@ -136,3 +136,18 @@ First public release.
 - **gpt-4o-mini never imaged** (2833/5667 token floor makes it unprofitable).
 - **Gemini 2.5-flash confabulates** instead of abstaining on dense pages
   (0/26) — pending paid-quota retest.
+
+### Acknowledgments
+
+Several fixes that shipped in this first release originated with outside
+contributors; crediting them here retroactively:
+
+- **`/v1/models` auth-style routing:** never forward an `sk-ant` OAuth bearer
+  (Claude Code subscription auth) to the OpenAI upstream — a credential leak and
+  a guaranteed 401. (thanks @XyraSinclair)
+- **Schema stripper keeps `$schema`/`$id`:** stripping the dialect declaration
+  re-dialected draft-07 schemas to 2020-12 and 400'd legal tuple-form `items`.
+  (thanks @Monivancan)
+- **Dashboard `hx-vals` escaping:** a crafted model id could break out of the
+  single-quoted attribute; the value is now HTML-escaped, closing the JSON
+  injection and the attribute-breakout XSS. (thanks @dex0shubham)
