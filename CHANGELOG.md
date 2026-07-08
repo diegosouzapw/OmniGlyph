@@ -12,6 +12,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   `chatgpt` auth mode is honored (an `api-key` file is ignored). `node.ts` runs
   `main()` only as a direct entrypoint now, so the config can be unit-tested.
   (thanks @ousamabenyounes)
+- **bench(gate-backtest):** a cache-aware realized-savings reconciliation and
+  gate-policy back-test (`benchmarks/gate-backtest/run.mjs`). Streams the proxy
+  log (`~/.omniglyph/events.jsonl` or `$OMNIGLYPH_LOG`), reconstructs sessions
+  from `first_user_sha8` + `ts`, and scores hypothetical passthrough gates using
+  only what the proxy knows at transform time — an honest test of a shippable
+  rule. Scoring mirrors `src/core/baseline.ts` exactly. (thanks @akigogikar)
+
+### Changed
+
+- **test:** raise the Vitest per-test timeout to 30s so genuinely slow render
+  e2e cases (full reflow + PNG encode) are not false-negative timeouts on
+  slower/CI machines. Assertions are unchanged. (thanks @ousamabenyounes)
+
+## [1.2.0] — 2026-07-08
+
+Documentation and a test-only hardening pass. No change to the compression
+path, billing math or dashboard behavior.
+
+### Security
+
+- **Resolve a CodeQL `js/regex/missing-regexp-anchor` alert** in the
+  docs-integrity guard. The upstream-credit assertion matched its target link
+  with an unanchored regex; it now uses a literal, scheme-qualified substring
+  check instead — stricter (a bare host mention no longer satisfies it) and
+  regex-free. Test-only; no change to shipped behavior.
+
+### Docs
+
+- **Offline export, documented.** New README section (mirrored across the 41
+  translations) showing how to render context to PNG pages with `omniglyph
+  export` — no proxy, no Claude Code — for pasting into Cursor, ChatGPT, or any
+  chat that reads images. Two new FAQ entries cover using OmniGlyph outside
+  Claude Code and how the text→image render works. Documentation only; no
+  behavior change.
 
 ## [1.1.0] — 2026-07-08
 
@@ -50,6 +84,12 @@ a full rebuild of the local dashboard plus documentation.
 - Every dashboard percentage still derives from the cache-weighted pair and a
   weighted net loss renders as a loss — the same honesty invariant as before,
   now applied across the KPI grid, flow ribbon and telemetry.
+
+### Fixed
+
+- Dashboard nav/KPI/theme icons use emoji glyphs instead of rare Unicode
+  symbols, so they render everywhere instead of falling back to tofu boxes on
+  font stacks that lack those symbols.
 
 ### Docs
 
@@ -137,3 +177,18 @@ First public release.
 - **gpt-4o-mini never imaged** (2833/5667 token floor makes it unprofitable).
 - **Gemini 2.5-flash confabulates** instead of abstaining on dense pages
   (0/26) — pending paid-quota retest.
+
+### Acknowledgments
+
+Several fixes that shipped in this first release originated with outside
+contributors; crediting them here retroactively:
+
+- **`/v1/models` auth-style routing:** never forward an `sk-ant` OAuth bearer
+  (Claude Code subscription auth) to the OpenAI upstream — a credential leak and
+  a guaranteed 401. (thanks @XyraSinclair)
+- **Schema stripper keeps `$schema`/`$id`:** stripping the dialect declaration
+  re-dialected draft-07 schemas to 2020-12 and 400'd legal tuple-form `items`.
+  (thanks @Monivancan)
+- **Dashboard `hx-vals` escaping:** a crafted model id could break out of the
+  single-quoted attribute; the value is now HTML-escaped, closing the JSON
+  injection and the attribute-breakout XSS. (thanks @dex0shubham)

@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 يُثبّت `options.keepSharp(block)` الكتل كنص؛ ويُعيد `options.emitRecoverable` أصول الكتل التي تحوّلت إلى صور. رياضيات الفوترة الدقيقة تُشحن أيضًا عند جذر الحزمة (`anthropicImageTokens`، `resolveAnthropicVisionTier`، `openAIVisionTokens`) — وهذا ما يستهلكه [OmniRoute](https://github.com/diegosouzapw/OmniRoute). بيئة تشغيل JS خالصة (Node وedge/Workers). السطح الكامل: `src/core/index.ts`.
 
+# 📤 التصدير دون اتصال — بلا بروكسي، بلا Claude Code
+
+لا تستخدم Claude Code؟ رندِر السياق إلى صفحات PNG **محليًا** وألصقها في Cursor أو ChatGPT أو أي محادثة تقبل رفع الصور. بلا بروكسي، بلا مفتاح API، بلا أي حساب موصول:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+تحصل على مجلد واحد يحوي كل ما يلزم لإسقاطه في المحادثة:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` يرندِر فرق تغييراتك غير المُودَعة (diff)، و`--diff <ref>` نطاق إيداعات (commit range)، و`--open` يُظهر المجلد (macOS). كل ذلك يعمل على جهازك — مسار التصدير لا يبدأ البروكسي أبدًا ولا يستدعي نموذجًا أبدًا. شغّل `omniglyph export --help` لكل الأعلام (flags).
+
 # 🧭 The honest part
 
 - **إنه فقداني (lossy).** الاسترجاع الدقيق حرفيًا من الصور غير موثوق بطبيعته. التخفيفات المطبَّقة: المعرّفات الدقيقة تسافر كنص بجانب الصورة، وإعداد الإنتاج المقيس أنتج **صفر اختلاقات صامتة** — القراءات الفاشلة تمتنع عن الإجابة.
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **ألم يحسم DeepSeek-OCR مسألة ما إذا كان هذا يعمل؟**
 أثبت أن *القناة* تعمل — بزوج مُرمِّز/فك تشفير مدرَّب لهذه المهمة تحديدًا. تعود الشكوك إلى زمن لم يكن فيه أي نموذج إنتاجي جاهز قادرًا على قراءة الرندرات الكثيفة؛ تغيّر ذلك، و[بطاقة أداء النماذج](../../../README.md#-the-numbers--measured-not-estimated) أعلاه تُظهر بالضبط من يقرأها اليوم، مع الإيصالات. [حزمة المقاييس](../../../benchmarks/README.md) تعيد اختبار أي نموذج جديد بأمر واحد — البوّابة تتبع البيانات، لا الضجيج.
+
+**هل أستطيع استخدامه دون Claude Code — مع Cursor أو ChatGPT أو أنبوب (pipe) عادي؟**
+نعم، بطريقتين. بوصفه **بروكسي** يعمل مع أي عميل يتيح لك ضبط عنوان API الأساسي (`ANTHROPIC_BASE_URL`، أو عنوان OpenAI الأساسي) — Claude Code، أو سكربتاتك الخاصة، أو أي شيء يتحدّث HTTP. وللأدوات التي لا تستطيع استخدام بروكسي، يرندِر **التصدير دون اتصال** أعلاه السياق إلى صفحات PNG تُلصقها يدويًا — بل إن `omniglyph export --stdin` يقرأ مباشرة من أنبوب Unix.
+
+**كيف يحوّل النص إلى صورة فعليًا؟**
+يعيد تدفّق (reflow) النص ويرسمه بأطلس رموز نقطي 5×8 أحادي البت (1-bit) على صفحات PNG كثيفة بأبعاد 1568×728 — بت واحد لكل بكسل، دون تنعيم حواف (anti-aliasing)، فيحاسب النموذج الصفحة حسب أبعادها لا حسب عدد الأحرف بداخلها. **كيف يعمل** أعلاه يشرح خط الأنابيب؛ ومستند المقاييس يشرح الهندسة ولماذا لا يكون الأكثف دائمًا الأرخص.
 
 # 🔬 أعد إنتاج كل رقم
 

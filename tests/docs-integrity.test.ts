@@ -166,7 +166,11 @@ describe('docs integrity', () => {
     const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
     const block = /<!--\s*omniglyph:upstream-credits:start\s*-->([\s\S]*?)<!--\s*omniglyph:upstream-credits:end\s*-->/.exec(readme);
     expect(block, 'README.md must contain the omniglyph:upstream-credits marker pair').not.toBeNull();
-    expect(block![1]).toMatch(/github\.com\/teamchong\/pxpipe/);
+    // Literal substring, not a regex: the credit must be the canonical upstream
+    // URL (scheme included). Using a plain `.toContain` keeps this an exact
+    // presence check and avoids an unanchored URL regex (CodeQL
+    // js/regex/missing-regexp-anchor), which a bare host pattern would trip.
+    expect(block![1]).toContain('https://github.com/teamchong/pxpipe');
     expect(block![1]).toMatch(/acknowledg/i);
   });
 
