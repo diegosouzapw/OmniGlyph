@@ -27,6 +27,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(factsheet):** protect multi-hump camelCase/PascalCase identifiers
+  (`tokenLedgerShard`, `extractFactSheetTokens`) — the residual OCR miss class
+  from the legibility audit. They land in tier 1, strictly below the byte-critical
+  tier-0 shapes (SHAs, UUIDs, CONST_IDS, tickets, flags, numbers), so they can
+  never evict a byte-critical token from the 64-token budget. (thanks @rldyourmnd)
 - **fix(prompting):** the imaged session-configuration banner and the
   history-transcript framing now instruct the model to defer exact identifiers,
   hashes, version strings, and numbers to the exact-value factsheet or the

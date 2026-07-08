@@ -4,7 +4,40 @@ import {
   extractFactSheetEntries,
   extractFactSheetEntriesAllPages,
   factSheetText,
+  MAX_TOKENS,
 } from '../src/core/factsheet.js';
+
+describe('camelCase identifier protection (LEGIBILITY-AUDIT residual misses)', () => {
+  it('extracts multi-hump camelCase / PascalCase but ignores ordinary words', () => {
+    const toks = extractFactSheetTokens(
+      'call extractFactSheetTokens on tokenLedgerShard and TokenLedgerShard, not getFoo or isReady',
+    );
+    expect(toks).toContain('extractFactSheetTokens');
+    expect(toks).toContain('tokenLedgerShard');
+    expect(toks).toContain('TokenLedgerShard');
+    expect(toks).not.toContain('getFoo'); // single hump — below the ≥2 threshold
+    expect(toks).not.toContain('isReady');
+  });
+
+  it('never lets camelCase (tier 1) evict tier-0 SHAs', () => {
+    // 70 distinct lowercase-hex SHAs (tier 0) — more than the 64 budget on their own.
+    const shas = Array.from({ length: 70 }, (_, i) => `deadbeef${i.toString(16).padStart(4, '0')}`);
+    const camels = Array.from({ length: 70 }, (_, i) => `fooBarBaz${i}`);
+    const kept = extractFactSheetTokens([...shas, ...camels].join(' '));
+    expect(kept.length).toBe(MAX_TOKENS);
+    // The whole budget is tier-0 SHAs; no camelCase displaced one.
+    expect(kept.some((t) => t.startsWith('fooBarBaz'))).toBe(false);
+    expect(kept.every((t) => t.startsWith('deadbeef'))).toBe(true);
+  });
+
+  it('caps and orders camelCase deterministically past the budget', () => {
+    const camels = Array.from({ length: 100 }, (_, i) => `alphaBetaGamma${i}`);
+    const a = extractFactSheetTokens(camels.join(' '));
+    const b = extractFactSheetTokens([...camels].reverse().join(' '));
+    expect(a.length).toBe(MAX_TOKENS);
+    expect(a).toEqual(b); // order is a pure function of the token set, not input order
+  });
+});
 
 describe('factsheet extraction', () => {
   it('captures precision-critical, hard-to-OCR tokens', () => {

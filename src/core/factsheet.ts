@@ -30,6 +30,12 @@ const PATTERNS: readonly RegExp[] = [
   // Ticket/advisory-style codes: uppercase hyphenated with ≥1 digit (PROJ-1482,
   // CVE-2024-30078, AUDIT-ZX9). Digit lookahead is bounded → no backtracking blowup.
   /\b(?=[A-Z0-9-]{0,119}\d)[A-Z][A-Z0-9]+(?:-[A-Z0-9]+)+\b/g,
+  // camelCase / PascalCase identifiers with ≥2 case humps (tokenLedgerShard,
+  // extractFactSheetTokens). Scoped to multi-hump so ordinary words (getFoo, isX)
+  // are ignored. These land in tier 1 (see priorityTier), so tier-0 tokens
+  // (SHAs/nums/flags/tickets) are never evicted by them — this is the residual
+  // 2/15 miss class flagged in LEGIBILITY-AUDIT, kept below the byte-critical shapes.
+  /\b[A-Za-z][a-z0-9]*(?:[A-Z][a-z0-9]+){2,}\b/g,
 ];
 
 const MIN_LEN = 3;
