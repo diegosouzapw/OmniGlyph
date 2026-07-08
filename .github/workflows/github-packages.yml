@@ -1,0 +1,44 @@
+name: GitHub Packages
+
+# Mirror each release to GitHub Packages under the owner-scoped name
+# @diegosouzapw/omniglyph. The primary registry stays npmjs.com (unscoped
+# `omniglyph`); this only makes the package show up under the repo's Packages.
+# Auth is the built-in GITHUB_TOKEN — no PAT, no 2FA.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-gpr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@diegosouzapw"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      # GitHub Packages requires an owner-scoped name; rewrite it only for this
+      # publish (not committed) so the npmjs.com package stays unscoped.
+      - run: npm pkg set name=@diegosouzapw/omniglyph
+      - name: Publish to GitHub Packages (idempotent)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@diegosouzapw/omniglyph@$VERSION" version \
+               --registry https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "@diegosouzapw/omniglyph@$VERSION already on GitHub Packages — skipping."
+          else
+            npm publish --ignore-scripts --registry https://npm.pkg.github.com
+          fi
