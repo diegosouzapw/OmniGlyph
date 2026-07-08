@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` fastholder blokke som tekst; `options.emitRecoverable` returnerer originalerne af de billedgjorte blokke. Den præcise afregningsmatematik leveres også ved pakkens rod (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — det er det, [OmniRoute](https://github.com/diegosouzapw/OmniRoute) forbruger. Ren JS-runtime (Node og edge/Workers). Fuld overflade: `src/core/index.ts`.
 
+# 📤 Offline-eksport — ingen proxy, ingen Claude Code
+
+Ikke på Claude Code? Rendér konteksten til PNG-sider **lokalt**, og indsæt dem i Cursor, ChatGPT eller enhver chat, der accepterer billeduploads. Ingen proxy, ingen API-nøgle, ingen tilkoblet konto:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Du får én mappe med alt, hvad du skal lægge ind i chatten:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` renderer din ikke-committede diff, `--diff <ref>` et commit-interval, `--open` viser mappen (macOS). Det hele kører på din maskine — eksportstien starter aldrig proxyen og kalder aldrig en model. Kør `omniglyph export --help` for alle flag.
+
 # 🧭 The honest part
 
 - **Det er lossy.** Byte-nøjagtig genkaldelse fra billeder er af natur upålidelig. Afhjælpninger implementeret: præcise identifikatorer rejser som tekst ved siden af billedet, og den målte produktionskonfiguration gav **nul stille konfabulationer** — mislykkede læsninger afstår.
@@ -147,6 +168,12 @@ Seneste ture og præcise identifikatorer forbliver tekst by design. Til arbejdsb
 
 **Afgjorde DeepSeek-OCR ikke, om det her virker?**
 Det beviste, at *kanalen* virker — med et encoder/decoder-par trænet til opgaven. Skepsissen stammer fra dengang, hvor ingen standard-produktionsmodel kunne læse tætpakkede renderinger; det har ændret sig, og [modelscorekortet](../../../README.md#-the-numbers--measured-not-estimated) ovenfor viser præcis, hvem der læser dem i dag, med dokumentation. [Benchmark-rammeværket](../../../benchmarks/README.md) gentester enhver ny model med én kommando — spærringen følger dataene, ikke hypen.
+
+**Kan jeg bruge det uden Claude Code — Cursor, ChatGPT, en almindelig pipe?**
+Ja, på to måder. Som en **proxy** virker det med enhver klient, der lader dig sætte API-base-URL'en (`ANTHROPIC_BASE_URL` eller OpenAI-base-URL'en) — Claude Code, dine egne scripts, hvad som helst over HTTP. Og til værktøjer, der ikke kan bruge proxy, renderer **Offline-eksport** ovenfor konteksten til PNG-sider, som du indsætter manuelt — `omniglyph export --stdin` læser endda direkte fra en Unix-pipe.
+
+**Hvordan bliver tekst egentlig til et billede?**
+Den ombryder teksten og maler den med et 1-bit 5×8-pixel-glyfatlas på tætpakkede 1568×728 PNG-sider — én bit per pixel, ingen anti-aliasing, så modellen afregner siden efter dens dimensioner, ikke efter hvor mange tegn der er inden i. **Sådan virker det** ovenfor har pipelinen; benchmark-dokumentet har geometrien og hvorfor tættere ikke altid er billigere.
 
 # 🔬 Genskab ethvert tal
 

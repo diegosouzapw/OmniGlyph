@@ -45,6 +45,9 @@ export interface TrackEvent {
   tool_result_imgs?: number;
   /** Chars of tool docs moved to the system-text Tool Reference (not imaged). */
   tool_docs_chars?: number;
+  /** Tools passed through untouched because the tool-search beta manages them
+   *  (`defer_loading: true`, or the search tool itself). */
+  deferred_tools_skipped?: number;
   /** tool_result blocks where text exceeded the per-result image budget and was truncated. */
   truncated_tool_results?: number;
   /** Chars elided by paging across all tool_results this request. */
@@ -216,6 +219,9 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
     if (info.reminderImgs !== undefined) out.reminder_imgs = info.reminderImgs;
     if (info.toolResultImgs !== undefined) out.tool_result_imgs = info.toolResultImgs;
     if (info.toolDocsChars !== undefined) out.tool_docs_chars = info.toolDocsChars;
+    if (info.deferredToolsSkipped !== undefined && info.deferredToolsSkipped > 0) {
+      out.deferred_tools_skipped = info.deferredToolsSkipped;
+    }
     if (info.truncatedToolResults !== undefined && info.truncatedToolResults > 0) {
       out.truncated_tool_results = info.truncatedToolResults;
     }

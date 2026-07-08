@@ -571,6 +571,9 @@ export interface TransformInfo {
   toolResultImgs?: number;
   /** Chars of tool docs moved to the system-text Tool Reference (not imaged). */
   toolDocsChars?: number;
+  /** Tools left untouched because the tool-search beta manages them
+   *  (`defer_loading: true`, or the search tool itself). */
+  deferredToolsSkipped?: number;
   /** Codepoints missing from the atlas (rendered as blank cells). Telemetry for atlas tuning. */
   droppedChars?: number;
   /** Top dropped codepoints by frequency (`U+HHHH` → count), at most 20 entries. */
@@ -1089,6 +1092,23 @@ function renderToolDoc(t: ToolDef): string {
   return parts.join('\n');
 }
 
+/** Tools managed by Anthropic's tool-search beta are exempt from the tool
+ *  rewrite. A tool marked `defer_loading: true` is not injected into context
+ *  until the model searches for it — the server bills it at ~zero until then —
+ *  so imaging its docs would MATERIALIZE documentation the API was keeping
+ *  free, inflating every request (Claude Code with many MCP servers ships
+ *  hundreds of deferred tools; observed 477k chars of deferred docs imaged
+ *  into every request before this guard). The search tool itself
+ *  (`tool_search_tool_regex_20251119` / `_bm25_`) must also pass through
+ *  untouched: it is schema-less and server-defined, and stubbing its
+ *  description breaks the beta's contract. */
+function isToolSearchManaged(t: ToolDef): boolean {
+  const rec = t as unknown as Record<string, unknown>;
+  if (rec['defer_loading'] === true) return true;
+  const type = rec['type'];
+  return typeof type === 'string' && type.startsWith('tool_search_tool');
+}
+
 function makeImageBlock(pngB64: string, _ephemeral = false): ImageBlock {
   // OmniGlyph never adds its own cache_control — only moves existing caller markers
   // across the text→image flip. `_ephemeral` is preserved for call-site compat.
@@ -1604,7 +1624,15 @@ export async function transformRequest(
   let toolsRewritten: ToolDef[] | undefined;
   if (o.compressTools && Array.isArray(req.tools) && req.tools.length > 0) {
     const docs: string[] = [];
+    let deferredSkipped = 0;
     toolsRewritten = req.tools.map((t) => {
+      // Deferred (tool-search) tools pass through byte-identical: not stubbed,
+      // not schema-stripped, not added to the imaged reference. See
+      // isToolSearchManaged for why (the API keeps them free until searched).
+      if (isToolSearchManaged(t)) {
+        deferredSkipped++;
+        return t;
+      }
       // TYPED native tools (type !== 'custom', e.g. advisor_20260301) have a
       // server-side schema that rejects extra fields: injecting the
       // description stub 400s ("Extra inputs are not permitted") and the
@@ -1654,6 +1682,7 @@ export async function transformRequest(
     });
     toolDocsText = docs.join('\n\n');
     info.toolDocsChars = toolDocsText.length;
+    if (deferredSkipped > 0) info.deferredToolsSkipped = deferredSkipped;
   }
 
   // Static slab + Tool Reference go into the renderer; dynamic slab and billing
