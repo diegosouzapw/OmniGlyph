@@ -50,6 +50,12 @@ a full rebuild of the local dashboard plus documentation.
   weighted net loss renders as a loss — the same honesty invariant as before,
   now applied across the KPI grid, flow ribbon and telemetry.
 
+### Fixed
+
+- Dashboard nav/KPI/theme icons use emoji glyphs instead of rare Unicode
+  symbols, so they render everywhere instead of falling back to tofu boxes on
+  font stacks that lack those symbols.
+
 ### Docs
 
 - README gains a **dashboard** section (with screenshots) and an
