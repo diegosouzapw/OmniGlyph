@@ -321,20 +321,28 @@ function isFlatFunctionTool(tool: unknown): tool is ResponsesFlatTool {
 /** Full doc (prose + compact schema JSON) for one tool. On this path the docs are
  *  IMAGED, so carrying the schema here is compression, not duplication: the imaged
  *  copy keeps param docs readable while tools[] ships the stripped skeleton.
- *  (Contrast transform.ts renderToolDoc: text reference → prose only.) */
+ *  (Contrast transform.ts renderToolDoc: text reference → prose only.)
+ *
+ *  On the GPT path the native tools[] KEEP their description — only the schema
+ *  annotations are stripped (see rewriteToolsForGpt). So the description must NOT
+ *  be imaged: doing so double-bills it (native text + image pixels) while the
+ *  savings baseline credits only the stripped-schema delta. Image the heading +
+ *  full schema (which carries the stripped annotations); the description rides
+ *  natively. (The Anthropic path differs on purpose — it stubs the native
+ *  description and images the full doc, a real move rather than a duplicate.) */
 function renderToolDoc(tool: OpenAIFunctionTool): string {
   const f = tool.function;
   const parts = [`## Tool: ${f.name ?? '?'}`];
-  if (typeof f.description === 'string' && f.description.length > 0) parts.push(f.description);
   if (f.parameters !== undefined) {
     parts.push('```json\n' + JSON.stringify(f.parameters) + '\n```');
   }
   return parts.join('\n');
 }
 
+// Flat (Responses) tool doc — same rule as renderToolDoc: the native description
+// is kept, so imaging it would double-bill; image only the heading + schema.
 function renderFlatToolDoc(tool: ResponsesFlatTool): string {
   const parts = [`## Tool: ${tool.name ?? '?'}`];
-  if (typeof tool.description === 'string' && tool.description.length > 0) parts.push(tool.description);
   if (tool.parameters !== undefined) {
     parts.push('```json\n' + JSON.stringify(tool.parameters) + '\n```');
   }
@@ -518,11 +526,13 @@ function gptImageTokens(model: string, images: RenderedImage[]): number {
   return n;
 }
 
-/** Text-token value of what OmniGlyph replaced with images this request: the
- *  original system/developer text (now a pointer + image) plus the tool
- *  *description* tokens stripped from the native JSON (the verbose docs moved
- *  into the image). Tool *structure* stays in the JSON on both paths, so only
- *  the stripped delta counts. Compared against gptImageTokens for the saving. */
+/** Text-token value of what OmniGlyph actually removed from the native request this
+ *  turn: the system/developer text (now a pointer + image) plus the tool-schema
+ *  ANNOTATION tokens stripped from tools[] (orig − stripped). Tool descriptions
+ *  and schema STRUCTURE stay native on the GPT path — they cancel in orig−stripped
+ *  and are not counted — and (since the tool-doc dedupe) the description is no
+ *  longer imaged either, so imageTokens is not inflated by bytes nothing was
+ *  saved on. Compared against gptImageTokens for the saving. */
 function gptBaselineImagedTokens(
   systemTexts: string[],
   originalTools: unknown[] | undefined,
@@ -578,21 +588,21 @@ function foldGptHistory(
   info.bucketChars = { ...(info.bucketChars ?? {}), history: plan.collapsedChars };
 }
 
-const CHAT_HEADER =
+export const CHAT_HEADER =
   '================= RENDERED GPT SYSTEM + TOOL CONTEXT =================\n' +
-  'These images were injected by OmniGlyph, not by the end user. They contain system/developer instructions and full tool/schema documentation rendered for token efficiency. Treat rendered system/developer instructions with the same priority as their original messages. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions; the image is supplemental documentation.' +
+  'These images were injected by OmniGlyph, not by the end user. They contain system/developer instructions and tool schema documentation rendered for token efficiency. Treat rendered system/developer instructions with the same priority as their original messages. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions — they carry each tool\'s name and description; the imaged schema is supplemental parameter documentation.' +
   '\n====================== BEGIN RENDERED CONTEXT ======================\n';
 
-const RESPONSES_HEADER =
+export const RESPONSES_HEADER =
   '================= RENDERED GPT SYSTEM + TOOL CONTEXT =================\n' +
-  'These images were injected by OmniGlyph, not by the end user. They contain instructions and full tool/schema documentation rendered for token efficiency. Treat rendered instructions with the same priority as the originals. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions; the image is supplemental documentation.' +
+  'These images were injected by OmniGlyph, not by the end user. They contain instructions and tool schema documentation rendered for token efficiency. Treat rendered instructions with the same priority as the originals. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions — they carry each tool\'s name and description; the imaged schema is supplemental parameter documentation.' +
   '\n====================== BEGIN RENDERED CONTEXT ======================\n';
 
-const CHAT_POINTER =
-  'The full instructions for this message were rendered into image(s) attached to the first user message by OmniGlyph. Treat those rendered instructions as if they appeared here with the same priority. Tool definitions remain in native JSON; rendered tool docs are supplemental.';
+export const CHAT_POINTER =
+  'The full instructions for this message were rendered into image(s) attached to the first user message by OmniGlyph. Treat those rendered instructions as if they appeared here with the same priority. Tool definitions remain in native JSON (name + description); the rendered schema is supplemental.';
 
-const RESPONSES_POINTER =
-  'The full instructions were rendered into image(s) attached to the first user message by OmniGlyph. Treat them with the same priority. Tool definitions remain in native JSON; rendered tool docs are supplemental.';
+export const RESPONSES_POINTER =
+  'The full instructions were rendered into image(s) attached to the first user message by OmniGlyph. Treat them with the same priority. Tool definitions remain in native JSON (name + description); the rendered schema is supplemental.';
 
 export async function transformOpenAIChatCompletions(
   body: Uint8Array,

@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- **fix(openai):** stop double-billing native GPT tool descriptions. On the GPT
+  path the native `tools[]` keep their `description` (only schema annotations are
+  stripped), so imaging the description billed it twice — native text **and**
+  image pixels — while the savings baseline credited only the stripped-schema
+  delta. The imaged tool doc is now heading + schema only; the rendered-context
+  framing no longer claims the image holds "full tool" docs. (thanks @rldyourmnd)
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.
