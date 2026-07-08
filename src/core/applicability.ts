@@ -14,11 +14,25 @@ export interface OmniGlyphApplicabilityInput {
   readonly bodyBytes?: number | null;
 }
 
-/** Bracketed variant tags (e.g. `[1m]`) stripped before model matching so base and variant gate identically. */
-const VARIANT_TAG = /\[[^\]]*\]/g;
+/** Strip bracketed variant tags (e.g. `[1m]`) before model matching so base and
+ *  variant gate identically. Linear scan — model ids come from client requests. */
+export function stripVariantTags(model: string): string {
+  if (!model.includes('[')) return model;
+  let out = '';
+  let i = 0;
+  while (i < model.length) {
+    const open = model.indexOf('[', i);
+    if (open === -1) { out += model.slice(i); break; }
+    const close = model.indexOf(']', open + 1);
+    if (close === -1) { out += model.slice(i); break; }
+    out += model.slice(i, open);
+    i = close + 1;
+  }
+  return out;
+}
 
 function baseModelId(model: string): string {
-  return model.replace(VARIANT_TAG, '');
+  return stripVariantTags(model);
 }
 
 /** Dashboard runtime override; null = fall back to OMNIGLYPH_MODELS env / built-in default. In-memory only. */

@@ -749,16 +749,23 @@ function splitStaticDynamic(text: string): {
   // surfacing the tag name lets us detect it within hours of a release.
   const known = new Set<string>(DYNAMIC_BLOCK_TAGS);
   const knownStatic = new Set<string>(KNOWN_STATIC_TAGS);
-  const sniffer = /<([a-zA-Z][a-zA-Z0-9_-]*)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/g;
+  // Open tags found by regex; the matching close is located with indexOf so the
+  // scan stays linear on adversarial input (a lazy [\s\S]*? + backreference is
+  // polynomial when many opens never close).
+  const openTag = /<([a-zA-Z][a-zA-Z0-9_-]*)(?:\s[^>]*)?>/g;
   const unknown = new Set<string>();
   const staticTagContents = new Map<string, string>();
   let s: RegExpExecArray | null;
-  while ((s = sniffer.exec(staticBuf)) !== null) {
+  while ((s = openTag.exec(staticBuf)) !== null) {
     const tag = s[1]!;
     if (tag.length > 64) continue;
+    const closeIdx = staticBuf.indexOf(`</${tag}>`, openTag.lastIndex);
+    if (closeIdx === -1) continue;
+    const content = staticBuf.slice(openTag.lastIndex, closeIdx);
+    openTag.lastIndex = closeIdx + tag.length + 3; // resume after `</tag>`
     if (!known.has(tag) && !knownStatic.has(tag)) unknown.add(tag);
     // Fold repeated tags (e.g. several <example>s) into one fingerprint.
-    staticTagContents.set(tag, (staticTagContents.get(tag) ?? '') + s[2]!);
+    staticTagContents.set(tag, (staticTagContents.get(tag) ?? '') + content);
   }
 
   return {
@@ -1014,22 +1021,22 @@ export function extractEnvFields(dynamicText: string): EnvFields {
   const envMatch = /<env>([\s\S]*?)<\/env>/i.exec(dynamicText);
   if (envMatch) {
     const body = envMatch[1]!;
-    const cwd = /(?:^|\n)\s*Working directory:\s*(.+?)\s*(?:\n|$)/i.exec(body);
+    const cwd = /(?:^|\n)[ \t]*Working directory:[ \t]*([^\n]*)/i.exec(body);
     if (cwd) out.cwd = cwd[1]!.trim();
-    const gitRepo = /(?:^|\n)\s*Is directory a git repo:\s*(Yes|No)\b/i.exec(body);
+    const gitRepo = /(?:^|\n)[ \t]*Is directory a git repo:[ \t]*(Yes|No)\b/i.exec(body);
     if (gitRepo) out.isGitRepo = gitRepo[1]!.toLowerCase() === 'yes';
-    const platform = /(?:^|\n)\s*Platform:\s*(.+?)\s*(?:\n|$)/i.exec(body);
+    const platform = /(?:^|\n)[ \t]*Platform:[ \t]*([^\n]*)/i.exec(body);
     if (platform) out.platform = platform[1]!.trim();
-    const osVer = /(?:^|\n)\s*OS Version:\s*(.+?)\s*(?:\n|$)/i.exec(body);
+    const osVer = /(?:^|\n)[ \t]*OS Version:[ \t]*([^\n]*)/i.exec(body);
     if (osVer) out.osVersion = osVer[1]!.trim();
-    const today = /(?:^|\n)\s*Today'?s date:\s*(.+?)\s*(?:\n|$)/i.exec(body);
+    const today = /(?:^|\n)[ \t]*Today'?s date:[ \t]*([^\n]*)/i.exec(body);
     if (today) out.today = today[1]!.trim();
   }
 
   // Branch may be in <git_status>, <context name="git">, or a bare "Branch:" / "On branch" line.
   const branch =
-    /(?:^|\n)\s*(?:On branch|Branch:)\s*([^\s\n]+)/i.exec(dynamicText) ??
-    /(?:^|\n)\s*Current branch:\s*([^\s\n]+)/i.exec(dynamicText);
+    /(?:^|\n)[ \t]*(?:On branch|Branch:)[ \t]*([^\s\n]+)/i.exec(dynamicText) ??
+    /(?:^|\n)[ \t]*Current branch:[ \t]*([^\s\n]+)/i.exec(dynamicText);
   if (branch) out.gitBranch = branch[1]!.trim();
 
   return out;

@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, existsSync, openSync, readSync, closeSync, fstatSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import {
@@ -542,9 +542,9 @@ describe('reflow L0 contract – real corpus', () => {
         // ~/.claude dirs. 8 MB is plenty for the per-file sample; a truncated
         // trailing line just fails JSON.parse below and is skipped.
         const CAP_BYTES = 8 * 1024 * 1024;
-        const toRead = Math.min(statSync(filePath).size, CAP_BYTES);
         const fd = openSync(filePath, 'r');
         try {
+          const toRead = Math.min(fstatSync(fd).size, CAP_BYTES);
           const buf = Buffer.allocUnsafe(toRead);
           const n = readSync(fd, buf, 0, toRead, 0);
           rawContent = buf.toString('utf-8', 0, n);

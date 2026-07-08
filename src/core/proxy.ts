@@ -650,13 +650,20 @@ async function countTokensUpstream(
 }
 
 /** Resolve upstream URLs from config. Pure — unit-testable. */
+/** Linear trailing-slash strip (a slash-run regex anchored at $ is quadratic). */
+function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 0x2f) end--;
+  return s.slice(0, end);
+}
+
 export function resolveUpstreams(config: ProxyConfig): {
   anthropic: string;
   openai: string;
   stripOpenAIV1: boolean;
 } {
   if (config.provider === 'cloudflare-ai-gateway') {
-    const base = (config.gatewayBaseUrl ?? '').replace(/\/+$/, '');
+    const base = stripTrailingSlashes(config.gatewayBaseUrl ?? '');
     if (!base) {
       throw new Error(
         "provider 'cloudflare-ai-gateway' requires gatewayBaseUrl (OMNIGLYPH_GATEWAY_BASE_URL)",
@@ -665,8 +672,8 @@ export function resolveUpstreams(config: ProxyConfig): {
     return { anthropic: `${base}/anthropic`, openai: `${base}/openai`, stripOpenAIV1: true };
   }
   return {
-    anthropic: (config.upstream ?? DEFAULT_UPSTREAM).replace(/\/+$/, ''),
-    openai: (config.openAIUpstream ?? DEFAULT_OPENAI_UPSTREAM).replace(/\/+$/, ''),
+    anthropic: stripTrailingSlashes(config.upstream ?? DEFAULT_UPSTREAM),
+    openai: stripTrailingSlashes(config.openAIUpstream ?? DEFAULT_OPENAI_UPSTREAM),
     stripOpenAIV1: false,
   };
 }
@@ -696,7 +703,7 @@ export function createProxy(config: ProxyConfig = {}) {
   const upstream = routes.anthropic;
   const openAIUpstream = routes.openai;
   const passthroughUpstream = config.provider === 'cloudflare-ai-gateway'
-    ? (config.gatewayBaseUrl ?? '').replace(/\/+$/, '')
+    ? stripTrailingSlashes(config.gatewayBaseUrl ?? '')
     : upstream;
   const gatewayHeaders = config.gatewayHeaders ?? {};
   const applyGatewayHeaders = (h: Headers): Headers => {

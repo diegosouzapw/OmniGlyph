@@ -15,6 +15,8 @@
  * standard tier.
  */
 
+import { stripVariantTags } from './applicability.js';
+
 export type AnthropicVisionTier = 'standard' | 'highres';
 
 /** 28 px patch — the billing unit measured across all 11 sweep probes. */
@@ -40,14 +42,12 @@ const HIGHRES_MODEL_BASES = [
   'claude-sonnet-5',
 ];
 
-const VARIANT_TAG = /\[[^\]]*\]/g;
-
 /** Unknown/absent models resolve to `standard` — fail-conservative, because a
  *  standard 1568×728 page bills WYSIWYG on BOTH tiers, while a high-res page
  *  sent to a standard-tier model gets resampled to blur. */
 export function resolveAnthropicVisionTier(model: string | null | undefined): AnthropicVisionTier {
   if (typeof model !== 'string') return 'standard';
-  const base = model.replace(VARIANT_TAG, '');
+  const base = stripVariantTags(model);
   return HIGHRES_MODEL_BASES.some((b) => base === b || base.startsWith(`${b}-`))
     ? 'highres'
     : 'standard';

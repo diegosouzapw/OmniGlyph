@@ -49,19 +49,25 @@ export function readExportTextFile(
   exclude: string[],
 ): ExportReadResult {
   if (!shouldIncludeFile(relPath, include, exclude)) return { kind: 'excluded' };
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(fullPath);
-  } catch {
-    return { kind: 'inaccessible' };
-  }
-  if (stat.size > MAX_FILE_BYTES) return { kind: 'oversized' };
+  // Stat and read through the same fd — no check-to-use window (js/file-system-race).
   let buf: Buffer;
+  let oversized = false;
   try {
-    buf = fs.readFileSync(fullPath);
+    const fd = fs.openSync(fullPath, 'r');
+    try {
+      if (fs.fstatSync(fd).size > MAX_FILE_BYTES) {
+        oversized = true;
+        buf = Buffer.alloc(0);
+      } else {
+        buf = fs.readFileSync(fd);
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
     return { kind: 'inaccessible' };
   }
+  if (oversized) return { kind: 'oversized' };
   if (looksLikeBinary(buf)) return { kind: 'binary' };
   return { kind: 'ok', content: buf.toString('utf8') };
 }

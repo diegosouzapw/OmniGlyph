@@ -111,12 +111,23 @@ function cellsFor(codepoint: number, markerScale: number = 1): number {
 
 const TAB_WIDTH = 4; // standard 4-space tab stops (logs, code, tool output are all 4-oriented)
 
+/** Linear right-trim of spaces/tabs (a `[ \t]+$` regex is quadratic on space runs). */
+function trimTrailingSpaces(line: string): string {
+  let end = line.length;
+  while (end > 0) {
+    const c = line.charCodeAt(end - 1);
+    if (c !== 0x20 && c !== 0x09) break;
+    end--;
+  }
+  return line.slice(0, end);
+}
+
 /** Strip trailing whitespace per line and collapse 4+ consecutive \n to 3.
  *  Does NOT touch mid-line spaces or leading indent — structure is preserved. */
 export function minifyForRender(text: string): string {
   return text
     .split('\n')
-    .map((line) => line.replace(/[ \t]+$/, ''))
+    .map(trimTrailingSpaces)
     .join('\n')
     .replace(/\n{4,}/g, '\n\n\n'); // 4+ \n → 3 \n (max 2 blank lines)
 }
@@ -818,7 +829,7 @@ async function renderMultiColChunkFromLines(
     }
   }
 
-  for (let i = 0; i < fb.length; i++) fb[i] = 255 - fb[i]! // invert to black-on-white;
+  for (let i = 0; i < fb.length; i++) fb[i] = 255 - fb[i]!; // invert to black-on-white
 
   const png = await encodeGrayPng(fb, width, height);
   return {
