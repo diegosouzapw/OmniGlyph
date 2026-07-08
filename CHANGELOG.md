@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- **bench(gate-backtest):** a cache-aware realized-savings reconciliation and
+  gate-policy back-test (`benchmarks/gate-backtest/run.mjs`). Streams the proxy
+  log (`~/.omniglyph/events.jsonl` or `$OMNIGLYPH_LOG`), reconstructs sessions
+  from `first_user_sha8` + `ts`, and scores hypothetical passthrough gates using
+  only what the proxy knows at transform time — an honest test of a shippable
+  rule. Scoring mirrors `src/core/baseline.ts` exactly. (thanks @akigogikar)
+
 ### Changed
 
 - **test:** raise the Vitest per-test timeout to 30s so genuinely slow render
