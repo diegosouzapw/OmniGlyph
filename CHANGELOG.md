@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Added
+
+- **feat(node):** the Node proxy's OpenAI leg falls back to the **Codex ChatGPT
+  login** (`~/.codex/auth.json`, override with `OMNIGLYPH_CODEX_AUTH_FILE`) when
+  `OPENAI_API_KEY` is unset. An explicit `OPENAI_API_KEY` still wins; only the
+  `chatgpt` auth mode is honored (an `api-key` file is ignored). `node.ts` runs
+  `main()` only as a direct entrypoint now, so the config can be unit-tested.
+  (thanks @ousamabenyounes)
+
 ## [1.1.0] — 2026-07-08
 
 Dashboard release. The compression path and billing math are unchanged; this is
