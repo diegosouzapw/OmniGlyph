@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest a feature or improvement for OmniGlyph
+title: "[FEAT] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. OmniGlyph is measurement-first: proposals that touch the
+        billing math, the model gate, or the render path should say how the change
+        would be **measured** (a benchmark receipt), not just described.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: The user-facing or operational pain, not the solution yet.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What you'd like to see. Sketch the interface (flag, env var, API) if relevant.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Billing math (Anthropic/OpenAI/Gemini)
+        - Model gate / reading benchmark
+        - Render pipeline (atlas, reflow, pages)
+        - Proxy / hosts (Node, Cloudflare Workers)
+        - Dashboard
+        - export CLI
+        - Docs / i18n
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurement
+    attributes:
+      label: How would we measure success?
+      description: For gate/billing/render changes, which benchmark harness would prove it (`benchmarks/billing-sweep`, `benchmarks/density-frontier`)?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing issues and discussions for this idea.
+          required: true

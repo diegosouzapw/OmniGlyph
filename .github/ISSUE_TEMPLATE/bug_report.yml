@@ -1,0 +1,105 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in OmniGlyph
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: OmniGlyph Version
+      description: "Run `omniglyph --version`."
+      placeholder: "e.g. 1.0.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation Method
+      options:
+        - npm (global)
+        - npx
+        - Cloudflare Workers (wrangler)
+        - Native engine inside OmniRoute
+        - Built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client pointed at the proxy
+      description: Which tool sends requests through OmniGlyph?
+      options:
+        - Claude Code
+        - Other Anthropic-compatible client
+        - OpenAI-compatible client
+        - Direct API calls (curl/SDK)
+        - Not applicable (library / export CLI)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS Version
+      placeholder: "e.g. Windows 11 25H2, macOS 26.5, Ubuntu 26.04"
+    validations:
+      required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected instead.
+      placeholder: Describe the actual vs. expected behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, env vars, and the model involved. Redact any API keys.
+      placeholder: |
+        1. Start proxy with `ANTHROPIC_BASE_URL=http://127.0.0.1:47821 ...`
+        2. Send request with model `...`
+        3. Observe `...`
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / dashboard output
+      description: Paste proxy logs or dashboard event details. **Never paste API keys or private prompt content.**
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I redacted all API keys and private context from this report.
+          required: true
