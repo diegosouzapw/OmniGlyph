@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` hubandika vizuizi kama maandishi; `options.emitRecoverable` hurejesha nakala asili za vizuizi vilivyogeuzwa kuwa picha. Hesabu sahihi ya bili pia hutolewa kwenye mzizi wa kifurushi (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — hilo ndilo linalotumiwa na [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Muda wa uendeshaji wa Pure-JS (Node na edge/Workers). Uso kamili: `src/core/index.ts`.
 
+# 📤 Usafirishaji nje ya mtandao — bila proxy, bila Claude Code
+
+Hutumii Claude Code? Chora muktadha kuwa kurasa za PNG **kwa ndani** kisha uzibandike kwenye Cursor, ChatGPT, au gumzo lolote linalokubali upakiaji wa picha. Bila proxy, bila ufunguo wa API, bila akaunti iliyounganishwa:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Unapata folda moja yenye kila kitu cha kubandika kwenye gumzo:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` huchora diff yako ambayo haijawekwa kwenye commit, `--diff <ref>` huchora masafa ya commit, `--open` hufichua folda (macOS). Yote hufanyika kwenye kompyuta yako — njia ya usafirishaji kamwe haianzishi proxy na kamwe haiiti muundo. Endesha `omniglyph export --help` kwa kila bendera.
+
 # 🧭 Sehemu ya uwazi
 
 - **Ni hasara kwa kiasi fulani (lossy).** Ukumbukaji sahihi kabisa kutoka kwa picha si wa kutegemewa kwa asili. Hatua zilizochukuliwa: vitambulisho sahihi husafiri kama maandishi karibu na picha, na mpangilio wa uzalishaji uliopimwa haukutoa **uvumbuzi wowote wa kimya** — usomaji uliofeli hujiepusha.
@@ -147,6 +168,12 @@ Zamu za hivi karibuni na vitambulisho sahihi hubaki kama maandishi kwa makusudi.
 
 **Je, DeepSeek-OCR haikuthibitisha kama hii inafanya kazi?**
 Ilithibitisha kuwa *kijia* (channel) hicho kinafanya kazi — kwa jozi ya encoder/decoder iliyofunzwa kwa kazi hiyo. Mashaka hayo yalianzia wakati hakuna muundo wa kawaida wa uzalishaji uliokuwa na uwezo wa kusoma taswira mnene; hilo limebadilika, na [kadi ya alama za miundo](../../../README.md#-the-numbers--measured-not-estimated) hapo juu inaonyesha kwa usahihi ni nani anayeweza kuzisoma leo, ikiwa na risiti. [Mfumo wa vipimo](../../../benchmarks/README.md) hujaribu upya muundo wowote mpya kwa amri moja — lango hufuata data, si msisimko.
+
+**Je, ninaweza kuitumia bila Claude Code — Cursor, ChatGPT, au bomba (pipe) la kawaida?**
+Ndiyo, kwa njia mbili. Kama **proxy**, inafanya kazi na mteja yeyote anayekuruhusu kuweka URL ya msingi ya API (`ANTHROPIC_BASE_URL`, au URL ya msingi ya OpenAI) — Claude Code, skripti zako mwenyewe, chochote cha HTTP. Na kwa zana zisizoweza kutumia proxy, **Usafirishaji nje ya mtandao** hapo juu huchora muktadha kuwa kurasa za PNG unazozibandika kwa mkono — `omniglyph export --stdin` hata husoma moja kwa moja kutoka kwenye bomba la Unix.
+
+**Inageuzaje maandishi kuwa picha hasa?**
+Hupanga upya maandishi kisha huyachora kwa atlasi ya glyph ya bit-1 ya pikseli 5×8 kwenye kurasa mnene za PNG za 1568×728 — bit moja kwa kila pikseli, bila anti-aliasing, hivyo muundo hutoza ukurasa kwa vipimo vyake, si kwa idadi ya herufi zilizomo ndani. **Jinsi inavyofanya kazi** hapo juu ina pipeline; hati ya vipimo ina jiometri na kwa nini kuwa mnene zaidi si mara zote nafuu zaidi.
 
 # 🔬 Rudia kila nambari
 

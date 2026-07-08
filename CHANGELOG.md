@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Docs
+
+- **Offline export, documented.** New README section (mirrored across the 41
+  translations) showing how to render context to PNG pages with `omniglyph
+  export` — no proxy, no Claude Code — for pasting into Cursor, ChatGPT, or any
+  chat that reads images. Two new FAQ entries cover using OmniGlyph outside
+  Claude Code and how the text→image render works. Documentation only; no
+  behavior change.
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.

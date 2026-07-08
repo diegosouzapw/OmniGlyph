@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)`はブロックをテキストとして固定し、`options.emitRecoverable`は画像化されたブロックの元データを返します。厳密な課金計算式（`anthropicImageTokens`、`resolveAnthropicVisionTier`、`openAIVisionTokens`）もパッケージのルートから提供されており、これは[OmniRoute](https://github.com/diegosouzapw/OmniRoute)が利用しているものです。純粋なJavaScriptランタイム（Nodeとedge/Workersの両方で動作）。全体のAPI一覧は`src/core/index.ts`を参照してください。
 
+# 📤 オフラインエクスポート — プロキシなし、Claude Codeなし
+
+Claude Codeを使っていませんか？ コンテキストを**ローカルで**PNGページにレンダリングし、Cursor、ChatGPT、あるいは画像のアップロードに対応したあらゆるチャットに貼り付けましょう。プロキシもAPIキーもアカウント連携も不要です:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+チャットに投入するために必要なものが、すべて1つのフォルダにまとまります:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git`は未コミットの差分を、`--diff <ref>`はコミット範囲をレンダリングし、`--open`はフォルダを表示します（macOS）。すべてがあなたのマシン上で動作します — エクスポート経路はプロキシを起動することも、モデルを呼び出すこともありません。すべてのフラグは`omniglyph export --help`で確認できます。
+
 # 🧭 The honest part
 
 - **これは非可逆です。** 画像からのバイト単位の正確な復元は本質的に信頼できません。実施済みの緩和策: 正確な識別子は画像の隣にテキストとして流れ、実測された本番構成では**無自覚な作話ゼロ**を達成しています — 読み取り失敗は棄権します。
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **DeepSeek-OCRによって、この手法が有効かどうかはすでに決着していたのでは？**
 DeepSeek-OCRが証明したのは*経路*が機能することです — そのために専用に訓練されたエンコーダ/デコーダのペアを使っています。懐疑論は、市販の本番モデルが高密度レンダーを読めなかった時代のものです。状況は変わり、上記の[モデル別スコアカード](../../../README.md#-the-numbers--measured-not-estimated)が、今日どのモデルが読めるかを根拠付きで正確に示しています。[ベンチマークハーネス](../../../benchmarks/README.md)を使えば、新しいモデルを1コマンドで再テストできます — ゲートは誇張ではなくデータに従います。
+
+**Claude Codeなしで使えますか — Cursor、ChatGPT、あるいは単純なパイプで？**
+はい、2つの方法があります。**プロキシ**として使えば、APIのベースURL（`ANTHROPIC_BASE_URL`、またはOpenAIのベースURL）を設定できるあらゆるクライアントで動作します — Claude Code、自作のスクリプト、HTTPを話すものなら何でも。そして、プロキシを使えないツール向けには、上記の**オフラインエクスポート**がコンテキストをPNGページにレンダリングし、それを手作業で貼り付けます — `omniglyph export --stdin`ならUnixパイプから直接読み込むことさえできます。
+
+**実際にどうやってテキストを画像に変換しているのですか？**
+テキストをリフローし、1ビットの5×8ピクセルグリフアトラスで高密度な1568×728のPNGページに描画します — 1ピクセルあたり1ビット、アンチエイリアスなし。そのため、モデルはページを寸法で課金し、中に何文字含まれているかは問いません。パイプラインについては上記の**仕組み**を、幾何学的な詳細となぜ高密度化が必ずしも安くならないのかについてはベンチマークのドキュメントを参照してください。
 
 # 🔬 すべての数値を再現する
 

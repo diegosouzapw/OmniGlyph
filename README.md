@@ -173,6 +173,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` pins blocks as text; `options.emitRecoverable` returns the originals of imaged blocks. The exact billing math ships at the package root too (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — that is what [OmniRoute](https://github.com/diegosouzapw/OmniRoute) consumes. Pure-JS runtime (Node and edge/Workers). Full surface: `src/core/index.ts`.
 
+# 📤 Offline export — no proxy, no Claude Code
+
+Not on Claude Code? Render the context to PNG pages **locally** and paste them into Cursor, ChatGPT, or any chat that accepts image uploads. No proxy, no API key, no account wired up:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+You get one folder with everything to drop into the chat:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` renders your uncommitted diff, `--diff <ref>` a commit range, `--open` reveals the folder (macOS). It all runs on your machine — the export path never starts the proxy and never calls a model. Run `omniglyph export --help` for every flag.
+
 # 🧭 The honest part
 
 - **It is lossy.** Byte-exact recall from images is unreliable by nature. Mitigations shipped: exact identifiers travel as text next to the image, and the measured production config produced **zero silent confabulations** — failed reads abstain.
@@ -196,6 +217,12 @@ Recent turns and exact identifiers stay text by design. For workloads that are *
 
 **Didn't DeepSeek-OCR settle whether this works?**
 It proved the *channel* works — with an encoder/decoder pair trained for the job. The skepticism dates from when no stock production model could read dense renders; that changed, and the [model scorecard](#-the-numbers--measured-not-estimated) above shows exactly who reads them today, with receipts. The [benchmark harness](benchmarks/README.md) re-tests any new model in one command — the gate follows the data, not the hype.
+
+**Can I use it without Claude Code — Cursor, ChatGPT, a plain pipe?**
+Yes, two ways. As a **proxy** it works with any client that lets you set the API base URL (`ANTHROPIC_BASE_URL`, or the OpenAI base URL) — Claude Code, your own scripts, anything HTTP. And for tools that can't proxy, the **Offline export** above renders the context to PNG pages you paste in by hand — `omniglyph export --stdin` even reads straight from a Unix pipe.
+
+**How does it actually turn text into an image?**
+It reflows the text and paints it with a 1-bit 5×8 pixel glyph atlas onto dense 1568×728 PNG pages — one bit per pixel, no anti-aliasing, so the model bills the page by its dimensions, not by how many characters are inside. **How it works** above has the pipeline; the benchmarks doc has the geometry and why denser isn't always cheaper.
 
 # 🔬 Reproduce every number
 
