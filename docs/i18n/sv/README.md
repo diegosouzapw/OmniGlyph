@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` fäster block som text; `options.emitRecoverable` returnerar originalen för avbildade block. Den exakta faktureringsmatematiken levereras även vid paketets rot (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — det är vad [OmniRoute](https://github.com/diegosouzapw/OmniRoute) använder. Ren JS-körtid (Node och edge/Workers). Fullständigt gränssnitt: `src/core/index.ts`.
 
+# 📤 Offline-export — ingen proxy, ingen Claude Code
+
+Inte på Claude Code? Rendera kontexten till PNG-sidor **lokalt** och klistra in dem i Cursor, ChatGPT eller vilken chatt som helst som tar emot bilduppladdningar. Ingen proxy, ingen API-nyckel, inget konto inkopplat:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Du får en enda mapp med allt du behöver för att släppa in i chatten:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` renderar din icke-committade diff, `--diff <ref>` ett commit-intervall, `--open` visar mappen (macOS). Allt körs på din egen dator — exportvägen startar aldrig proxyn och anropar aldrig någon modell. Kör `omniglyph export --help` för alla flaggor.
+
 # 🧭 The honest part
 
 - **Det är förlustbehäftat.** Byte-exakt återgivning från bilder är till sin natur opålitlig. Genomförda motåtgärder: exakta identifierare reser som text bredvid bilden, och den mätta produktionskonfigurationen gav **noll tysta konfabulationer** — misslyckade läsningar avstår.
@@ -147,6 +168,12 @@ Senaste turerna och exakta identifierare förblir text med avsikt. För arbetsbe
 
 **Avgjorde inte DeepSeek-OCR redan om det här fungerar?**
 Det bevisade att *kanalen* fungerar — med ett kodare/avkodare-par tränat för uppgiften. Skepsisen härstammar från en tid då ingen standardmodell i produktion kunde läsa täta renderingar; det har ändrats, och [modellöversikten](../../../README.md#-the-numbers--measured-not-estimated) ovan visar exakt vem som läser dem idag, med belägg. [Benchmark-ramverket](../../../benchmarks/README.md) omtestar varje ny modell med ett enda kommando — spärren följer data, inte hypen.
+
+**Kan jag använda det utan Claude Code — Cursor, ChatGPT, en vanlig pipe?**
+Ja, på två sätt. Som **proxy** fungerar det med vilken klient som helst som låter dig ange API:ets bas-URL (`ANTHROPIC_BASE_URL`, eller OpenAI:s bas-URL) — Claude Code, dina egna skript, vad som helst över HTTP. Och för verktyg som inte kan använda en proxy renderar **Offline-export** ovan kontexten till PNG-sidor som du klistrar in för hand — `omniglyph export --stdin` läser till och med direkt från en Unix-pipe.
+
+**Hur förvandlar det egentligen text till en bild?**
+Det flödar om texten och målar den med en 1-bitars 5×8-pixels glyfatlas på täta 1568×728 PNG-sidor — en bit per pixel, ingen kantutjämning, så modellen fakturerar sidan efter dess dimensioner, inte efter hur många tecken den innehåller. **Hur det fungerar** ovan har pipelinen; benchmark-dokumentet har geometrin och varför tätare inte alltid är billigare.
 
 # 🔬 Reproducera varje siffra
 

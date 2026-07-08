@@ -4,10 +4,39 @@
  */
 import { describe, expect, it } from 'vitest';
 import { isOmniGlyphSupportedGptModel } from '../src/core/applicability.js';
-import { openAIVisionTokens, resolveVisionCost, transformOpenAIChatCompletions, transformOpenAIResponses } from '../src/core/openai.js';
+import {
+  openAIVisionTokens,
+  resolveVisionCost,
+  transformOpenAIChatCompletions,
+  transformOpenAIResponses,
+  CHAT_HEADER,
+  RESPONSES_HEADER,
+  CHAT_POINTER,
+  RESPONSES_POINTER,
+} from '../src/core/openai.js';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+
+describe('rendered-context wording (post tool-doc dedupe)', () => {
+  // The tool description stays in the native JSON, so the imaged docs are the
+  // SCHEMA only — the framing must not claim the image holds "full tool" docs.
+  it('never claims the image holds full tool documentation', () => {
+    for (const s of [CHAT_HEADER, RESPONSES_HEADER, CHAT_POINTER, RESPONSES_POINTER]) {
+      expect(s.toLowerCase()).not.toContain('full tool');
+    }
+  });
+
+  it('keeps native tool definitions authoritative in the framing', () => {
+    for (const s of [CHAT_HEADER, RESPONSES_HEADER, CHAT_POINTER, RESPONSES_POINTER]) {
+      expect(s).toContain('native JSON');
+    }
+    // Headers spell out that native definitions carry name + description.
+    for (const s of [CHAT_HEADER, RESPONSES_HEADER]) {
+      expect(s).toContain('name and description');
+    }
+  });
+});
 
 // ── Task 1: applicability gate ──────────────────────────────────────────────
 
@@ -71,7 +100,9 @@ describe('openAIVisionTokens', () => {
 const BIG_SYSTEM = 'System instruction with lots of detail. '.repeat(500); // ~20k chars
 const BIG_TOOL_DESC = 'Tool description with lots of context. '.repeat(200); // ~8k chars
 const CHAT_TOOL_PARAMS = { type: 'object', description: 'Param root.', properties: { x: { type: 'string', description: 'x param' } } };
-const CHAT_TOOL_DOC = `## Tool: do_thing\n${BIG_TOOL_DESC}\n\`\`\`json\n${JSON.stringify(CHAT_TOOL_PARAMS)}\n\`\`\``;
+// The imaged tool doc is heading + schema ONLY — the description stays native
+// (see renderToolDoc), so it is not part of what gets imaged.
+const CHAT_TOOL_DOC = `## Tool: do_thing\n\`\`\`json\n${JSON.stringify(CHAT_TOOL_PARAMS)}\n\`\`\``;
 
 // Real `task`/`question` tools have a required parameter literally NAMED `description`
 // (others collide with `title`/`default`). The strip must drop the annotation but KEEP
@@ -89,6 +120,22 @@ const TASK_LIKE_PARAMS = {
   required: ['description', 'prompt'],
   additionalProperties: false,
 };
+
+// A schema big enough to clear the profitability gate on its own. Under the
+// tool-doc dedupe the description stays native and is NOT imaged, so the SCHEMA
+// (its stripped annotations) is what imaging actually saves — a realistic
+// many-field tool, not an 8k-char description over a two-field schema.
+const BIG_SCHEMA_PARAMS = {
+  type: 'object',
+  description: 'Root schema for a many-field tool. '.repeat(20),
+  properties: Object.fromEntries(
+    Array.from({ length: 40 }, (_, i) => [
+      `field_${i}`,
+      { type: 'string', description: `Detailed annotation for parameter number ${i}. `.repeat(6) },
+    ]),
+  ),
+};
+const BIG_SCHEMA_TOOL_DOC = `## Tool: do_thing\n\`\`\`json\n${JSON.stringify(BIG_SCHEMA_PARAMS)}\n\`\`\``;
 
 describe('transformOpenAIChatCompletions (gpt-5.6)', () => {
   it('compresses GPT system + tool docs while preserving native tool selection metadata', async () => {
@@ -141,7 +188,10 @@ describe('transformOpenAIChatCompletions (gpt-5.6)', () => {
     expect(tools[0]!.function.parameters?.properties?.x?.description).toBeUndefined();
   });
 
-  it('images GPT tool definitions even when there is no instruction context', async () => {
+  it('images a substantial GPT tool schema even when there is no instruction context', async () => {
+    // Big SCHEMA (not a big description): under the tool-doc dedupe the
+    // description stays native, so the schema annotations are what makes imaging
+    // profitable with no system text.
     const body = enc.encode(JSON.stringify({
       model: 'gpt-5.6',
       messages: [{ role: 'user', content: 'hello' }],
@@ -150,24 +200,49 @@ describe('transformOpenAIChatCompletions (gpt-5.6)', () => {
         function: {
           name: 'do_thing',
           description: BIG_TOOL_DESC,
-          parameters: CHAT_TOOL_PARAMS,
+          parameters: BIG_SCHEMA_PARAMS,
         },
       }],
     }));
 
     const result = await transformOpenAIChatCompletions(body, { charsPerToken: 1, minCompressChars: 1 });
     expect(result.info.compressed).toBe(true);
-    expect(result.info.origChars).toBe(CHAT_TOOL_DOC.length);
-    expect(result.info.compressedChars).toBe(CHAT_TOOL_DOC.length);
+    // Imaged content is heading + full schema — the native description is not in it.
+    expect(result.info.origChars).toBe(BIG_SCHEMA_TOOL_DOC.length);
+    expect(result.info.compressedChars).toBe(BIG_SCHEMA_TOOL_DOC.length);
     const out = JSON.parse(dec.decode(result.body)) as any;
+    // Description kept native (never imaged); schema annotations stripped from native.
     expect(out.tools[0].function.description).toBe(BIG_TOOL_DESC);
     expect(out.tools[0].function.parameters.description).toBeUndefined();
+    expect(out.tools[0].function.parameters.properties.field_0.description).toBeUndefined();
   });
 
-  it('keeps a parameter literally named "description" (task-tool regression)', async () => {
+  it('does not image (double-bill) the native GPT tool description', async () => {
+    // A big description over a tiny schema: the description stays native, so
+    // there is nothing left worth imaging and the gate declines. Before the
+    // tool-doc dedupe this imaged the ~8k description and reported compressed=true
+    // while the description ALSO rode native — paying for it twice.
     const body = enc.encode(JSON.stringify({
       model: 'gpt-5.6',
       messages: [{ role: 'user', content: 'hello' }],
+      tools: [{
+        type: 'function',
+        function: { name: 'do_thing', description: BIG_TOOL_DESC, parameters: CHAT_TOOL_PARAMS },
+      }],
+    }));
+    const result = await transformOpenAIChatCompletions(body, { charsPerToken: 1, minCompressChars: 1 });
+    expect(result.info.compressed).toBe(false);
+    // Native tool passes through untouched.
+    const out = JSON.parse(dec.decode(result.body)) as any;
+    expect(out.tools[0].function.description).toBe(BIG_TOOL_DESC);
+  });
+
+  it('keeps a parameter literally named "description" (task-tool regression)', async () => {
+    // Big system slab makes compression profitable; the small task schema is
+    // intentionally kept to exercise the "description"-named-property strip.
+    const body = enc.encode(JSON.stringify({
+      model: 'gpt-5.6',
+      messages: [{ role: 'system', content: BIG_SYSTEM }, { role: 'user', content: 'hello' }],
       tools: [{
         type: 'function',
         function: { name: 'task', description: BIG_TOOL_DESC, parameters: TASK_LIKE_PARAMS },
@@ -209,7 +284,8 @@ describe('transformOpenAIChatCompletions (gpt-5.6)', () => {
 const BIG_INSTRUCTIONS = 'These are detailed instructions. '.repeat(600); // ~20k chars
 const BIG_FLAT_TOOL_DESC = 'Flat tool description with lots of context. '.repeat(200); // ~8k chars
 const RESPONSES_TOOL_PARAMS = { type: 'object', description: 'Param root.', properties: { x: { type: 'string', description: 'x param' } } };
-const RESPONSES_TOOL_DOC = `## Tool: do_thing\n${BIG_FLAT_TOOL_DESC}\n\`\`\`json\n${JSON.stringify(RESPONSES_TOOL_PARAMS)}\n\`\`\``;
+// Imaged doc is heading + schema only; the flat tool description stays native.
+const RESPONSES_TOOL_DOC = `## Tool: do_thing\n\`\`\`json\n${JSON.stringify(RESPONSES_TOOL_PARAMS)}\n\`\`\``;
 
 describe('transformOpenAIResponses (gpt-5.6)', () => {
   it('compresses GPT Responses instructions + tool docs while preserving native tool selection metadata', async () => {
@@ -285,7 +361,9 @@ describe('transformOpenAIResponses (gpt-5.6)', () => {
     expect(JSON.stringify(dev.content)).not.toContain('These are detailed');
   });
 
-  it('images GPT Responses tool definitions even when there is no instruction context', async () => {
+  it('images a substantial GPT Responses tool schema even when there is no instruction context', async () => {
+    // Big SCHEMA, not a big description — the flat description stays native and
+    // is not imaged, so the schema is what makes this profitable with no context.
     const body = enc.encode(JSON.stringify({
       model: 'gpt-5.6',
       input: [{ role: 'user', content: 'Please do the thing.' }],
@@ -293,22 +371,26 @@ describe('transformOpenAIResponses (gpt-5.6)', () => {
         type: 'function',
         name: 'do_thing',
         description: BIG_FLAT_TOOL_DESC,
-        parameters: RESPONSES_TOOL_PARAMS,
+        parameters: BIG_SCHEMA_PARAMS,
       }],
     }));
 
     const result = await transformOpenAIResponses(body, { charsPerToken: 1, minCompressChars: 1 });
     expect(result.info.compressed).toBe(true);
-    expect(result.info.origChars).toBe(RESPONSES_TOOL_DOC.length);
-    expect(result.info.compressedChars).toBe(RESPONSES_TOOL_DOC.length);
+    expect(result.info.origChars).toBe(BIG_SCHEMA_TOOL_DOC.length);
+    expect(result.info.compressedChars).toBe(BIG_SCHEMA_TOOL_DOC.length);
     const out = JSON.parse(dec.decode(result.body)) as any;
     expect(out.tools[0].description).toBe(BIG_FLAT_TOOL_DESC);
     expect(out.tools[0].parameters.description).toBeUndefined();
+    expect(out.tools[0].parameters.properties.field_0.description).toBeUndefined();
   });
 
   it('keeps a parameter literally named "description" (task-tool regression)', async () => {
+    // Big instructions slab makes compression profitable; the small task schema
+    // is kept to exercise the "description"-named-property strip.
     const body = enc.encode(JSON.stringify({
       model: 'gpt-5.6',
+      instructions: BIG_INSTRUCTIONS,
       input: [{ role: 'user', content: 'Please do the thing.' }],
       tools: [{ type: 'function', name: 'task', description: BIG_FLAT_TOOL_DESC, parameters: TASK_LIKE_PARAMS }],
     }));

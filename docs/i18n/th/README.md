@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` ตรึงบล็อกให้เป็นข้อความ; `options.emitRecoverable` คืนค่าต้นฉบับของบล็อกที่ถูกแปลงเป็นภาพ สูตรคำนวณค่าใช้จ่ายแบบเป๊ะก็มีให้ใช้ที่รากของแพ็กเกจเช่นกัน (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — นี่คือสิ่งที่ [OmniRoute](https://github.com/diegosouzapw/OmniRoute) นำไปใช้ รันไทม์เป็น Pure-JS ล้วน (Node และ edge/Workers) พื้นผิว API แบบเต็ม: `src/core/index.ts`
 
+# 📤 การส่งออกแบบออฟไลน์ — ไม่ต้องมีพร็อกซี ไม่ต้องมี Claude Code
+
+ไม่ได้ใช้ Claude Code อยู่? เรนเดอร์บริบทเป็นหน้า PNG **ในเครื่อง** แล้ววางลงใน Cursor, ChatGPT หรือแชตใดก็ตามที่รับการอัปโหลดภาพได้ ไม่ต้องมีพร็อกซี ไม่ต้องมี API key ไม่ต้องเชื่อมต่อบัญชีใดๆ:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+คุณจะได้โฟลเดอร์เดียวที่มีทุกอย่างพร้อมนำไปวางในแชต:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` เรนเดอร์ diff ที่ยังไม่ได้ commit ของคุณ, `--diff <ref>` เรนเดอร์ช่วงของ commit, `--open` เปิดโฟลเดอร์ให้เห็น (macOS) ทั้งหมดทำงานบนเครื่องของคุณ — เส้นทางการส่งออกไม่เคยเริ่มพร็อกซีและไม่เคยเรียกโมเดล รัน `omniglyph export --help` เพื่อดูทุกแฟล็ก
+
 # 🧭 The honest part
 
 - **มันเป็นแบบ lossy** การดึงข้อมูลแบบเป๊ะทุกไบต์จากภาพนั้นไม่น่าเชื่อถือโดยธรรมชาติ มาตรการที่นำมาใช้แล้ว: ตัวระบุที่ต้องเป๊ะเดินทางเป็นข้อความควบคู่กับภาพ และค่าคอนฟิกที่ใช้งานจริงที่วัดผลแล้วให้ผล **การกุเรื่องแบบเงียบเป็นศูนย์** — การอ่านที่ล้มเหลวจะงดตอบ
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **DeepSeek-OCR ไม่ได้พิสูจน์แล้วหรือว่าวิธีนี้ใช้ได้จริง?**
 มันพิสูจน์ว่า *ช่องทาง* นี้ใช้งานได้จริง — ด้วยคู่ encoder/decoder ที่ถูกฝึกมาเพื่องานนี้โดยเฉพาะ ความกังขานี้มาจากยุคที่ยังไม่มีโมเดลใช้งานจริงมาตรฐานตัวใดอ่านเรนเดอร์ความหนาแน่นสูงได้เลย — สถานการณ์นั้นเปลี่ยนไปแล้ว และ[ตารางคะแนนโมเดล](../../../README.md#-the-numbers--measured-not-estimated) ด้านบนแสดงให้เห็นชัดเจนว่าใครอ่านมันได้ในวันนี้ พร้อมหลักฐาน [ชุดทดสอบ benchmark](../../../benchmarks/README.md) จะทดสอบโมเดลใหม่ทุกตัวได้ในคำสั่งเดียว — เกทเดินตามข้อมูล ไม่ใช่ตามกระแส
+
+**ใช้งานโดยไม่มี Claude Code ได้ไหม — Cursor, ChatGPT หรือไปป์ธรรมดา?**
+ได้ สองวิธี ในฐานะ **พร็อกซี** มันใช้งานได้กับไคลเอนต์ใดก็ตามที่ให้คุณตั้งค่า API base URL ได้ (`ANTHROPIC_BASE_URL` หรือ base URL ของ OpenAI) — Claude Code, สคริปต์ของคุณเอง หรืออะไรก็ตามที่เป็น HTTP และสำหรับเครื่องมือที่ใช้พร็อกซีไม่ได้ **การส่งออกแบบออฟไลน์** ด้านบนจะเรนเดอร์บริบทเป็นหน้า PNG ที่คุณวางเข้าไปเองด้วยมือ — `omniglyph export --stdin` อ่านจากไปป์ Unix ได้โดยตรงเลยด้วยซ้ำ
+
+**จริงๆ แล้วมันเปลี่ยนข้อความให้เป็นภาพได้อย่างไร?**
+มันจัด reflow ข้อความใหม่แล้ววาดด้วย atlas กลิฟ 1-bit ขนาด 5×8 พิกเซล ลงบนหน้า PNG ความหนาแน่นสูงขนาด 1568×728 — หนึ่งบิตต่อหนึ่งพิกเซล ไม่มี anti-aliasing ดังนั้นโมเดลจึงคิดค่าใช้จ่ายของหน้าตามขนาดมิติของมัน ไม่ใช่ตามจำนวนตัวอักษรที่อยู่ข้างใน **วิธีการทำงาน** ด้านบนมีไปป์ไลน์ให้ดู; เอกสาร benchmark มีรายละเอียดเรขาคณิตและเหตุผลว่าทำไมหนาแน่นกว่าจึงไม่ได้ถูกกว่าเสมอไป
 
 # 🔬 ทำซ้ำทุกตัวเลข
 

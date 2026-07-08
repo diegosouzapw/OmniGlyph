@@ -11,9 +11,10 @@ import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, resolveUpstreams, type ProxyConfig } from './core/proxy.js';
+import { resolveOpenAIApiKey } from './node-auth.js';
 import {
   parseExportArgv,
   runExportCore,
@@ -49,7 +50,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
  *  control. No CLI flags beyond --help/--version. */
-interface RuntimeConfig {
+export interface RuntimeConfig {
   port: number;
   /** Interface to bind. Defaults to 127.0.0.1 (loopback only) — the dashboard
    *  is unauthenticated and serves captured request context, so it must not be
@@ -100,7 +101,7 @@ function applyConfigFileDefaults(): void {
   }
 }
 
-function parseCli(argv: string[]): RuntimeConfig {
+export function parseCli(argv: string[]): RuntimeConfig {
   // Only flags accepted are --help and --version. Anything else is an
   // error — there is exactly ONE way to run OmniGlyph and the dashboard
   // exposes every metric the operator might want to inspect.
@@ -127,7 +128,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     host: process.env.HOST?.trim() || '127.0.0.1',
     upstream: process.env.ANTHROPIC_UPSTREAM ?? sharedUpstream ?? 'https://api.anthropic.com',
     openAIUpstream: process.env.OPENAI_UPSTREAM ?? sharedUpstream ?? 'https://api.openai.com',
-    openAIApiKey: process.env.OPENAI_API_KEY,
+    openAIApiKey: resolveOpenAIApiKey(),
     provider: parseProvider(process.env.OMNIGLYPH_PROVIDER),
     gatewayBaseUrl: process.env.OMNIGLYPH_GATEWAY_BASE_URL,
     gatewayHeaders: parseGatewayHeaders(process.env.OMNIGLYPH_GATEWAY_HEADERS),
@@ -1088,7 +1089,17 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
-main().catch((err) => {
-  console.error('[OmniGlyph] fatal:', err);
-  process.exit(1);
-});
+/** True only when node.ts is the process entrypoint (`node .../node.js`), not
+ *  when it is imported (e.g. by tests reaching parseCli). Guards main() so an
+ *  import does not start the proxy. */
+function isDirectCliEntrypoint(): boolean {
+  const script = process.argv[1];
+  return script !== undefined && import.meta.url === pathToFileURL(script).href;
+}
+
+if (isDirectCliEntrypoint()) {
+  main().catch((err) => {
+    console.error('[OmniGlyph] fatal:', err);
+    process.exit(1);
+  });
+}
