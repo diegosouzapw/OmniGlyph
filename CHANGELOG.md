@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Added
+
+- **bench(gate-backtest):** a cache-aware realized-savings reconciliation and
+  gate-policy back-test (`benchmarks/gate-backtest/run.mjs`). Streams the proxy
+  log (`~/.omniglyph/events.jsonl` or `$OMNIGLYPH_LOG`), reconstructs sessions
+  from `first_user_sha8` + `ts`, and scores hypothetical passthrough gates using
+  only what the proxy knows at transform time — an honest test of a shippable
+  rule. Scoring mirrors `src/core/baseline.ts` exactly. (thanks @akigogikar)
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.
