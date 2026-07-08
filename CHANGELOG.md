@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Added
 
+- **feat(node):** the Node proxy's OpenAI leg falls back to the **Codex ChatGPT
+  login** (`~/.codex/auth.json`, override with `OMNIGLYPH_CODEX_AUTH_FILE`) when
+  `OPENAI_API_KEY` is unset. An explicit `OPENAI_API_KEY` still wins; only the
+  `chatgpt` auth mode is honored (an `api-key` file is ignored). `node.ts` runs
+  `main()` only as a direct entrypoint now, so the config can be unit-tested.
+  (thanks @ousamabenyounes)
 - **bench(gate-backtest):** a cache-aware realized-savings reconciliation and
   gate-policy back-test (`benchmarks/gate-backtest/run.mjs`). Streams the proxy
   log (`~/.omniglyph/events.jsonl` or `$OMNIGLYPH_LOG`), reconstructs sessions
