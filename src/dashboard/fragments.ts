@@ -10,7 +10,13 @@ import type {
   SessionsPayload,
   SessionRow,
   FullStatsPayload,
+  FullStatsSummary,
 } from './types.js';
+import type {
+  BillingSweepAggregate,
+  DensityFrontierAggregate,
+  BenchRunnerState,
+} from './bench.js';
 
 // ---- helpers --------------------------------------------------------
 
@@ -41,6 +47,15 @@ function formatDuration(s: number): string {
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   return (h ? h + 'h ' : '') + (m || h ? m + 'm ' : '') + sec + 's';
+}
+
+/** "1234" -> "1.23s"; "210" -> "210ms". Em-dash for missing/non-finite —
+ *  callers use this to keep the Mission Control KPI cards NaN-free when the
+ *  events file (full stats) isn't available yet. */
+function fmtMs(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return '—';
+  if (ms >= 1000) return (ms / 1000).toFixed(ms >= 10_000 ? 1 : 2) + 's';
+  return Math.round(ms) + 'ms';
 }
 
 function shortPath(p: string | null | undefined): string {
@@ -339,6 +354,270 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
   return strip + drawer + updated;
 }
 
+// ---- Mission Control: KPI row + savings sparkline + live feed ------------
+//
+// Phase 3 of the dashboard redesign. Overview swaps its old "hero + strip"
+// layout for a row of compact KPI cards plus a live-ish event feed (htmx
+// poll here; SSE lands in Phase 4). Honesty rule carried over from the hero
+// (tests/hero.test.ts): the Savings % card is the cache-weighted pair
+// (baseline_input_weighted vs actual_input_weighted), never raw count_tokens,
+// and a net loss renders red (kpi-neg) — never disguised as a win. Only that
+// one card uses the kpi-pos/kpi-neg convention; other cards use their own
+// (kpi-loss / kpi-alert) so a loss elsewhere can't accidentally satisfy or
+// break an assertion about the savings-% card's color.
+
+function kpiCard(
+  icon: string,
+  label: string,
+  value: string,
+  sub: string,
+  valueCls = '',
+  extraHtml = '',
+): string {
+  return (
+    `<div class="kpi-card">` +
+    `<div class="kpi-icon">${icon}</div>` +
+    `<div class="kpi-label">${label}</div>` +
+    `<div class="kpi-value${valueCls ? ' ' + valueCls : ''}">${value}</div>` +
+    `<div class="kpi-sub">${sub}</div>` +
+    extraHtml +
+    `</div>`
+  );
+}
+
+/** Inline SVG sparkline of saved tokens (baseline_input − actual_input) per
+ *  recent request, oldest → newest left to right. Rows missing either side
+ *  of the pair are skipped rather than counted as a zero (would fake a flat
+ *  line); fewer than 2 usable points can't draw a line, so it's blank rather
+ *  than a single dot or a divide-by-zero NaN path. */
+export function renderSparkline(rows: RecentRow[]): string {
+  const pts = rows
+    .filter(
+      (r) =>
+        r.baseline_input != null &&
+        r.actual_input != null &&
+        Number.isFinite(r.baseline_input) &&
+        Number.isFinite(r.actual_input),
+    )
+    .map((r) => (r.baseline_input as number) - (r.actual_input as number));
+  if (pts.length < 2) return '';
+  const w = 160;
+  const h = 36;
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const range = max - min || 1; // flat series -> mid-line instead of NaN
+  const step = w / (pts.length - 1);
+  const coords = pts
+    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`)
+    .join(' ');
+  // Conveys the trend (not just decoration), so it's labeled for screen
+  // readers rather than aria-hidden — the KPI card's numeric value next to
+  // it is the precise figure, this is the shape over time.
+  return (
+    `<svg class="sparkline-svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Tokens saved trend across recent requests">` +
+    `<polyline class="spark-fill" points="0,${h} ${coords} ${w},${h}"></polyline>` +
+    `<polyline class="spark-line" points="${coords}"></polyline>` +
+    `</svg>`
+  );
+}
+
+/** Eight-card KPI row for the Overview page. `full` is null when the events
+ *  file isn't available (503/404 from /api/stats.json) — latency/first-byte/
+ *  cache-hit/error cards fall back to an em-dash rather than a fabricated 0
+ *  or a NaN from dividing by a summary that doesn't exist. */
+export function renderKpisFragment(
+  s: StatsPayload,
+  full: FullStatsSummary | null,
+  recent: RecentPayload,
+): string {
+  // Same cache-weighted pair and direction as the hero (renderSessionSummaryFragment).
+  const baselineW = s.baseline_input_weighted ?? 0;
+  const actualW = s.actual_input_weighted ?? 0;
+  const pct = baselineW > 0 ? (1 - actualW / baselineW) * 100 : 0;
+  const pctCls = pct >= 0 ? 'kpi-pos' : 'kpi-neg';
+  const savedUsd = s.saved_usd ?? 0;
+
+  const reqs = s.requests ?? 0;
+  const imaged = s.compressed_requests ?? 0;
+  const passthrough = s.passthrough ?? 0;
+
+  const cacheHitPct =
+    full && full.total > 0 ? Math.round((full.cacheHitEvents / full.total) * 100) : null;
+  const errs = full ? (full.err4xx ?? 0) + (full.err5xx ?? 0) : null;
+
+  const imagedChars =
+    (s.measured_text_chars ?? 0) + (s.measured_thinking_chars ?? 0) + (s.measured_tool_use_chars ?? 0);
+
+  const spark = renderSparkline(recent.recent ?? []);
+  const sparkHtml = spark ? `<div class="sparkline">${spark}</div>` : '';
+
+  const cards = [
+    kpiCard(
+      '◔',
+      'Savings %',
+      `${Math.abs(pct).toFixed(0)}%`,
+      baselineW > 0 ? 'weighted, cache-aware' : 'warming up',
+      pctCls,
+      sparkHtml,
+    ),
+    kpiCard(
+      '$',
+      'Saved',
+      `$${savedUsd.toFixed(2)}`,
+      'estimated, at input rate',
+      savedUsd < 0 ? 'kpi-loss' : '',
+    ),
+    kpiCard(
+      '⇄',
+      'Requests',
+      numFmt(reqs),
+      `${numFmt(imaged)} imaged · ${numFmt(passthrough)} passthrough`,
+    ),
+    kpiCard('⏱', 'Latency p95', full ? fmtMs(full.durationP95) : '—', 'end-to-end, from disk log'),
+    kpiCard(
+      '⚡',
+      'First byte p50',
+      full ? fmtMs(full.firstByteP50) : '—',
+      'time to first streamed byte',
+    ),
+    kpiCard(
+      '◈',
+      'Cache hits',
+      cacheHitPct != null ? `${cacheHitPct}%` : '—',
+      'of all logged requests',
+    ),
+    kpiCard(
+      '⚠',
+      'Errors',
+      errs != null ? numFmt(errs) : '—',
+      '4xx + 5xx, from disk log',
+      errs != null && errs > 0 ? 'kpi-alert' : '',
+    ),
+    kpiCard('▦', 'Imaged', kFmt(imagedChars), 'chars measured into pages'),
+  ].join('');
+
+  return `<div class="kpi-grid">${cards}</div>`;
+}
+
+/** Compact live feed, most-recent request first. Poll-driven (htmx `every
+ *  2s`) in this phase; a later phase swaps the transport for SSE without
+ *  touching this render function. */
+export function renderFeedFragment(p: RecentPayload): string {
+  const rows = (p.recent ?? []).slice().reverse();
+  if (rows.length === 0) {
+    return `<div class="feed-empty">No traffic yet</div>`;
+  }
+  const items = rows
+    .map((r) => {
+      const time = new Date((r.ts ?? 0) * 1000).toISOString().slice(11, 19);
+      const typeCls = r.compressed ? 'feed-img' : 'feed-txt';
+      const errCls = r.status >= 400 ? ' feed-err' : '';
+      const saved =
+        r.baseline_input != null && r.actual_input != null
+          ? r.baseline_input - r.actual_input
+          : null;
+      const deltaHtml =
+        saved == null
+          ? `<span class="feed-delta muted">—</span>`
+          : `<span class="feed-delta ${saved >= 0 ? 'pos' : 'neg'}">${saved >= 0 ? '+' : ''}${numFmt(saved)}</span>`;
+      const model = r.model ? escapeHtml(r.model) : '—';
+      return (
+        `<div class="feed-item ${typeCls}${errCls}">` +
+        `<span class="feed-dot"></span>` +
+        `<span class="feed-time">${time}</span>` +
+        `<span class="feed-model" title="${model}">${model}</span>` +
+        deltaHtml +
+        `<span class="feed-status pill pill-${statusCls(r.status)}">${r.status}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
+  return `<div class="feed-list">${items}</div>`;
+}
+
+// ---- odometer (Telemetry headline counters) -------------------------------
+
+/** Three big live counters at the top of Telemetry. Ids are stable
+ *  (`od-tokens` / `od-usd` / `od-reqs`) so the SSE client (GLUE_JS) can
+ *  update them in place on every broadcast frame without a full htmx swap —
+ *  the fragment itself stays the poll-driven fallback for hosts without SSE. */
+export function renderOdometerFragment(s: StatsPayload): string {
+  const tokens = kFmt(s.saved_input_tokens ?? 0);
+  const usd = (Number(s.saved_usd) || 0).toFixed(2);
+  const reqs = numFmt(s.requests ?? 0);
+  // aria-live so screen readers get the SSE-pushed ticks without a focus
+  // change; aria-atomic so a single-cell update is announced as the whole
+  // (short) sentence, not a fragment of digits.
+  return (
+    `<div class="odometer" aria-live="polite" aria-atomic="true">` +
+    `<div class="od-cell"><div id="od-tokens" class="od-value od-grad">${tokens}</div><div class="od-label">tokens saved</div></div>` +
+    `<div class="od-cell"><div id="od-usd" class="od-value od-grad">$${usd}</div><div class="od-label">saved</div></div>` +
+    `<div class="od-cell"><div id="od-reqs" class="od-value">${reqs}</div><div class="od-label">requests</div></div>` +
+    `</div>`
+  );
+}
+
+// ---- timeline (Telemetry live request log) ---------------------------------
+
+function shortModel(m: string | null | undefined): string {
+  if (!m) return '—';
+  const s = String(m);
+  const parts = s.split('/');
+  return parts[parts.length - 1] || s;
+}
+
+/** Newest-first request log — replaces the flat recent-requests table on the
+ *  Telemetry page. Each row carries a `tl-gate` marker for imaged vs
+ *  passthrough (the dot on the imaged marker is a CSS animation, killed
+ *  under prefers-reduced-motion) and a Details link into the SAME
+ *  context-map fragment the old table linked to, so nothing downstream of
+ *  "click a request" changes. `renderRecentFragment` (the table this
+ *  replaces on this page) is untouched — /fragments/recent and the legacy
+ *  /proxy-recent HTML still render it for any other caller. */
+export function renderTimelineFragment(p: RecentPayload): string {
+  const rows = (p.recent ?? []).slice().reverse();
+  if (rows.length === 0) {
+    return `<div class="timeline empty-note">No traffic yet</div>`;
+  }
+  const body = rows
+    .map((e: RecentRow) => {
+      const viewId = (e.img_ids ?? (e.img_id != null ? [e.img_id] : []))[0];
+      // hx-get on an <a href="#"> performs an action (fetch a fragment), not
+      // navigation — htmx intercepts the click, but role="button" keeps the
+      // announced semantics honest for assistive tech and no-JS fallback.
+      const details =
+        viewId != null
+          ? `<a class="row-view" href="#" role="button" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">Details →</a>`
+          : `<span class="muted">—</span>`;
+      const gate = e.compressed
+        ? `<span class="tl-gate tl-gate-img"><span class="tl-dot"></span>✓ imaged</span>`
+        : `<span class="tl-gate tl-gate-txt">○ passthrough</span>`;
+      const saved = e.session_saved_so_far_delta;
+      const tokens =
+        saved == null
+          ? `<span class="muted">—</span>`
+          : saved > 0
+            ? `<span class="pos">+${numFmt(saved)}</span>`
+            : saved < 0
+              ? `<span class="neg">${numFmt(saved)}</span>`
+              : `<span>0</span>`;
+      const time = new Date((e.ts ?? 0) * 1000).toISOString().slice(11, 19);
+      const statusTone = e.status >= 400 ? 'tl-err' : 'tl-ok';
+      return (
+        `<li class="tl-row">` +
+        `<span class="tl-time">${time}</span>` +
+        `<span class="tl-model"><code>${escapeHtml(shortModel(e.model))}</code></span>` +
+        `<span class="tl-pipeline">${gate}</span>` +
+        `<span class="tl-tokens">${tokens}</span>` +
+        `<span class="tl-status ${statusTone}">${e.status}</span>` +
+        `<span class="tl-details">${details}</span>` +
+        `</li>`
+      );
+    })
+    .join('');
+  return `<ul class="timeline">${body}</ul>`;
+}
+
 // ---- request x-ray (image vs text breakdown) -----------------------------
 
 export interface ContextMapData {
@@ -468,6 +747,113 @@ export function renderContextMapFragment(
   );
 }
 
+// ---- live pipeline flow view ----------------------------------------------
+
+/** One node card of the flow graph. SVG-only (no JS graph lib) so the
+ *  dashboard stays offline/single-file; styled to read like a node editor. */
+function flowNode(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  cls: string,
+  title: string,
+  value: string,
+  sub: string,
+): string {
+  const cx = x + w / 2;
+  return (
+    `<g class="fnode ${cls}">` +
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="12"></rect>` +
+    `<text class="fn-title" x="${cx}" y="${y + 22}" text-anchor="middle">${title}</text>` +
+    `<text class="fn-value" x="${cx}" y="${y + 44}" text-anchor="middle">${value}</text>` +
+    `<text class="fn-sub" x="${cx}" y="${y + 61}" text-anchor="middle">${sub}</text>` +
+    `<circle class="fn-port" cx="${x}" cy="${y + h / 2}" r="3.5"></circle>` +
+    `<circle class="fn-port" cx="${x + w}" cy="${y + h / 2}" r="3.5"></circle>` +
+    `</g>`
+  );
+}
+
+/** Live pipeline graph: client → gate → imaged/passthrough → upstream →
+ *  response. The savings ribbon follows the hero's honesty rule — the
+ *  cache-weighted pair (baseline_input_weighted vs actual_input_weighted)
+ *  drives the headline, and a weighted net loss is shown as a loss. */
+export function renderFlowFragment(s: StatsPayload): string {
+  const reqs = s.requests || 0;
+  const imaged = s.compressed_requests || 0;
+  const passthrough = s.passthrough || 0;
+  const base = s.baseline_input_weighted || 0;
+  const real = s.actual_input_weighted || 0;
+  const enabled = s.compression_enabled !== false;
+  const imagedChars =
+    (s.measured_text_chars || 0) + (s.measured_thinking_chars || 0) + (s.measured_tool_use_chars || 0);
+  const live = reqs > 0 ? ' live' : '';
+
+  // Edges. The imaged branch carries the flame accent, passthrough the text-blue.
+  const edges =
+    `<path class="fe${live}" d="M186 160 L232 160"></path>` +
+    `<path class="fe fe-img${imaged > 0 ? live : ''}" d="M410 160 C 436 160, 430 57, 456 57"></path>` +
+    `<path class="fe fe-txt${passthrough > 0 ? live : ''}" d="M410 160 C 436 160, 430 263, 456 263"></path>` +
+    `<path class="fe fe-img${imaged > 0 ? live : ''}" d="M634 57 C 660 57, 654 160, 680 160"></path>` +
+    `<path class="fe fe-txt${passthrough > 0 ? live : ''}" d="M634 263 C 660 263, 654 160, 680 160"></path>` +
+    `<path class="fe${live}" d="M858 160 L886 160"></path>`;
+
+  // End-anchored just left of the branch nodes (x=456) so the labels can
+  // never clip under the node cards.
+  const edgeLabels =
+    `<text class="fe-lbl fe-lbl-img" x="448" y="84" text-anchor="end">${kFmt(imaged)} imaged</text>` +
+    `<text class="fe-lbl fe-lbl-txt" x="448" y="252" text-anchor="end">${kFmt(passthrough)} passthrough</text>`;
+
+  const nodes =
+    flowNode(8, 121, 178, 78, 'fn-client', 'Claude Code', kFmt(reqs), 'requests through the proxy') +
+    flowNode(
+      232,
+      121,
+      178,
+      78,
+      enabled ? 'fn-gate' : 'fn-gate flow-off',
+      'Gate',
+      enabled ? 'ON' : 'OFF',
+      'billing math + model gate',
+    ) +
+    flowNode(456, 18, 178, 78, 'fn-render', 'Renderer', `${kFmt(imagedChars)} chars`, 'dense 1-bit PNG pages') +
+    flowNode(456, 224, 178, 78, 'fn-pass', 'Passthrough', 'byte-identical', 'unprofitable · recent turns') +
+    flowNode(
+      680,
+      121,
+      178,
+      78,
+      'fn-api',
+      'Anthropic API',
+      `${kFmt(real)} tok billed`,
+      `vs ${kFmt(base)} as text (weighted)`,
+    ) +
+    flowNode(886, 121, 166, 78, 'fn-resp', 'Response', 'untouched', 'output is never compressed');
+
+  // Savings ribbon — same cache-weighted basis and loss-honesty as the hero.
+  const showCompare = base > 0 && real > 0;
+  const pct = showCompare ? Math.round((1 - real / base) * 100) : 0;
+  const ribbon =
+    reqs === 0
+      ? `<div class="flow-ribbon flow-wait">Waiting for the first request — point Claude Code at this proxy to see it flow.</div>`
+      : !showCompare
+        ? `<div class="flow-ribbon flow-wait">Measuring — no cache-weighted baseline yet.</div>`
+        : pct >= 0
+          ? `<div class="flow-ribbon flow-pos"><strong>${pct}%</strong> fewer weighted input tokens · ${kFmt(s.saved_input_tokens || 0)} tok · <strong>$${(s.saved_usd || 0).toFixed(2)}</strong> saved</div>`
+          : `<div class="flow-ribbon flow-neg"><strong>${-pct}%</strong> more weighted input tokens than plain text so far — the gate keeps unprofitable requests as passthrough</div>`;
+
+  return (
+    `<div class="flow-view">` +
+    `<svg viewBox="0 0 1060 320" role="img" aria-label="Request pipeline: client to gate to renderer or passthrough to Anthropic API to response">` +
+    edges +
+    edgeLabels +
+    nodes +
+    `</svg>` +
+    ribbon +
+    `</div>`
+  );
+}
+
 // ---- recent requests table -----------------------------------------------
 
 function statusCls(status: number): string {
@@ -486,7 +872,7 @@ export function renderRecentFragment(p: RecentPayload): string {
             const viewId = (e.img_ids ?? (e.img_id != null ? [e.img_id] : []))[0];
             const viewLink =
               viewId != null
-                ? `<a class="row-view" href="#" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">Details →</a>`
+                ? `<a class="row-view" href="#" role="button" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">Details →</a>`
                 : `<span class="muted">—</span>`;
             const saved = e.session_saved_so_far_delta;
             // A loss that disappears when the newly written prefix is repriced at
@@ -530,16 +916,16 @@ export function renderRecentFragment(p: RecentPayload): string {
           .join('');
   return (
     `<table class="rtable"><thead><tr>` +
-    `<th>#</th>` +
-    `<th>Result</th>` +
-    `<th>Endpoint</th>` +
-    `<th>Model</th>` +
-    `<th title="Was this request's context compressed into an image?">Sent as</th>` +
-    `<th class="num" title="Tokens served from Claude's cache (cheap)">Cache hits</th>` +
-    `<th class="num" title="Billing-equivalent input if kept as plain text, after cache create/read rates">As text</th>` +
-    `<th class="num" title="Actual billing-equivalent input after imaging, after cache create/read rates">Sent</th>` +
-    `<th class="num" title="As-text minus Sent; negative means imaging cost more">Saved/lost</th>` +
-    `<th></th>` +
+    `<th scope="col">#</th>` +
+    `<th scope="col">Result</th>` +
+    `<th scope="col">Endpoint</th>` +
+    `<th scope="col">Model</th>` +
+    `<th scope="col" title="Was this request's context compressed into an image?">Sent as</th>` +
+    `<th scope="col" class="num" title="Tokens served from Claude's cache (cheap)">Cache hits</th>` +
+    `<th scope="col" class="num" title="Billing-equivalent input if kept as plain text, after cache create/read rates">As text</th>` +
+    `<th scope="col" class="num" title="Actual billing-equivalent input after imaging, after cache create/read rates">Sent</th>` +
+    `<th scope="col" class="num" title="As-text minus Sent; negative means imaging cost more">Saved/lost</th>` +
+    `<th scope="col"></th>` +
     `</tr></thead><tbody>${body}</tbody></table>`
   );
 }
@@ -660,7 +1046,9 @@ export function renderStatsTableFragment(p: FullStatsPayload): string {
     s.origCharsTotal > 0 ? ((s.imageBytesTotal / s.origCharsTotal) * 100).toFixed(3) + 'x' : '-';
 
   // NOTE: the literal word "requests" is asserted by tests.
-  const tr = (k: string, v: string) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`;
+  // Each row is a label/value pair, not a column header — the label is the
+  // ROW's header (scope="row"), not a column one.
+  const tr = (k: string, v: string) => `<tr><th scope="row">${k}</th><td class="num">${v}</td></tr>`;
   return (
     `<div class="status">${numFmt(p.parsed)} events parsed from disk</div>` +
     `<table class="dtable"><tbody>` +
@@ -682,6 +1070,157 @@ export function renderStatsTableFragment(p: FullStatsPayload): string {
   );
 }
 
+// ---- benchmarks (Phase 5) ----------------------------------------------------
+
+export interface BenchFragmentData {
+  billingSweep: BillingSweepAggregate;
+  densityFrontier: DensityFrontierAggregate;
+}
+
+export interface BenchFragmentOpts {
+  /** false when benchmarks/ isn't on disk (npm install without the repo
+   *  checkout) — every run button is disabled and a note explains why. */
+  harnessAvailable: boolean;
+  /** ANTHROPIC_API_KEY present in this process — both harnesses require it
+   *  for a live run. Gates the live button independent of harnessAvailable
+   *  so the dry button can still work with no key at all. */
+  canLive: boolean;
+  /** Non-null while a run is in flight — swaps the run buttons for a
+   *  streaming terminal + cancel button. */
+  running: BenchRunnerState | null;
+}
+
+function renderBillingModelTable(models: BillingSweepAggregate['models']): string {
+  if (models.length === 0) return `<div class="empty">no probes recorded yet</div>`;
+  const rows = models
+    .map(
+      (m) =>
+        `<tr><td><code>${escapeHtml(m.model)}</code></td><td class="num">${m.probes}</td>` +
+        `<td class="num">${m.residualMax}</td><td class="num">${m.residualTotal}</td></tr>`,
+    )
+    .join('');
+  return (
+    `<table class="dtable"><thead><tr>` +
+    `<th scope="col">model</th><th scope="col">probes</th><th scope="col">residual max</th><th scope="col">residual total</th>` +
+    `</tr></thead>` +
+    `<tbody>${rows}</tbody></table>`
+  );
+}
+
+function renderDensityModelBars(models: DensityFrontierAggregate['models']): string {
+  if (models.length === 0) return `<div class="empty">no attempts recorded yet</div>`;
+  // Newest experiments first — the historical sweeps sink to the bottom.
+  const ordered = [...models].sort((a, b) => (b.lastDate ?? '').localeCompare(a.lastDate ?? ''));
+  const rows = ordered
+    .map((m) => {
+      const pct = m.attempts > 0 ? (m.correct / m.attempts) * 100 : 0;
+      return (
+        `<div class="bar-row" title="last run ${escapeHtml(m.lastDate ?? 'n/a')}">` +
+        `<div class="bar-head"><code>${escapeHtml(m.model)}</code>` +
+        `<span class="bar-config">${escapeHtml(m.config)}</span>` +
+        `<span class="bar-val">${m.correct}/${m.attempts} exact · ${m.abstained} abst.</span></div>` +
+        `<div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div>` +
+        `</div>`
+      );
+    })
+    .join('');
+  // Per-experiment on purpose: a per-model rollup would mix production-config
+  // reads with deliberately-overdense experiments and misstate both.
+  return (
+    `<div class="bars">${rows}</div>` +
+    `<div class="split-note">one row per (model · config) experiment — densities differ by design; the production-config numbers are the ones the gate enforces.</div>`
+  );
+}
+
+function benchRunButtons(
+  harness: 'billing-sweep' | 'density-frontier',
+  opts: BenchFragmentOpts,
+): string {
+  const dryDisabled = !opts.harnessAvailable || opts.running !== null ? ' disabled' : '';
+  const liveDisabled = dryDisabled || !opts.canLive ? ' disabled' : '';
+  const liveTitle = !opts.canLive
+    ? ' title="ANTHROPIC_API_KEY not set in this process — required for a live run"'
+    : '';
+  // /api/bench/run answers JSON ({started} | an error body), not a fragment —
+  // hx-swap="none" leaves the DOM alone on the response itself; the terminal
+  // appears from the next #frag-bench poll (every 2s, or sooner via the
+  // pp-refresh an SSE bench frame triggers on document.body). A non-2xx
+  // status (400/409/412) still surfaces via the existing htmx:responseError
+  // → toast wiring in GLUE_JS, so a rejected run isn't silent.
+  return (
+    `<div class="bench-actions">` +
+    `<button type="button" id="bench-run-dry-${harness}" class="switch-btn bench-run-dry"${dryDisabled}` +
+    ` hx-post="/api/bench/run" hx-swap="none"` +
+    ` hx-vals='{"harness":"${harness}","mode":"dry"}'>Run dry ($0)</button>` +
+    `<button type="button" id="bench-run-live-${harness}" class="switch-btn bench-run-live"${liveDisabled}${liveTitle}` +
+    ` hx-post="/api/bench/run" hx-swap="none"` +
+    ` hx-vals='{"harness":"${harness}","mode":"live","confirm":true}'` +
+    ` hx-confirm="This calls the real provider API and can incur real cost. Results append to benchmarks/${harness}/results/. Continue?"` +
+    `>Run live</button>` +
+    `</div>`
+  );
+}
+
+function renderBenchTerminal(running: BenchRunnerState): string {
+  const body = running.lines.length > 0
+    ? running.lines.map((l) => escapeHtml(l)).join('\n')
+    : '(waiting for output…)';
+  return (
+    `<div class="card bench-term" id="bench-term">` +
+    `<div class="term-bar">` +
+    `<span class="term-dot term-dot-red"></span>` +
+    `<span class="term-dot term-dot-yellow"></span>` +
+    `<span class="term-dot term-dot-green"></span>` +
+    `<span class="term-title">${escapeHtml(running.harness ?? '')} — running…</span>` +
+    `<button type="button" id="bench-cancel" class="switch-btn term-cancel" ` +
+    `hx-post="/api/bench/cancel" hx-swap="none">Cancel</button>` +
+    `</div>` +
+    `<pre class="term-body">${body}</pre>` +
+    `</div>`
+  );
+}
+
+/** GET /fragments/bench — the two harness cards (real JSONL aggregates,
+ *  never fabricated) plus, while a run is active, a live terminal. See
+ *  src/dashboard/bench.ts for the parser this reads and the runner this
+ *  starts/cancels. */
+export function renderBenchFragment(data: BenchFragmentData, opts: BenchFragmentOpts): string {
+  const { billingSweep, densityFrontier } = data;
+  const note = !opts.harnessAvailable
+    ? `<p class="bench-note bench-unavailable">Running these harnesses requires a full repository checkout — ` +
+      `the <code>benchmarks/</code> scripts aren't part of the npm package. Clone the repo and run them from the CLI instead.</p>`
+    : '';
+
+  const billingCard =
+    `<div class="card bench-card">` +
+    `<h3 class="card-head">billing-sweep</h3>` +
+    `<p class="bench-source">source: benchmarks/billing-sweep/results/</p>` +
+    `<div class="bench-agg">` +
+    `<div><span class="k">probes</span><span class="v">${billingSweep.totalProbes}</span></div>` +
+    `<div><span class="k">measured</span><span class="v">${billingSweep.measuredProbes}</span></div>` +
+    `<div><span class="k">residual max / total</span><span class="v">${billingSweep.residualMax} / ${billingSweep.residualTotal}</span></div>` +
+    `</div>` +
+    renderBillingModelTable(billingSweep.models) +
+    benchRunButtons('billing-sweep', opts) +
+    `</div>`;
+
+  const densityCard =
+    `<div class="card bench-card">` +
+    `<h3 class="card-head">density-frontier</h3>` +
+    `<p class="bench-source">source: benchmarks/density-frontier/results/</p>` +
+    `<div class="bench-agg">` +
+    `<div><span class="k">rows</span><span class="v">${densityFrontier.totalRows}</span></div>` +
+    `<div><span class="k">models</span><span class="v">${densityFrontier.models.length}</span></div>` +
+    `</div>` +
+    renderDensityModelBars(densityFrontier.models) +
+    benchRunButtons('density-frontier', opts) +
+    `</div>`;
+
+  const terminal = opts.running ? renderBenchTerminal(opts.running) : '';
+
+  return `<div class="bench-grid">${billingCard}${densityCard}</div>${note}${terminal}`;
+}
+
 // ---- page shell -------------------------------------------------------------
 
 // Favicon mirrors the .flame-dot glyph: a glossy flame sphere (radial highlight
@@ -701,31 +1240,73 @@ const FAVICON =
 
 const CSS = `
   :root {
-    --bg: #faf6f2; --surface: #ffffff; --surface-2: #fbf4ee;
-    --border: #efe5db; --border-strong: #e4d6c8;
-    --ink: #241f1b; --ink-2: #5d534a; --muted: #9b9189;
-    --flame: #ff5a1f; --flame-strong: #e8420a; --flame-ink: #bd3a08; --flame-tint: #fff1ea;
-    --good: #1f9d57; --good-tint: #e7f6ee; --bad: #d8483b; --bad-tint: #fcebe9; --warn: #b7791f; --warn-tint: #fbf0db;
+    --bg: #f9f9fb; --surface: #ffffff; --surface-2: #f5f5fa;
+    --border: rgba(0,0,0,0.08); --border-strong: #e2e2ea;
+    /* --muted was #71717a (Tailwind zinc-500): ~4.83:1 on --surface but only
+       ~4.45:1 on --surface-2 (#f5f5fa) — sub-AA for the small (10.5-12px)
+       kpi-sub/tile-sub/hint text that sits on card backgrounds. Darkened to
+       #6c6c75 (barely perceptible) so both surfaces clear 4.5:1 with margin. */
+    --ink: #1a1a2e; --ink-2: #3f3f50; --muted: #6c6c75;
+    --color-primary: #e54d5e; --color-primary-hover: #c93d4e;
+    --color-accent: #6366f1; --color-accent-hover: #8b5cf6; --color-accent-light: #a855f7;
+    --color-sidebar: #10141e;
+    --flame: var(--color-primary); --flame-strong: var(--color-primary-hover);
+    --flame-ink: var(--color-primary-hover); --flame-tint: rgba(229,77,94,0.08);
+    --good: #22c55e; --good-tint: rgba(34,197,94,0.1);
+    --bad: #ef4444; --bad-tint: rgba(239,68,68,0.1);
+    --warn: #f59e0b; --warn-tint: rgba(245,158,11,0.1);
+    /* OmniGlyph identity: "this became an image" stays flame-orange, distinct
+       from the ported OmniRoute brand palette above. */
     --img: #ff5a1f; --img-ink: #bd3a08; --img-tint: #fff1ea;
-    --txt: #2f7db0; --txt-ink: #1f5f8b; --txt-tint: #e9f3fb;
-    --radius: 14px;
-    --shadow: 0 1px 2px rgba(60,35,15,.05), 0 8px 24px rgba(60,35,15,.05);
-    --mono: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --txt: var(--color-accent); --txt-ink: var(--color-accent-hover); --txt-tint: rgba(99,102,241,0.08);
+    --radius: 14px; --radius-control: 9px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.02), 0 4px 12px rgba(0,0,0,0.015);
+    --shadow-warm: 0 2px 12px -2px rgba(229,77,94,0.12);
+    --shadow-elevated: 0 12px 28px -4px rgba(20,20,40,0.06);
+    --mono: ui-monospace, 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, sans-serif;
+    --grad-brand: linear-gradient(135deg, var(--color-primary), #a855f7);
+    --grid-line: rgba(0,0,0,0.07); --grid-size: 32px;
+    --traffic-red: #ff5f56; --traffic-yellow: #ffbd2e; --traffic-green: #27c93f;
+    /* Keyboard focus ring — a "punched-out" halo (bg-colored inner ring so it
+       reads on any element's own background, then the accent ring) rather
+       than a plain outline. References --bg / --color-accent so it stays
+       correct when :root[data-theme="dark"] overrides --bg below. */
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--color-accent);
     color-scheme: light;
   }
-  /* Dark theme: same warm-flame identity, inverted neutrals. Set before first
+  /* Dark theme: same coral/indigo identity, inverted neutrals. Set before first
      paint by the <head> script (localStorage 'pp-theme' else system pref);
      toggled by ppTheme(). Accents (flame/img/txt) are lifted for contrast. */
   :root[data-theme="dark"] {
-    --bg: #17120f; --surface: #211a15; --surface-2: #2a211b;
-    --border: #352a22; --border-strong: #46382e;
-    --ink: #f6efe8; --ink-2: #cabbac; --muted: #9a8c7d;
-    --flame: #ff6a33; --flame-strong: #e8420a; --flame-ink: #ff9a63; --flame-tint: #3a2318;
-    --good: #3fbd76; --good-tint: #15291f; --bad: #f0645a; --bad-tint: #341b18; --warn: #d99a3a; --warn-tint: #33260f;
+    --bg: #0b0e14; --surface: #161b22; --surface-2: #1c2230;
+    --border: rgba(255,255,255,0.08); --border-strong: #2d333b;
+    --ink: #e6e6ef; --ink-2: #c4c4d2; --muted: #a1a1aa;
+    --color-primary: #e54d5e; --color-primary-hover: #c93d4e;
+    --color-accent: #6366f1; --color-accent-hover: #8b5cf6; --color-accent-light: #a855f7;
+    --color-sidebar: #10141e;
+    --flame: var(--color-primary); --flame-strong: var(--color-primary-hover);
+    --flame-ink: #ff8a97; --flame-tint: rgba(229,77,94,0.15);
+    --good: #3fbd76; --good-tint: rgba(63,189,118,0.15);
+    --bad: #f0645a; --bad-tint: rgba(240,100,90,0.15);
+    --warn: #d99a3a; --warn-tint: rgba(217,154,58,0.15);
     --img: #ff6a33; --img-ink: #ff9a63; --img-tint: #3a2318;
-    --txt: #5aa3d6; --txt-ink: #8cc3ea; --txt-tint: #142631;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.45);
+    --txt: var(--color-accent-light); --txt-ink: #b9a3fb; --txt-tint: rgba(168,85,247,0.12);
+    --shadow: 0 1px 3px rgba(0,0,0,0.15), 0 4px 12px rgba(0,0,0,0.1);
+    --shadow-warm: 0 2px 12px -2px rgba(229,77,94,0.15);
+    --shadow-elevated: 0 12px 28px -4px rgba(0,0,0,0.3);
+    --grid-line: rgba(255,255,255,0.06);
     color-scheme: dark;
+  }
+  /* Graph-paper grid: a fixed, full-viewport backdrop behind everything.
+     pointer-events:none + negative z-index keep it out of the hit-test and
+     paint order; cards/surfaces are opaque and cover it. */
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: var(--grid-size) var(--grid-size);
   }
   /* Dark fix-ups for the few intentionally hard-coded (light) spots. */
   :root[data-theme="dark"] .banner { border-color: #6e342c; color: #f4b9b1; }
@@ -733,7 +1314,7 @@ const CSS = `
   :root[data-theme="dark"] .toast { box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 22px 26px 64px; background: var(--bg); color: var(--ink-2);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font: 14px/1.5 var(--sans);
     -webkit-font-smoothing: antialiased; }
   b, strong { color: var(--ink); }
   .good { color: var(--good); } .bad { color: var(--bad); }
@@ -744,9 +1325,10 @@ const CSS = `
     gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
   .brand { display: flex; align-items: center; gap: 12px; }
   .flame-dot { width: 14px; height: 14px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #ffd0a8, var(--flame) 55%, var(--flame-strong));
+    background: var(--grad-brand);
     box-shadow: 0 0 0 4px var(--flame-tint); flex: none; }
-  .wordmark { font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
+  .wordmark { font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+    background: var(--grad-brand); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .tagline { font-size: 12.5px; color: var(--muted); margin-top: 1px; max-width: 460px; }
   .controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 
@@ -761,12 +1343,12 @@ const CSS = `
   .switch-state.off { color: var(--bad); background: var(--bad-tint); }
   .switch-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
   .switch-btn { background: var(--surface); color: var(--ink); border: 1px solid var(--border-strong);
-    padding: 6px 13px; cursor: pointer; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600;
+    padding: 6px 13px; cursor: pointer; border-radius: var(--radius-control); font: inherit; font-size: 12px; font-weight: 600;
     box-shadow: var(--shadow); }
   .switch-btn:hover { border-color: var(--flame); color: var(--flame-ink); }
   .hint { color: var(--muted); font-size: 11px; }
   .theme-btn { background: var(--surface); color: var(--ink-2); border: 1px solid var(--border-strong);
-    padding: 5px 11px; cursor: pointer; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600;
+    padding: 5px 11px; cursor: pointer; border-radius: var(--radius-control); font: inherit; font-size: 12px; font-weight: 600;
     box-shadow: var(--shadow); display: inline-flex; align-items: center; gap: 6px; line-height: 1; }
   .theme-btn:hover { border-color: var(--flame); color: var(--flame-ink); }
 
@@ -797,6 +1379,96 @@ const CSS = `
   .hero-meta { font-size: 12px; color: var(--muted); margin-top: 10px; padding-top: 10px;
     border-top: 1px dashed var(--border-strong); }
   .hero-empty .hero-headline { color: var(--muted); font-size: 24px; }
+
+  /* Mission Control (Phase 3): KPI row + sparkline + live feed */
+  .mission-grid { display: grid; grid-template-columns: 3fr 1fr; gap: 16px; align-items: start;
+    margin-bottom: 4px; }
+  @media (max-width: 900px) { .mission-grid { grid-template-columns: 1fr; } }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; box-shadow: var(--shadow); min-width: 0;
+    transition: box-shadow .15s ease, transform .15s ease; }
+  .kpi-card:hover { box-shadow: var(--shadow-elevated); transform: translateY(-1px); }
+  .kpi-icon { font-size: 13px; color: var(--muted); margin-bottom: 6px; line-height: 1; }
+  .kpi-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--muted); margin-bottom: 6px; }
+  .kpi-value { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--ink);
+    font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .kpi-value.kpi-pos { color: var(--good); }
+  .kpi-value.kpi-neg, .kpi-value.kpi-loss, .kpi-value.kpi-alert { color: var(--bad); }
+  .kpi-sub { font-size: 10.5px; color: var(--muted); margin-top: 5px; }
+  .sparkline { margin-top: 8px; }
+  .sparkline-svg { display: block; width: 100%; height: 32px; }
+  .spark-line { fill: none; stroke: var(--color-accent); stroke-width: 1.75;
+    stroke-linejoin: round; stroke-linecap: round; }
+  .spark-fill { fill: var(--color-accent); fill-opacity: 0.12; stroke: none; }
+
+  .feed-card { display: flex; flex-direction: column; min-width: 0; max-height: 480px; }
+  .feed-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 420px;
+    scrollbar-width: thin; }
+  .feed-item { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 8px;
+    background: var(--surface-2); font-size: 11px; }
+  .feed-item.feed-err { background: var(--bad-tint); }
+  .feed-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--muted); }
+  .feed-img .feed-dot { background: var(--img); }
+  .feed-txt .feed-dot { background: var(--txt); }
+  .feed-time { font-family: var(--mono); color: var(--muted); font-size: 10px; flex: none; }
+  .feed-model { font-family: var(--mono); color: var(--ink-2); flex: 1; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .feed-delta { font-variant-numeric: tabular-nums; font-weight: 700; flex: none; }
+  .feed-delta.pos { color: var(--good); }
+  .feed-delta.neg { color: var(--bad); }
+  .feed-delta.muted { color: var(--muted); font-weight: 400; }
+  .feed-status { flex: none; min-width: 34px; }
+  .feed-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 20px 8px; }
+
+  /* odometer (Telemetry headline counters, SSE-pushed) */
+  .odometer { display: flex; flex-wrap: wrap; gap: 30px; padding: 18px 22px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); }
+  .od-cell { display: flex; flex-direction: column; gap: 4px; }
+  .od-value { font-family: var(--mono); font-size: 32px; font-weight: 800; color: var(--ink);
+    line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .od-grad { background: var(--grad-brand); -webkit-background-clip: text; background-clip: text;
+    color: transparent; }
+  .od-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); }
+  @keyframes ppOdTick { 0% { transform: scale(1.16); } 100% { transform: scale(1); } }
+  .od-tick { animation: ppOdTick .35s ease-out; }
+
+  /* timeline (Telemetry live request log, replaces the flat recent table) */
+  .timeline-card { padding: 0; overflow: hidden; }
+  .timeline { display: flex; flex-direction: column; max-height: 480px; overflow-y: auto;
+    scrollbar-width: thin; }
+  .tl-row { display: grid; grid-template-columns: 72px 1fr 118px 92px 56px 84px; gap: 10px;
+    align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+  .tl-row:last-child { border-bottom: 0; }
+  .tl-row:hover { background: var(--surface-2); }
+  .tl-time { font-family: var(--mono); color: var(--muted); font-size: 11px; }
+  .tl-model code { font-size: 11.5px; color: var(--ink-2); }
+  .tl-gate { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 11.5px; }
+  .tl-gate-img { color: var(--img-ink); }
+  .tl-gate-txt { color: var(--txt-ink); }
+  .tl-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--img); flex: none;
+    animation: ppTlPulse 1.3s ease-in-out infinite; }
+  @keyframes ppTlPulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+  .tl-tokens { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tl-tokens .pos { color: var(--good); } .tl-tokens .neg { color: var(--bad); }
+  .tl-status { font-weight: 700; }
+  .tl-status.tl-err { color: var(--bad); }
+  .tl-status.tl-ok { color: var(--muted); }
+  .timeline.empty-note { margin: 16px; }
+  @media (max-width: 720px) {
+    .tl-row { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; row-gap: 4px; }
+  }
+
+  /* flow particle — SSE-pushed animation on the Live Flow page */
+  .flow-particle { fill: var(--img); r: 4px; offset-rotate: 0deg;
+    offset-path: path('M8 160 L232 160 L410 160 C 436 160, 430 57, 456 57 L634 57 C 660 57, 654 160, 680 160 L886 160');
+    animation: ppFlowParticle 1.1s ease-out forwards; }
+  .flow-particle.flow-particle-txt { fill: var(--txt);
+    offset-path: path('M8 160 L232 160 L410 160 C 436 160, 430 263, 456 263 L634 263 C 660 263, 654 160, 680 160 L886 160'); }
+  @keyframes ppFlowParticle { from { offset-distance: 0%; opacity: 1; } to { offset-distance: 100%; opacity: 0; } }
 
   /* stat strip */
   .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
@@ -894,15 +1566,54 @@ const CSS = `
   .page.page-gone { width: 150px; height: 56px; background: var(--surface-2); border: 1px dashed var(--border-strong);
     color: var(--muted); font-size: 10px; cursor: default; }
 
+  /* live pipeline flow view */
+  .flow-view svg { width: 100%; height: auto; display: block; }
+  .flow-view .fnode rect { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.25;
+    filter: drop-shadow(0 2px 5px rgba(60,35,15,.08)); }
+  :root[data-theme="dark"] .flow-view .fnode rect { filter: drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
+  .flow-view .fn-title { font-size: 12px; font-weight: 700; fill: var(--muted); letter-spacing: .02em; }
+  .flow-view .fn-value { font-size: 16px; font-weight: 800; fill: var(--ink); }
+  .flow-view .fn-sub { font-size: 10.5px; fill: var(--muted); }
+  .flow-view .fn-port { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1.25; }
+  .flow-view .fn-render rect { stroke: var(--img); }
+  .flow-view .fn-render .fn-value { fill: var(--img-ink); }
+  .flow-view .fn-pass rect { stroke: var(--txt); }
+  .flow-view .fn-pass .fn-value { fill: var(--txt-ink); }
+  .flow-view .fn-gate rect { stroke: var(--good); }
+  .flow-view .fn-gate .fn-value { fill: var(--good); }
+  .flow-view .fn-gate.flow-off rect { stroke: var(--bad); stroke-dasharray: 4 3; }
+  .flow-view .fn-gate.flow-off .fn-value { fill: var(--bad); }
+  .flow-view .fe { fill: none; stroke: var(--border-strong); stroke-width: 2; }
+  .flow-view .fe-img { stroke: var(--img); }
+  .flow-view .fe-txt { stroke: var(--txt); }
+  .flow-view .fe.live { stroke-dasharray: 7 7; animation: ppFlowDash .9s linear infinite; }
+  @keyframes ppFlowDash { to { stroke-dashoffset: -14; } }
+  .flow-view .fe-lbl { font-size: 11px; font-weight: 700; }
+  .flow-view .fe-lbl-img { fill: var(--img-ink); }
+  .flow-view .fe-lbl-txt { fill: var(--txt-ink); }
+  .flow-ribbon { margin-top: 10px; padding: 9px 13px; border-radius: 9px; font-size: 12.5px; text-align: center; }
+  .flow-ribbon.flow-pos { background: var(--good-tint); color: var(--good); }
+  .flow-ribbon.flow-neg { background: var(--bad-tint); color: var(--bad); }
+  .flow-ribbon.flow-wait { background: var(--surface-2); color: var(--muted); }
+
   /* recent requests */
   .row-view { color: var(--flame-ink); font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap; }
   .row-view:hover { text-decoration: underline; }
   table.rtable, table.dtable { width: 100%; border-collapse: collapse; font-size: 12px; }
   .rtable th, .dtable th { text-align: left; color: var(--muted); font-weight: 600; padding: 7px 8px;
     border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+  /* .dtable's key column is a row header (<th scope="row">), not a column
+     one — same visual weight as a plain label cell, not the bold column-head
+     styling above. */
+  .dtable th[scope="row"] { font-weight: 400; color: var(--ink-2); white-space: normal;
+    vertical-align: middle; border-bottom: 1px solid var(--border); }
   .rtable td, .dtable td { padding: 7px 8px; border-bottom: 1px solid var(--border);
     font-variant-numeric: tabular-nums; vertical-align: middle; color: var(--ink-2); }
   .rtable tr:last-child td, .dtable tr:last-child td { border-bottom: none; }
+  /* Only the dtable's row-header column (see th[scope="row"] above) should
+     lose its border on the last row — NOT a <thead> column-header row that
+     happens to be its parent's only/last <tr> (renderBillingModelTable). */
+  .dtable tr:last-child th[scope="row"] { border-bottom: none; }
   .rtable tbody tr:hover, .rtable tbody tr:hover { background: var(--surface-2); }
   /* Keep wide tables inside their card: scroll horizontally rather than
      pushing the card border out. Fires only when the nowrap columns exceed
@@ -930,7 +1641,7 @@ const CSS = `
   /* inspector */
   .viewer-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .mini-btn { font-size: 11px; background: var(--surface); color: var(--flame-ink); border: 1px solid var(--border-strong);
-    border-radius: 7px; padding: 3px 9px; cursor: pointer; font-weight: 600; }
+    border-radius: var(--radius-control); padding: 3px 9px; cursor: pointer; font-weight: 600; }
   .mini-btn:hover { border-color: var(--flame); }
   .mini-label { font-size: 11px; color: var(--muted); }
   .frame { background: #fff; border: 1px solid var(--border-strong); border-radius: 8px; padding: 5px;
@@ -953,8 +1664,14 @@ const CSS = `
 
   /* sessions bars */
   .status { margin-bottom: 12px; color: var(--muted); font-size: 12px; }
-  .bars { display: flex; flex-direction: column; gap: 8px; }
-  .bar-row { display: flex; align-items: center; gap: 12px; font-size: 12px; }
+  .bars { display: flex; flex-direction: column; gap: 10px; }
+  /* Stacked rows (head line + bar) — labels can never overflow the card. */
+  .bar-row { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+  .bar-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .bar-head code { color: var(--ink); font-weight: 700; }
+  .bar-config { color: var(--muted); font-family: var(--mono); font-size: 11px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .bar-head .bar-val { flex: none; width: auto; }
   .bar-label { width: 150px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: var(--ink); font-family: var(--mono); font-size: 11px; }
   .bar-track { flex: 1; min-width: 0; height: 16px; background: var(--surface-2); border-radius: 5px;
@@ -975,6 +1692,95 @@ const CSS = `
     align-items: center; gap: 12px; pointer-events: auto; max-width: 360px; }
   .toast button { background: transparent; color: inherit; border: 0; cursor: pointer; font-size: 16px;
     line-height: 1; padding: 0; }
+
+  /* sidebar shell (Phase 2). --color-sidebar is a fixed dark surface in BOTH
+     themes (see :root above), so its own ink tokens don't follow --ink /
+     --muted — those flip with the theme and would go dark-on-dark. */
+  body.with-sidebar { padding: 0; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; width: 220px; background: var(--color-sidebar);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    padding: 20px 0 12px; overflow-y: auto; z-index: 20; }
+  .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 20px 22px; }
+  .sidebar-brand .wordmark { font-size: 18px; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 0 10px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 9px 12px; margin: 0 2px;
+    border-radius: var(--radius-control); border-left: 3px solid transparent;
+    color: rgba(255,255,255,.68); text-decoration: none; font-size: 13px; font-weight: 600;
+    line-height: 1.2; }
+  .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .nav-item.nav-active { background: var(--flame-tint); border-left-color: var(--color-primary); color: #fff; }
+  .nav-icon { width: 18px; flex: none; text-align: center; font-size: 14px; }
+  .nav-label { white-space: nowrap; }
+  .main { margin-left: 220px; padding: 22px 26px 64px; min-width: 0; }
+  .page-heading { min-width: 0; }
+  .page-title { margin: 0; font-size: 20px; font-weight: 800; color: var(--ink); letter-spacing: -0.01em; }
+  .page-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  @media (max-width: 900px) {
+    .sidebar { position: static; width: auto; flex-direction: row; align-items: center;
+      padding: 8px 10px; overflow-x: auto; overflow-y: visible; border-right: 0;
+      border-bottom: 1px solid var(--border); }
+    .sidebar-brand { display: none; }
+    .sidebar-nav { flex-direction: row; gap: 4px; padding: 0; }
+    .nav-item { flex-direction: column; gap: 3px; padding: 6px 10px; border-left: 0;
+      border-bottom: 3px solid transparent; font-size: 10px; }
+    .nav-item.nav-active { border-left-color: transparent; border-bottom-color: var(--color-primary); }
+    .main { margin-left: 0; padding: 18px 16px 48px; }
+  }
+
+  /* benchmarks page (Phase 5) */
+  .bench-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .bench-card { display: flex; flex-direction: column; gap: 10px; }
+  .bench-source { margin: -4px 0 0; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+  .bench-agg { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; }
+  .bench-agg > div { display: flex; flex-direction: column; gap: 2px; }
+  .bench-agg .k { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .bench-agg .v { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bench-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .bench-actions .switch-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .bench-actions .bench-run-live { border-color: var(--flame); color: var(--flame-ink); }
+  .bench-note { margin: 4px 0 0; color: var(--muted); font-size: 12px; max-width: 640px; }
+  .bench-note code { font-family: var(--mono); }
+  .bench-unavailable { color: var(--warn); }
+  /* streaming terminal — the --traffic-* dots make it read as "a shell ran
+     this", distinct from every other (bordered-card) surface on the page. */
+  .bench-term { background: #14161c; border-color: #2b2e38; margin-top: 16px; padding: 0; overflow: hidden; }
+  .term-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px;
+    background: #1c1f27; border-bottom: 1px solid #2b2e38; }
+  .term-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .term-dot-red { background: var(--traffic-red); }
+  .term-dot-yellow { background: var(--traffic-yellow); }
+  .term-dot-green { background: var(--traffic-green); }
+  .term-title { margin-left: 6px; color: #9a9fae; font-size: 11.5px; font-weight: 600; flex: 1; }
+  .term-cancel { padding: 4px 11px; font-size: 11px; }
+  .term-body { margin: 0; padding: 12px 14px; max-height: 260px; overflow: auto; color: #d6d9e0;
+    font: 11.5px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; }
+
+  /* focus-visible ring (keyboard only — no mouse-click halo) for every real
+     link/button on the page: sidebar nav, kill switch, model chips, theme
+     toggle, bench run/cancel, Details links, toast dismiss, skip link. */
+  a:focus-visible, button:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
+  /* Skip-to-content link — off-screen until it receives keyboard focus, then
+     pinned top-left above everything else so a keyboard/screen-reader user
+     can jump past the sidebar nav straight into the page content. */
+  .skip-link { position: absolute; left: -9999px; top: 0; z-index: 1100;
+    background: var(--surface); color: var(--ink); padding: 10px 16px;
+    border-radius: 0 0 var(--radius-control) 0; font-weight: 700; font-size: 13px;
+    text-decoration: none; box-shadow: var(--shadow-elevated); }
+  .skip-link:focus { left: 0; }
+
+  /* Motion — every animation the redesign introduced (odometer tick,
+     timeline pulse dot, live pipeline dash, flow particle) turns off from
+     this single switch instead of scattered per-feature overrides. */
+  @media (prefers-reduced-motion: reduce) {
+    .od-tick { animation: none; }
+    .tl-dot { animation: none; opacity: 1; }
+    .flow-view .fe.live { animation: none; }
+    .flow-particle { display: none; }
+  }
 `;
 
 // Client glue: window.pp (pin+source state) → hx-vals; preserves <details> open state across swaps; routes htmx errors to toast tray.
@@ -1009,6 +1815,69 @@ const GLUE_JS = `
       detail: { text: 'proxy unreachable: ' + ev.detail.requestConfig.path }
     }));
   });
+
+  // ---- SSE (progressive enhancement — every fragment above still polls,
+  // so a host without /events/stream, or a client that drops the connection,
+  // keeps working exactly as before). EventSource reconnects on its own; we
+  // add no retry logic on top of it.
+  (function () {
+    if (typeof EventSource === 'undefined') return;
+    var es;
+    try { es = new EventSource('/events/stream'); } catch (e) { return; }
+    es.onmessage = function (ev) {
+      var data;
+      try { data = JSON.parse(ev.data); } catch (e) { return; }
+      ppOdometerTick(data.stats);
+      if (window.htmx) htmx.trigger(document.body, 'pp-refresh');
+      ppFlowParticle(data.compressed === true);
+    };
+  })();
+
+  function ppKFmt(n) {
+    var v = Number(n) || 0;
+    var a = Math.abs(v);
+    if (a >= 1000000) return (v / 1000000).toFixed(a >= 10000000 ? 0 : 1) + 'M';
+    if (a >= 1000) return (v / 1000).toFixed(a >= 100000 ? 0 : 1) + 'k';
+    return String(Math.round(v));
+  }
+
+  function ppOdTick(el) {
+    if (!el) return;
+    el.classList.remove('od-tick');
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add('od-tick');
+  }
+
+  // Odometer numbers tick in place on every SSE frame — no htmx round-trip
+  // needed for the three headline counters (od-tokens/od-usd/od-reqs); the
+  // fragment itself still polls, so a missing/stale element is a no-op.
+  function ppOdometerTick(stats) {
+    if (!stats) return;
+    var t = document.getElementById('od-tokens');
+    var u = document.getElementById('od-usd');
+    var r = document.getElementById('od-reqs');
+    if (t) { t.textContent = ppKFmt(stats.saved_input_tokens); ppOdTick(t); }
+    if (u) { u.textContent = '$' + (Number(stats.saved_usd) || 0).toFixed(2); ppOdTick(u); }
+    if (r) { r.textContent = String(Math.round(Number(stats.requests) || 0)); ppOdTick(r); }
+  }
+
+  // Small, defensive: only runs when the Live Flow page's SVG is on screen.
+  // A circle SVG rides the imaged or passthrough branch via CSS offset-path
+  // (see .flow-particle in <style>), then removes itself.
+  function ppFlowParticle(imaged) {
+    var flow = document.querySelector('.flow-view');
+    if (!flow) return;
+    var svg = flow.querySelector('svg');
+    if (!svg) return;
+    if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var particle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    particle.setAttribute('r', '4');
+    particle.setAttribute('class', imaged ? 'flow-particle' : 'flow-particle flow-particle-txt');
+    svg.appendChild(particle);
+    setTimeout(function () {
+      if (particle.parentNode) particle.parentNode.removeChild(particle);
+    }, 1200);
+  }
 `;
 
 // Theme: light/dark via data-theme on <html>; saved in localStorage, defaults to system pref.
@@ -1031,14 +1900,173 @@ const THEME_JS = `
   })();
 `;
 
-export function renderPage(_port: number): string {
+/** Six server-rendered dashboard pages behind the sidebar shell. Structurally
+ *  identical to (and must stay in sync with) DashboardPage in ../dashboard.ts —
+ *  duplicated as a literal union rather than imported so fragments.ts (which
+ *  dashboard.ts imports FROM) doesn't need an import back the other way. */
+export type DashboardPageId =
+  | 'overview'
+  | 'flow'
+  | 'telemetry'
+  | 'benchmarks'
+  | 'sessions'
+  | 'history';
+
+const NAV: ReadonlyArray<{ page: DashboardPageId; href: string; icon: string; label: string }> = [
+  { page: 'overview', href: '/', icon: '⌂', label: 'Overview' },
+  { page: 'flow', href: '/flow', icon: '⇄', label: 'Live Flow' },
+  { page: 'telemetry', href: '/telemetry', icon: '◈', label: 'Telemetry' },
+  { page: 'benchmarks', href: '/benchmarks', icon: '⏱', label: 'Benchmarks' },
+  { page: 'sessions', href: '/sessions', icon: '▤', label: 'Sessions' },
+  { page: 'history', href: '/history', icon: '≡', label: 'History' },
+];
+
+const PAGE_META: Record<DashboardPageId, { title: string; sub: string }> = {
+  overview: { title: 'Overview', sub: 'Live savings at a glance since this proxy started.' },
+  flow: { title: 'Live Flow', sub: 'How each request flows through the gate, live.' },
+  telemetry: { title: 'Telemetry', sub: 'Recent requests and what became an image vs stayed text.' },
+  benchmarks: { title: 'Benchmarks', sub: 'Billing-sweep and density-frontier receipts.' },
+  sessions: { title: 'Sessions', sub: 'Top sessions by tokens saved.' },
+  history: { title: 'History', sub: 'Every event on disk, aggregated.' },
+};
+
+function renderSidebar(active: DashboardPageId): string {
+  const items = NAV.map((n) => {
+    const isActive = n.page === active;
+    const cls = 'nav-item' + (isActive ? ' nav-active' : '');
+    const current = isActive ? ' aria-current="page"' : '';
+    return (
+      `<a class="${cls}" href="${n.href}"${current}>` +
+      `<span class="nav-icon">${n.icon}</span><span class="nav-label">${n.label}</span></a>`
+    );
+  }).join('');
+  return (
+    `<nav class="sidebar" aria-label="Primary">` +
+    `<div class="sidebar-brand"><span class="flame-dot"></span><div class="wordmark">OmniGlyph</div></div>` +
+    `<div class="sidebar-nav">${items}</div>` +
+    `</nav>`
+  );
+}
+
+// Kill switch (#frag-toggle) lives here so it's reachable from every page, not
+// just Overview — it's the one control that has to stay one click away always.
+function renderTopbar(page: DashboardPageId): string {
+  const meta = PAGE_META[page];
+  return (
+    `<header class="topbar">` +
+    `<div class="page-heading"><h1 class="page-title">${meta.title}</h1><div class="page-sub">${meta.sub}</div></div>` +
+    `<div class="controls">` +
+    `<button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="Toggle dark mode" title="Toggle dark / light mode">☾ Dark</button>` +
+    `<div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>` +
+    `</div>` +
+    `</header>`
+  );
+}
+
+function renderPageBody(page: DashboardPageId): string {
+  switch (page) {
+    case 'overview':
+      // Mission Control (Phase 3): KPI row + savings sparkline on the left,
+      // a live-ish event feed on the right. The old stat-strip + math drawer
+      // (#frag-header) still carries the "show the math" honesty receipts,
+      // so it stays on the page — just demoted to the bottom, below the
+      // fold, now that the KPI row is the at-a-glance summary.
+      return (
+        `<div id="frag-models" hx-get="/fragments/models" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>\n\n` +
+        `<div id="frag-session" hx-get="/fragments/session-summary" hx-trigger="load, every 2s" hx-swap="innerHTML">\n` +
+        `  <div class="hero hero-empty"><div class="hero-headline">Connecting…</div></div>\n` +
+        `</div>\n\n` +
+        `<div class="mission-grid">\n` +
+        `  <div id="frag-kpis" hx-get="/fragments/kpis" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
+        `  <div class="card feed-card">\n` +
+        `    <h3 class="card-head">Live feed</h3>\n` +
+        `    <div id="frag-feed" hx-get="/fragments/feed" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
+        `  </div>\n` +
+        `</div>\n\n` +
+        `<div class="section">\n` +
+        `  <h2 class="section-head">Lifetime totals <span class="section-sub">the full math, and the honesty receipts behind it</span></h2>\n` +
+        `  <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>\n` +
+        `</div>`
+      );
+    case 'flow':
+      return (
+        `<section class="section">\n` +
+        `  <h2 class="section-head">Live pipeline <span class="section-sub">how each request flows through the gate</span></h2>\n` +
+        `  <div class="card">\n` +
+        `    <div id="frag-flow" hx-get="/fragments/flow" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
+        `  </div>\n` +
+        `</section>`
+      );
+    case 'telemetry':
+      // Odometer + timeline are the live view (SSE-pushed, poll as fallback —
+      // see GLUE_JS); the x-ray pair below stays for the deep-dive click.
+      // Details → opens the context-map card via a client-side scroll/highlight,
+      // so the timeline and the x-ray pair have to share a page: splitting them
+      // would break that cross-reference. #frag-recent (the flat table this
+      // replaces on THIS page) is gone from telemetry — the fragment and its
+      // /fragments/recent route are untouched for other callers.
+      return (
+        `<section class="section">\n` +
+        `  <div id="frag-odometer" hx-get="/fragments/odometer" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
+        `</section>\n\n` +
+        `<section class="section">\n` +
+        `  <h2 class="section-head">Timeline <span class="section-sub">live requests, newest first</span></h2>\n` +
+        `  <div class="card timeline-card">\n` +
+        `    <div id="frag-timeline" hx-get="/fragments/timeline" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML"></div>\n` +
+        `  </div>\n` +
+        `</section>\n\n` +
+        `<section class="section">\n` +
+        `  <h2 class="section-head">What happened to your context <span class="section-sub">click a request to see image vs text</span></h2>\n` +
+        `  <div class="card">\n` +
+        `    <h3 class="card-head">Image vs text breakdown</h3>\n` +
+        `    <div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div>\n` +
+        `    <h3 class="card-head spaced">Image ↔ source inspector</h3>\n` +
+        `    <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, pp-refresh" hx-swap="innerHTML"\n` +
+        `         hx-vals='js:{pin: window.pp.pin == null ? "" : window.pp.pin, source: window.pp.src ? "1" : ""}'></div>\n` +
+        `  </div>\n` +
+        `</section>`
+      );
+    case 'benchmarks':
+      return (
+        `<section class="section">\n` +
+        `  <h2 class="section-head">Benchmarks <span class="section-sub">billing-sweep + density-frontier — real receipts, live runs gated</span></h2>\n` +
+        `  <div id="frag-bench" hx-get="/fragments/bench" hx-trigger="load, every 2s, pp-refresh from:body" hx-swap="innerHTML">\n` +
+        `    <div class="status">loading…</div>\n` +
+        `  </div>\n` +
+        `  <p class="bench-note">Full methodology and measured receipts: ` +
+        `<a href="https://github.com/diegosouzapw/OmniGlyph/blob/main/docs/benchmarks/BENCHMARKS.md" target="_blank" rel="noopener">docs/benchmarks/BENCHMARKS.md</a>.</p>\n` +
+        `</section>`
+      );
+    case 'sessions':
+      return (
+        `<section class="section">\n` +
+        `  <h2 class="section-head">Top sessions <span class="section-sub">by tokens saved</span></h2>\n` +
+        `  <div class="card">\n` +
+        `    <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>\n` +
+        `  </div>\n` +
+        `</section>`
+      );
+    case 'history':
+      return (
+        `<section class="section">\n` +
+        `  <h2 class="section-head">Full history <span class="section-sub">every event on disk</span></h2>\n` +
+        `  <div class="card">\n` +
+        `    <div id="frag-stats" hx-get="/fragments/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>\n` +
+        `  </div>\n` +
+        `</section>`
+      );
+  }
+}
+
+export function renderPage(_port: number, page: DashboardPageId = 'overview'): string {
   // hx-trigger="load, every Ns": paint on load then poll (2s live, 5s aggregates).
+  const meta = PAGE_META[page];
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>OmniGlyph — live dashboard</title>
+<title>${meta.title} · OmniGlyph dashboard</title>
 <link rel="icon" href="${FAVICON}" />
 <style>${CSS}</style>
 <script>
@@ -1052,60 +2080,19 @@ export function renderPage(_port: number): string {
   })();
 </script>
 </head>
-<body>
+<body class="with-sidebar">
 
-<header class="topbar">
-  <div class="brand">
-    <span class="flame-dot"></span>
-    <div>
-      <div class="wordmark">OmniGlyph</div>
-      <div class="tagline">See exactly what got turned into images to shrink your Claude Code bill.</div>
-    </div>
-  </div>
-  <div class="controls">
-    <button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="Toggle dark mode" title="Toggle dark / light mode">☾ Dark</button>
-    <div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
-  </div>
-</header>
+<a class="skip-link" href="#main-content">Skip to content</a>
 
-<div id="frag-models" hx-get="/fragments/models" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
+${renderSidebar(page)}
 
-<div id="frag-session" hx-get="/fragments/session-summary" hx-trigger="load, every 2s" hx-swap="innerHTML">
-  <div class="hero hero-empty"><div class="hero-headline">Connecting…</div></div>
-</div>
+<main class="main" id="main-content">
 
-<div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
+${renderTopbar(page)}
 
-<section class="section">
-  <h2 class="section-head">What happened to your context <span class="section-sub">click a request to see image vs text</span></h2>
-  <div class="xray">
-    <div class="card">
-      <h3 class="card-head">Recent requests</h3>
-      <div id="frag-recent" hx-get="/fragments/recent" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
-    </div>
-    <div class="card">
-      <h3 class="card-head">Image vs text breakdown</h3>
-      <div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div>
-      <h3 class="card-head spaced">Image ↔ source inspector</h3>
-      <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, pp-refresh" hx-swap="innerHTML"
-           hx-vals='js:{pin: window.pp.pin == null ? "" : window.pp.pin, source: window.pp.src ? "1" : ""}'></div>
-    </div>
-  </div>
-</section>
+${renderPageBody(page)}
 
-<section class="section">
-  <h2 class="section-head">Top sessions <span class="section-sub">by tokens saved</span></h2>
-  <div class="card">
-    <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
-  </div>
-</section>
-
-<section class="section">
-  <h2 class="section-head">Full history <span class="section-sub">every event on disk</span></h2>
-  <div class="card">
-    <div id="frag-stats" hx-get="/fragments/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
-  </div>
-</section>
+</main>
 
 <div class="tray" x-data="{ toasts: [], next: 1 }"
      @pp-toast.window="const id = next++; toasts.push({ id, text: $event.detail.text }); setTimeout(() => toasts = toasts.filter(t => t.id !== id), 5000)">

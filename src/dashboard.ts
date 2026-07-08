@@ -29,6 +29,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as readline from 'node:readline';
 import type { ProxyEvent } from './core/proxy.js';
 import type { TrackEvent } from './core/tracker.js';
@@ -61,13 +62,27 @@ import {
   renderModelsFragment,
   renderContextMapFragment,
   renderSessionSummaryFragment,
+  renderFlowFragment,
   renderHeaderFragment,
   renderRecentFragment,
   renderLatestFragment,
   renderSessionsFragment,
   renderStatsTableFragment,
+  renderKpisFragment,
+  renderFeedFragment,
+  renderOdometerFragment,
+  renderTimelineFragment,
+  renderBenchFragment,
   type ContextMapData,
 } from './dashboard/fragments.js';
+import {
+  parseBenchResults,
+  harnessScriptsExist,
+  defaultEnvKeyPresent,
+  BenchRunner,
+  type BillingSweepAggregate,
+  type DensityFrontierAggregate,
+} from './dashboard/bench.js';
 import {
   getAllowedModelBases,
   getConfiguredModelBases,
@@ -78,9 +93,14 @@ import type {
   RecentPayload,
   SessionsPayload,
   FullStatsPayload,
+  FullStatsSummary,
 } from './dashboard/types.js';
 
 const RECENT_CAP = 50;
+
+/** Shared encoder for GET /events/stream frames — one instance, not one per
+ *  broadcast (this fires on every request once a tab is watching). */
+const SSE_ENCODER = new TextEncoder();
 
 /** How many rendered PNGs to keep in the in-memory image ring. Matches
  *  RECENT_CAP so every visible recent-requests row can still resolve its
@@ -481,6 +501,13 @@ export class DashboardState {
   /** Recent requests' transform breakdowns, for the Context Map panel + its
    *  history selector. In-memory ring, newest last. */
   private contextHistory: ContextMapData[] = [];
+  /** Live subscribers to GET /events/stream (one controller per connected
+   *  browser tab). update() broadcasts a small frame to every entry after
+   *  folding an event into the totals; a controller that throws (client
+   *  went away between the last read and this enqueue) is dropped rather
+   *  than allowed to crash the request that triggered the broadcast — SSE
+   *  is a progressive enhancement, never load-bearing for the proxy path. */
+  private sseSubscribers: Set<ReadableStreamDefaultController<Uint8Array>> = new Set();
   setCompressionEnabled(on: boolean): void {
     this.compressionEnabled = on;
   }
@@ -498,12 +525,35 @@ export class DashboardState {
    *  the developer's actual Claude Code session files. */
   private readonly ccMapFn: () => Promise<Map<string, ClaudeCodeSessionRef>>;
 
+  /** Factory for the (Phase 5) benchmarks-page runner. Optional: hosts that
+   *  don't pass one (or tests that don't need the bench page) get 503s from
+   *  the bench routes, same pattern as `paths` above. Lazy — no BenchRunner
+   *  is constructed (and therefore nothing is spawned) until the first bench
+   *  route or fragment render actually needs one. */
+  private readonly benchRunnerFactory: (() => BenchRunner) | undefined;
+  private benchRunner: BenchRunner | undefined;
+  /** Short TTL cache over the on-disk results/ JSONL so a 2s fragment poll
+   *  doesn't re-walk + re-parse every results file on every tick. */
+  private benchResultsCache:
+    | { ts: number; billingSweep: BillingSweepAggregate; densityFrontier: DensityFrontierAggregate }
+    | undefined;
+  private static readonly BENCH_CACHE_MS = 5000;
+
   constructor(
     paths?: SessionsPaths,
     ccMapFn?: () => Promise<Map<string, ClaudeCodeSessionRef>>,
+    benchRunnerFactory?: () => BenchRunner,
   ) {
     this.paths = paths;
     this.ccMapFn = ccMapFn ?? (() => claudeCodeMap());
+    this.benchRunnerFactory = benchRunnerFactory;
+  }
+
+  private getBenchRunner(): BenchRunner | undefined {
+    if (!this.benchRunner && this.benchRunnerFactory) {
+      this.benchRunner = this.benchRunnerFactory();
+    }
+    return this.benchRunner;
   }
 
   /** Stash every rendered image into the ring (called from onRequest with the
@@ -872,8 +922,96 @@ export class DashboardState {
     };
     this.recent.push(row);
     if (this.recent.length > RECENT_CAP) this.recent.splice(0, this.recent.length - RECENT_CAP);
+
+    // Push this request to every connected /events/stream tab. Cheap even
+    // with zero subscribers (broadcastSse no-ops on an empty set) so this
+    // costs nothing on hosts nobody has opened the dashboard against.
+    this.broadcastSse({
+      ts: row.ts,
+      status: row.status,
+      compressed: row.compressed,
+      model: row.model,
+      // baseline-actual when this row carried a measured saving, else null —
+      // never a fabricated 0 (which would read as "measured, saved nothing").
+      saved: row.session_saved_so_far_delta ?? null,
+      stats: this.odometerSnapshot(),
+    });
   }
 
+  /** Minimal odometer snapshot shared by the SSE "hello" frame and every
+   *  broadcast frame — reuses `buildStatsPayload()` so the live-push numbers
+   *  can never drift from what GET /proxy-stats reports (same honesty rule
+   *  as every other pair of surfaces in this file: one computation, many
+   *  readers). */
+  private odometerSnapshot(): { saved_input_tokens: number; saved_usd: number; requests: number } {
+    const p = this.buildStatsPayload();
+    return {
+      saved_input_tokens: p.saved_input_tokens,
+      saved_usd: p.saved_usd,
+      requests: p.requests,
+    };
+  }
+
+  /** Send one JSON frame to every connected /events/stream subscriber. A
+   *  controller that throws on enqueue (its stream already closed — e.g. the
+   *  client navigated away between the last read and this write) is dropped
+   *  rather than left to throw again on the next broadcast. */
+  private broadcastSse(frame: unknown): void {
+    if (this.sseSubscribers.size === 0) return;
+    const data = SSE_ENCODER.encode(`data: ${JSON.stringify(frame)}\n\n`);
+    for (const controller of this.sseSubscribers) {
+      try {
+        controller.enqueue(data);
+      } catch {
+        this.sseSubscribers.delete(controller);
+      }
+    }
+  }
+
+  /** GET /events/stream — Server-Sent Events. Progressive enhancement over
+   *  the existing htmx polling: every fragment still polls on its own
+   *  cadence, so a host that can't hold this connection open (or a client
+   *  that disconnects) keeps working exactly as before. Sends a `hello`
+   *  snapshot immediately on connect (so the odometer paints before the
+   *  first request), then one frame per `update()` call, plus a comment-only
+   *  heartbeat every 25s to keep idle proxies/load balancers from closing
+   *  the connection. */
+  serveEventsStream(): Response {
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    // Arrow functions (not method shorthand) so `this` inside start/cancel
+    // stays bound to the DashboardState instance instead of the underlying
+    // ReadableStream source object.
+    const stream = new ReadableStream<Uint8Array>({
+      start: (c) => {
+        controller = c;
+        this.sseSubscribers.add(c);
+        const hello = { hello: true, stats: this.odometerSnapshot() };
+        c.enqueue(SSE_ENCODER.encode(`data: ${JSON.stringify(hello)}\n\n`));
+        heartbeat = setInterval(() => {
+          try {
+            c.enqueue(SSE_ENCODER.encode(': ping\n\n'));
+          } catch {
+            this.sseSubscribers.delete(c);
+            if (heartbeat) clearInterval(heartbeat);
+          }
+        }, 25_000);
+        // Never hold the process open just for a dashboard heartbeat.
+        heartbeat.unref?.();
+      },
+      cancel: () => {
+        if (controller) this.sseSubscribers.delete(controller);
+        if (heartbeat) clearInterval(heartbeat);
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      },
+    });
+  }
 
   /** On startup, fold the last N entries from the JSONL events file back
    *  into the ring buffer so a process restart doesn't show an empty table.
@@ -1107,6 +1245,23 @@ export class DashboardState {
   }
 
   serveStats(): Response {
+    const payload = this.buildStatsPayload();
+    return new Response(JSON.stringify(payload, null, 2), {
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  /** Pure builder behind GET /proxy-stats. Extracted so the SSE odometer
+   *  snapshot (serveEventsStream / update()'s broadcast) reads the exact
+   *  same numbers as the poll-driven header/hero/KPI fragments — one
+   *  computation, every surface, so live-push and poll can never disagree. */
+  // No explicit `: StatsPayload` return annotation — the wire type declares
+  // `port`/`passthrough` as required, but this payload (unchanged from the
+  // pre-Phase-4 inline object in serveStats()) has never actually produced
+  // them; downstream fragment readers already treat both as optional
+  // (`s.passthrough ?? 0`). Pre-existing gap, out of this phase's scope —
+  // annotating here would just force a cast instead of fixing it.
+  private buildStatsPayload() {
     // Two headline numbers, derived from the same per-event accumulators:
     //
     //   saved_pct_input_only = Σ saved / Σ baseline_input_eff × 100
@@ -1248,9 +1403,7 @@ export class DashboardState {
       uptime_sec: uptimeSec,
       compression_enabled: this.compressionEnabled,
     };
-    return new Response(JSON.stringify(payload, null, 2), {
-      headers: { 'content-type': 'application/json' },
-    });
+    return payload;
   }
 
   serveRecent(): Response {
@@ -1308,8 +1461,8 @@ export class DashboardState {
     );
   }
 
-  serveHtml(port: number): Response {
-    return htmlResponse(renderPage(port));
+  serveHtml(port: number, page: DashboardPage = 'overview'): Response {
+    return htmlResponse(renderPage(port, page));
   }
 
   /** GET /fragments/<name> — server-rendered htmx fragments. Each one reuses
@@ -1351,6 +1504,10 @@ export class DashboardState {
         const s = (await this.serveStats().json()) as StatsPayload;
         return htmlResponse(renderHeaderFragment(s, port));
       }
+      case 'flow': {
+        const s = (await this.serveStats().json()) as StatsPayload;
+        return htmlResponse(renderFlowFragment(s));
+      }
       case 'recent': {
         const r = (await this.serveRecent().json()) as RecentPayload;
         return htmlResponse(renderRecentFragment(r));
@@ -1382,9 +1539,116 @@ export class DashboardState {
         const p = (await res.json()) as FullStatsPayload;
         return htmlResponse(renderStatsTableFragment(p));
       }
+      case 'kpis': {
+        const s = (await this.serveStats().json()) as StatsPayload;
+        const r = (await this.serveRecent().json()) as RecentPayload;
+        // serveApiStats() 404s/503s when there's no paths/events file yet
+        // (dashboard not configured, or nothing written to disk so far) —
+        // the KPI row falls back to em-dashes for that slice rather than
+        // fabricating zeros.
+        const fullRes = await this.serveApiStats();
+        let full: FullStatsSummary | null = null;
+        if (fullRes.ok) {
+          const fp = (await fullRes.json()) as FullStatsPayload;
+          full = fp.summary ?? null;
+        }
+        return htmlResponse(renderKpisFragment(s, full, r));
+      }
+      case 'feed': {
+        const r = (await this.serveRecent().json()) as RecentPayload;
+        return htmlResponse(renderFeedFragment(r));
+      }
+      case 'odometer': {
+        const s = (await this.serveStats().json()) as StatsPayload;
+        return htmlResponse(renderOdometerFragment(s));
+      }
+      case 'timeline': {
+        const r = (await this.serveRecent().json()) as RecentPayload;
+        return htmlResponse(renderTimelineFragment(r));
+      }
+      case 'bench':
+        return htmlResponse(await this.renderBenchFragmentHtml());
       default:
         return new Response('unknown fragment', { status: 404 });
     }
+  }
+
+  /** GET /fragments/bench body. Reads the real on-disk results (short TTL
+   *  cache below) and the runner's live state — never fabricates either. No
+   *  configured runner (host built without a repo root) reads the same as
+   *  "no results yet, harness unavailable" rather than 503ing the whole
+   *  page; the benchmarks page still has value showing the docs link. */
+  private async renderBenchFragmentHtml(): Promise<string> {
+    const runner = this.getBenchRunner();
+    if (!runner) {
+      return renderBenchFragment(
+        { billingSweep: parseBenchResults('', 'billing-sweep'), densityFrontier: parseBenchResults('', 'density-frontier') },
+        { harnessAvailable: false, canLive: false, running: null },
+      );
+    }
+    const results = await this.getBenchResults(runner.repoRoot);
+    const state = runner.getState();
+    return renderBenchFragment(results, {
+      harnessAvailable: harnessScriptsExist(runner.repoRoot),
+      // Both harnesses require ANTHROPIC_API_KEY for a live run (see
+      // src/dashboard/bench.ts's defaultEnvKeyPresent for the receipts);
+      // checked once here rather than per-harness so the fragment and the
+      // runner's own gate in start() can never disagree.
+      canLive: defaultEnvKeyPresent('billing-sweep'),
+      running: state.running ? state : null,
+    });
+  }
+
+  /** Cache the parsed benchmarks/{billing-sweep,density-frontier}/results/
+   *  aggregates for BENCH_CACHE_MS so a 2s fragment poll doesn't re-walk +
+   *  re-parse every JSONL file on every tick. Cache is keyed implicitly by
+   *  repoRoot never changing at runtime (one process, one checkout). */
+  private async getBenchResults(
+    repoRoot: string,
+  ): Promise<{ billingSweep: BillingSweepAggregate; densityFrontier: DensityFrontierAggregate }> {
+    const now = Date.now();
+    if (this.benchResultsCache && now - this.benchResultsCache.ts < DashboardState.BENCH_CACHE_MS) {
+      return this.benchResultsCache;
+    }
+    const [billingText, densityText] = await Promise.all([
+      readAllJsonl(path.join(repoRoot, 'benchmarks', 'billing-sweep', 'results')),
+      readAllJsonl(path.join(repoRoot, 'benchmarks', 'density-frontier', 'results')),
+    ]);
+    const fresh = {
+      ts: now,
+      billingSweep: parseBenchResults(billingText, 'billing-sweep'),
+      densityFrontier: parseBenchResults(densityText, 'density-frontier'),
+    };
+    this.benchResultsCache = fresh;
+    return fresh;
+  }
+
+  /** POST /api/bench/run — body is the closed {harness, mode, confirm?}
+   *  triple. ALL validation/locking/env-key gating happens inside
+   *  BenchRunner.start(); this method only maps its result to an HTTP status
+   *  and wires stdout/exit onto the existing SSE broadcast so the terminal
+   *  fragment updates live (see /events/stream frames `{bench:{...}}`). */
+  async handleBenchRun(body: { harness?: unknown; mode?: unknown; confirm?: unknown }): Promise<Response> {
+    const runner = this.getBenchRunner();
+    if (!runner) return notConfigured('bench');
+    const result = runner.start(
+      { harness: body.harness, mode: body.mode, confirm: body.confirm },
+      {
+        onLine: (harness, line) => this.broadcastSse({ bench: { harness, line } }),
+        onExit: (harness, code) => this.broadcastSse({ bench: { harness, done: true, code } }),
+      },
+    );
+    if (!result.ok) return jsonResponse({ error: result.error }, result.status);
+    return jsonResponse({ started: true });
+  }
+
+  /** POST /api/bench/cancel — always 200; kills only this runner's own
+   *  in-flight child (there is at most one, by the single-lock design). A
+   *  cancel with nothing running is a harmless no-op, not an error. */
+  handleBenchCancel(): Response {
+    const runner = this.getBenchRunner();
+    const cancelled = runner ? runner.cancel() : false;
+    return jsonResponse({ cancelled });
   }
 
   // ---- session / cleanup endpoints --------------------------------------
@@ -1467,6 +1731,30 @@ function notConfigured(what: string): Response {
   );
 }
 
+/** Concatenate every *.jsonl file directly under `dir`, sorted by filename
+ *  (the harnesses timestamp their filenames, so this is also chronological).
+ *  Missing directory, or an individual file vanishing mid-read, is not an
+ *  error — the benchmarks page has plenty to show (or an honest "no runs
+ *  yet") either way. Never throws. */
+async function readAllJsonl(dir: string): Promise<string> {
+  let entries: string[];
+  try {
+    entries = await fs.promises.readdir(dir);
+  } catch {
+    return '';
+  }
+  const files = entries.filter((f) => f.endsWith('.jsonl')).sort();
+  const parts: string[] = [];
+  for (const f of files) {
+    try {
+      parts.push(await fs.promises.readFile(path.join(dir, f), 'utf8'));
+    } catch {
+      /* file vanished/unreadable between readdir and read — skip it */
+    }
+  }
+  return parts.join('\n');
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
@@ -1474,10 +1762,19 @@ function round4(n: number): number {
   return Math.round(n * 10000) / 10000;
 }
 
+/** One of the six server-rendered dashboard pages (Phase 2 sidebar shell). */
+export type DashboardPage =
+  | 'overview'
+  | 'flow'
+  | 'telemetry'
+  | 'benchmarks'
+  | 'sessions'
+  | 'history';
+
 /** Result of route-matching a dashboard URL. The legacy `kind` values
  *  (html/stats/recent/png) stay alongside the `/api/*` JSON endpoints. */
 export type DashboardRoute =
-  | { kind: 'html' }
+  | { kind: 'html'; page: DashboardPage }
   | { kind: 'stats' } // /proxy-stats — legacy live counter
   | { kind: 'recent' } // /proxy-recent — legacy ring buffer
   | { kind: 'png' } // /proxy-latest-png
@@ -1486,11 +1783,19 @@ export type DashboardRoute =
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
   | { kind: 'api-image-source' } // /api/image-source[?id=N] — source text behind a rendered PNG
+  | { kind: 'sse' } // /events/stream — Server-Sent Events push (Node host only)
+  | { kind: 'api-bench-run' } // /api/bench/run (POST {harness,mode,confirm?}) — Phase 5
+  | { kind: 'api-bench-cancel' } // /api/bench/cancel (POST) — Phase 5
   | { kind: 'fragment'; name: string }; // /fragments/<name> — server-rendered htmx panels
 
 /** Match dashboard paths (handle query strings on /proxy-latest-png). */
 export function dashboardPath(pathname: string): DashboardRoute | null {
-  if (pathname === '/' || pathname === '/dashboard') return { kind: 'html' };
+  if (pathname === '/' || pathname === '/dashboard') return { kind: 'html', page: 'overview' };
+  if (pathname === '/flow') return { kind: 'html', page: 'flow' };
+  if (pathname === '/telemetry') return { kind: 'html', page: 'telemetry' };
+  if (pathname === '/benchmarks') return { kind: 'html', page: 'benchmarks' };
+  if (pathname === '/sessions') return { kind: 'html', page: 'sessions' };
+  if (pathname === '/history') return { kind: 'html', page: 'history' };
   if (pathname === '/proxy-stats') return { kind: 'stats' };
   if (pathname === '/proxy-recent') return { kind: 'recent' };
   if (pathname === '/proxy-latest-png') return { kind: 'png' };
@@ -1499,6 +1804,9 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
   if (pathname === '/api/image-source') return { kind: 'api-image-source' };
+  if (pathname === '/events/stream') return { kind: 'sse' };
+  if (pathname === '/api/bench/run') return { kind: 'api-bench-run' };
+  if (pathname === '/api/bench/cancel') return { kind: 'api-bench-cancel' };
   if (pathname.startsWith('/fragments/')) {
     return { kind: 'fragment', name: pathname.slice('/fragments/'.length) };
   }

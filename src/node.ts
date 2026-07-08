@@ -11,6 +11,7 @@ import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, resolveUpstreams, type ProxyConfig } from './core/proxy.js';
 import {
@@ -31,7 +32,19 @@ import {
   dashboardPath,
   type DashboardRoute,
 } from './dashboard.js';
+import { BenchRunner } from './dashboard/bench.js';
 import { resolveLocale, t } from './i18n/index.js';
+
+/** Repo root, resolved from THIS module's own location rather than
+ *  process.cwd() (which is whatever directory the operator happened to run
+ *  `omniglyph` from). Works identically in dev (tsx running src/node.ts —
+ *  one directory up from src/) and in the built CLI (esbuild bundles
+ *  everything into the single file dist/node.js — one directory up from
+ *  dist/), because both cases put this file exactly one level below the
+ *  repo root. Feeds the Benchmarks page (Phase 5): an npm install doesn't
+ *  ship `benchmarks/` (see package.json `files`), so BenchRunner checks
+ *  existence under this root before enabling any run button. */
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -290,7 +303,7 @@ async function dispatchDashboard(
   switch (route.kind) {
     case 'html':
       if (method !== 'GET') return undefined;
-      return dashboard.serveHtml(port);
+      return dashboard.serveHtml(port, route.page);
     case 'stats':
       if (method !== 'GET') return undefined;
       return dashboard.serveStats();
@@ -322,6 +335,9 @@ async function dispatchDashboard(
     case 'current-session':
       if (method !== 'GET') return undefined;
       return dashboard.serveCurrentSessionJson();
+    case 'sse':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveEventsStream();
     case 'fragment': {
       // /fragments/toggle is the one mutating fragment - htmx POSTs the next
       // state (urlencoded hx-vals or JSON), the server flips the switch and
@@ -385,6 +401,33 @@ async function dispatchDashboard(
       }
       return dashboard.handleCompressionToggle({ enabled: body.enabled });
     }
+    case 'api-bench-run': {
+      if (method !== 'POST') {
+        return new Response(
+          JSON.stringify({ error: 'use POST' }),
+          { status: 405, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      let body: Record<string, unknown>;
+      try {
+        const raw = await readRequestBody(req);
+        body = raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: 'bad request body', detail: (e as Error).message }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return dashboard.handleBenchRun(body);
+    }
+    case 'api-bench-cancel':
+      if (method !== 'POST') {
+        return new Response(
+          JSON.stringify({ error: 'use POST' }),
+          { status: 405, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return dashboard.handleBenchCancel();
   }
 }
 
@@ -838,10 +881,18 @@ async function main(): Promise<void> {
   // served via the route interception in front of the proxy handler. The
   // SessionsPaths handle lets the dashboard surface session/disk/stats data
   // without reaching back into module-scope globals.
-  const dashboard = new DashboardState({
-    eventsFile: opts.eventsFile,
-    sidecarDir: bodySidecarDir,
-  });
+  const dashboard = new DashboardState(
+    {
+      eventsFile: opts.eventsFile,
+      sidecarDir: bodySidecarDir,
+    },
+    undefined,
+    // Lazy: DashboardState only calls this on the first bench route/fragment
+    // touch, so a host that never opens the Benchmarks page never pays for
+    // constructing it (construction is cheap — no process is spawned until
+    // an actual run starts — but this keeps the constructor pure regardless).
+    () => new BenchRunner({ repoRoot: REPO_ROOT }),
+  );
   // Seed the "recent requests" table from the JSONL log so a process restart
   // doesn't reset what you can see in the UI. Best-effort; ignored on error.
   await dashboard.replay(opts.eventsFile).catch(() => {});
