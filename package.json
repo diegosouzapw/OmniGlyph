@@ -1,6 +1,6 @@
 {
   "name": "omniglyph",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Context-as-image compression proxy for LLMs: renders bulky context (system prompt, tool docs, history) as dense PNG pages with exact per-provider billing math (Anthropic/OpenAI/Gemini). Node and Cloudflare Workers. Part of the OmniRoute family.",
   "type": "module",
   "bin": {

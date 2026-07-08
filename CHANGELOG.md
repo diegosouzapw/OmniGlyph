@@ -2,6 +2,17 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [1.0.2] — 2026-07-08
+
+Release-automation only. No change to the package's code or behavior.
+
+### Changed
+
+- Releases now publish from GitHub Actions via **npm trusted publishing (OIDC)**,
+  so every release carries **provenance** and no long-lived npm token is used.
+- Each release is also mirrored to **GitHub Packages** as
+  `@diegosouzapw/omniglyph` (the npmjs.com package stays unscoped `omniglyph`).
+
 ## [1.0.1] — 2026-07-08
 
 Security and documentation release. No behavior change to the compression path.
