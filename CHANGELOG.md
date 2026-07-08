@@ -2,6 +2,16 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Security
+
+- **Resolve a CodeQL `js/regex/missing-regexp-anchor` alert** in the
+  docs-integrity guard. The upstream-credit assertion matched its target link
+  with an unanchored regex; it now uses a literal, scheme-qualified substring
+  check instead — stricter (a bare host mention no longer satisfies it) and
+  regex-free. Test-only; no change to shipped behavior.
+
 ## [1.1.0] — 2026-07-08
 
 Dashboard release. The compression path and billing math are unchanged; this is
