@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` بلاکس کو متن کے طور پر پن کرتا ہے؛ `options.emitRecoverable` تصویر بنائے گئے بلاکس کے اصل مواد واپس کرتا ہے۔ عین بلنگ ریاضی پیکج کی جڑ (root) پر بھی شپ ہوتی ہے (`anthropicImageTokens`، `resolveAnthropicVisionTier`، `openAIVisionTokens`) — یہی وہ چیز ہے جسے [OmniRoute](https://github.com/diegosouzapw/OmniRoute) استعمال کرتا ہے۔ خالص-JS رن ٹائم (Node اور edge/Workers)۔ مکمل سطح: `src/core/index.ts`۔
 
+# 📤 آف لائن ایکسپورٹ — نہ پراکسی، نہ Claude Code
+
+Claude Code پر نہیں ہیں؟ سیاق و سباق کو **مقامی طور پر** PNG صفحات میں رینڈر کریں اور انہیں Cursor، ChatGPT، یا کسی بھی ایسی چیٹ میں پیسٹ کریں جو تصویری اپ لوڈز قبول کرتی ہو۔ نہ پراکسی، نہ API کلید، نہ کوئی اکاؤنٹ جوڑنے کی ضرورت:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+آپ کو ایک ہی فولڈر ملتا ہے جس میں چیٹ میں ڈراپ کرنے کے لیے سب کچھ موجود ہوتا ہے:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` آپ کے اَن کمیٹڈ diff کو رینڈر کرتا ہے، `--diff <ref>` ایک کمٹ رینج کو، اور `--open` فولڈر کو ظاہر کرتا ہے (macOS)۔ یہ سب کچھ آپ کی اپنی مشین پر چلتا ہے — ایکسپورٹ کا راستہ کبھی پراکسی شروع نہیں کرتا اور کبھی کسی ماڈل کو کال نہیں کرتا۔ ہر فلیگ کے لیے `omniglyph export --help` چلائیں۔
+
 # 🧭 The honest part
 
 - **یہ نقصان دہ (lossy) ہے۔** تصاویر سے بائٹ-عین بازیافت فطری طور پر ناقابلِ اعتماد ہے۔ نافذ شدہ تدارک: عین شناخت کنندگان تصویر کے ساتھ متن کے طور پر سفر کرتے ہیں، اور پیمائش شدہ پروڈکشن کنفیگ نے **صفر خاموش من گھڑت جوابات** پیدا کیے — ناکام ریڈز گریز کرتی ہیں۔
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **کیا DeepSeek-OCR نے یہ طے نہیں کر دیا کہ یہ کام کرتا ہے؟**
 اس نے ثابت کیا کہ *چینل* کام کرتا ہے — ایک انکوڈر/ڈیکوڈر جوڑے کے ساتھ جو اسی کام کے لیے تربیت یافتہ تھا۔ شکوک و شبہات اس وقت کے ہیں جب کوئی بھی اسٹاک پروڈکشن ماڈل گھنے رینڈرز پڑھ نہیں سکتا تھا؛ وہ بدل چکا ہے، اور اوپر دیا گیا [ماڈل اسکور کارڈ](../../../README.md#-the-numbers--measured-not-estimated) بالکل دکھاتا ہے کہ آج کون انہیں رسیدوں کے ساتھ پڑھتا ہے۔ [بینچ مارک ہارنس](../../../benchmarks/README.md) کسی بھی نئے ماڈل کو ایک کمانڈ میں دوبارہ جانچ لیتا ہے — گیٹ ڈیٹا کی پیروی کرتا ہے، ہائپ کی نہیں۔
+
+**کیا میں اسے Claude Code کے بغیر استعمال کر سکتا ہوں — Cursor، ChatGPT، یا ایک سادہ pipe؟**
+جی ہاں، دو طریقوں سے۔ ایک **پراکسی** کے طور پر یہ ہر اُس کلائنٹ کے ساتھ کام کرتا ہے جو آپ کو API بیس URL طے کرنے دیتا ہے (`ANTHROPIC_BASE_URL`، یا OpenAI بیس URL) — Claude Code، آپ کے اپنے اسکرپٹس، کوئی بھی HTTP چیز۔ اور اُن ٹولز کے لیے جو پراکسی نہیں کر سکتے، اوپر دیا گیا **آف لائن ایکسپورٹ** سیاق و سباق کو PNG صفحات میں رینڈر کرتا ہے جنہیں آپ ہاتھ سے پیسٹ کرتے ہیں — `omniglyph export --stdin` تو براہِ راست ایک Unix pipe سے بھی پڑھ لیتا ہے۔
+
+**یہ دراصل متن کو تصویر میں کیسے بدلتا ہے؟**
+یہ متن کو دوبارہ سمیٹتا (reflow) ہے اور اسے ایک 1-بٹ 5×8 پکسل گلف ایٹلس سے گھنے 1568×728 PNG صفحات پر پینٹ کرتا ہے — فی پکسل ایک بٹ، کوئی اینٹی-ایلیاسنگ نہیں، اس لیے ماڈل صفحے کا بل اس کے طول و عرض کے حساب سے کرتا ہے، نہ کہ اس کے اندر موجود حروف کی تعداد کے حساب سے۔ اوپر دیا گیا **یہ کیسے کام کرتا ہے** پائپ لائن دکھاتا ہے؛ بینچ مارکس دستاویز میں جیومیٹری موجود ہے اور یہ کہ گھنا ہونا ہمیشہ سستا کیوں نہیں ہوتا۔
 
 # 🔬 ہر عدد کو دوبارہ پیدا کریں
 

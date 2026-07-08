@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)` pripne bloky ako text; `options.emitRecoverable` vráti originály obrázkových blokov. Presná účtovacia matematika sa dodáva aj v koreni balíka (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — presne to používa [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Čistý JS runtime (Node aj edge/Workers). Celé rozhranie: `src/core/index.ts`.
 
+# 📤 Offline export — bez proxy, bez Claude Code
+
+Nepoužívate Claude Code? Vykreslite kontext do PNG stránok **lokálne** a vložte ich do Cursor, ChatGPT alebo akéhokoľvek chatu, ktorý prijíma nahrávanie obrázkov. Bez proxy, bez API kľúča, bez zapojeného účtu:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Dostanete jeden priečinok so všetkým, čo stačí pustiť do chatu:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git` vykreslí váš necommitnutý diff, `--diff <ref>` rozsah commitov, `--open` zobrazí priečinok (macOS). Všetko beží u vás na počítači — exportná cesta nikdy nespustí proxy a nikdy nezavolá model. Spustite `omniglyph export --help` pre všetky prepínače.
+
 # 🧭 The honest part
 
 - **Je to stratové.** Presné čítanie na úrovni bajtov z obrázkov je zo svojej podstaty nespoľahlivé. Nasadené zmierňovania: presné identifikátory cestujú ako text vedľa obrázka a meraná produkčná konfigurácia priniesla **nulové tiché konfabulácie** — neúspešné čítania sa zdržia.
@@ -147,6 +168,12 @@ Nedávne kolá a presné identifikátory ostávajú textom podľa dizajnu. Pre z
 
 **Nevyriešil DeepSeek-OCR už otázku, či to funguje?**
 Dokázal, že *kanál* funguje — s párom enkodér/dekodér natrénovaným presne na túto úlohu. Skepticizmus pochádza z obdobia, keď žiadny bežný produkčný model nevedel čítať husté rendery; to sa zmenilo a [skóre modelov](../../../README.md#-the-numbers--measured-not-estimated) vyššie presne ukazuje, kto ich dnes dokáže čítať, s dôkazmi. [Benchmarkový harness](../../../benchmarks/README.md) otestuje akýkoľvek nový model jedným príkazom — brána sa riadi dátami, nie hype.
+
+**Dá sa to použiť bez Claude Code — Cursor, ChatGPT, obyčajná pipe?**
+Áno, dvoma spôsobmi. Ako **proxy** funguje s akýmkoľvek klientom, ktorý vám umožní nastaviť základnú URL API (`ANTHROPIC_BASE_URL` alebo základnú URL OpenAI) — Claude Code, vaše vlastné skripty, čokoľvek cez HTTP. A pre nástroje, ktoré nedokážu použiť proxy, **Offline export** vyššie vykreslí kontext do PNG stránok, ktoré vložíte ručne — `omniglyph export --stdin` dokonca číta priamo z Unix pipe.
+
+**Ako vlastne premení text na obrázok?**
+Text preformátuje (reflow) a vykreslí ho 1-bitovým 5×8 pixelovým atlasom glyfov na husté 1568×728 PNG stránky — jeden bit na pixel, bez anti-aliasingu, takže model účtuje stránku podľa jej rozmerov, nie podľa toho, koľko znakov je vnútri. **Ako to funguje** vyššie obsahuje pipeline; dokument benchmarkov obsahuje geometriu a to, prečo hustejšie nie je vždy lacnejšie.
 
 # 🔬 Zreprodukujte každé číslo
 

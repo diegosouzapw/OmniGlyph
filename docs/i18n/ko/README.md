@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 `options.keepSharp(block)`는 블록을 텍스트로 고정합니다. `options.emitRecoverable`는 이미지화된 블록의 원본을 반환합니다. 정확한 과금 수학은 패키지 루트에서도 제공됩니다(`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — 이것이 바로 [OmniRoute](https://github.com/diegosouzapw/OmniRoute)가 사용하는 것입니다. 순수 JS 런타임(Node 및 edge/Workers)입니다. 전체 API 표면: `src/core/index.ts`.
 
+# 📤 오프라인 내보내기 — 프록시 없이, Claude Code 없이
+
+Claude Code를 쓰지 않으시나요? 컨텍스트를 **로컬에서** PNG 페이지로 렌더링해 Cursor, ChatGPT, 또는 이미지 업로드를 받는 어떤 채팅에든 붙여넣으세요. 프록시도, API 키도, 연결된 계정도 필요 없습니다:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+채팅에 그대로 넣을 수 있는 모든 것이 담긴 폴더 하나가 생성됩니다:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+`--git`는 커밋되지 않은 diff를, `--diff <ref>`는 커밋 범위를 렌더링하고, `--open`은 폴더를 표시합니다(macOS). 모든 작업은 여러분의 머신에서 실행됩니다 — 내보내기 경로는 결코 프록시를 시작하지 않으며 모델을 호출하지도 않습니다. 모든 플래그는 `omniglyph export --help`로 확인하세요.
+
 # 🧭 The honest part
 
 - **손실이 있습니다.** 이미지에서 바이트 단위로 정확한 복원은 본질적으로 신뢰할 수 없습니다. 적용된 완화책: 정확한 식별자는 이미지 옆에 텍스트로 함께 이동하며, 측정된 프로덕션 설정은 **은밀한 컨퓨불레이션 0건**을 기록했습니다 — 판독에 실패하면 기권합니다.
@@ -147,6 +168,12 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 **DeepSeek-OCR가 이미 이것이 통한다는 것을 증명하지 않았습니까?**
 그것은 *채널*이 작동한다는 것을 증명했습니다 — 해당 작업을 위해 훈련된 인코더/디코더 쌍으로요. 회의론은 어떤 기성 프로덕션 모델도 밀도 높은 렌더를 읽지 못하던 시절에서 비롯된 것입니다. 상황은 바뀌었고, 위의 [모델 스코어카드](../../../README.md#-the-numbers--measured-not-estimated)는 오늘날 정확히 누가 이를 판독할 수 있는지 근거와 함께 보여줍니다. [벤치마크 하네스](../../../benchmarks/README.md)는 새 모델을 명령 한 번으로 재검사합니다 — 게이트는 과대광고가 아니라 데이터를 따릅니다.
+
+**Claude Code 없이도 사용할 수 있나요 — Cursor, ChatGPT, 단순 파이프에서도?**
+네, 두 가지 방법이 있습니다. **프록시**로서는 API 베이스 URL(`ANTHROPIC_BASE_URL`, 또는 OpenAI 베이스 URL)을 설정할 수 있는 모든 클라이언트와 동작합니다 — Claude Code, 여러분 자신의 스크립트, HTTP를 쓰는 무엇이든요. 그리고 프록시를 쓸 수 없는 도구를 위해서는, 위의 **오프라인 내보내기**가 컨텍스트를 손으로 직접 붙여넣는 PNG 페이지로 렌더링합니다 — `omniglyph export --stdin`은 Unix 파이프에서 곧바로 읽어들이기까지 합니다.
+
+**실제로 텍스트를 어떻게 이미지로 바꾸나요?**
+텍스트를 리플로우한 뒤 1비트 5×8 픽셀 글리프 아틀라스로 밀도 높은 1568×728 PNG 페이지에 그려 넣습니다 — 픽셀당 1비트, 안티앨리어싱 없음, 그래서 모델은 페이지를 그 안에 담긴 문자 수가 아니라 크기(dimensions)로 과금합니다. 위의 **How it works**에 파이프라인이 있고, 벤치마크 문서에는 그 기하학적 구조와 왜 더 밀도를 높인다고 항상 더 저렴해지는 것은 아닌지가 담겨 있습니다.
 
 # 🔬 Reproduce every number
 

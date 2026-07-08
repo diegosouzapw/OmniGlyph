@@ -124,6 +124,27 @@ const { body, applied, reason } = await transformAnthropicMessages({
 
 Az `options.keepSharp(block)` szövegként rögzíti a blokkokat; az `options.emitRecoverable` visszaadja a képpé alakított blokkok eredetijét. A pontos számlázási matematika a csomag gyökerén is elérhető (`anthropicImageTokens`, `resolveAnthropicVisionTier`, `openAIVisionTokens`) — ezt használja fel az [OmniRoute](https://github.com/diegosouzapw/OmniRoute). Tiszta JS futtatókörnyezet (Node és edge/Workers). Teljes felület: `src/core/index.ts`.
 
+# 📤 Offline exportálás — proxy nélkül, Claude Code nélkül
+
+Nem Claude Code-ot használ? Renderelje a kontextust PNG-oldalakká **helyben**, és illessze be őket a Cursorba, a ChatGPT-be vagy bármely olyan chatbe, amely elfogad képfeltöltéseket. Nincs proxy, nincs API-kulcs, nincs bekötött fiók:
+
+```bash
+npx omniglyph export --include "*.ts" src/   # render a folder to image pages
+cat big.log | npx omniglyph export --stdin   # …or pipe any text through
+```
+
+Egyetlen mappát kap, benne mindennel, amit be kell dobnia a chatbe:
+
+```
+OmniGlyph-export-<hash>/
+  page-001.png …   the rendered image pages — attach these
+  factsheet.txt    verbatim precision tokens (paths, SHAs, ids, numbers)
+  prompt.txt       a paste-ready instruction that points the model at the pages
+  manifest.json    metadata + the text-vs-image token report (% saved)
+```
+
+A `--git` a nem commitolt diffjét rendereli, a `--diff <ref>` egy commit-tartományt, a `--open` pedig megnyitja a mappát (macOS). Minden a saját gépén fut — az exportálási útvonal soha nem indítja el a proxyt, és soha nem hív meg modellt. Futtassa az `omniglyph export --help`-et minden kapcsolóért.
+
 # 🧭 The honest part
 
 - **Veszteséges.** A byte-pontos visszakeresés képekből természeténél fogva megbízhatatlan. Bevetett mérséklések: a pontos azonosítók szövegként utaznak a kép mellett, és a mért éles konfiguráció **nulla néma konfabulációt** produkált — a sikertelen olvasások tartózkodnak.
@@ -147,6 +168,12 @@ A legutóbbi fordulók és a pontos azonosítók tervezésnél fogva szövegkén
 
 **A DeepSeek-OCR nem döntötte már el, hogy ez működik-e?**
 Az bebizonyította, hogy a *csatorna* működik — egy erre a feladatra betanított enkóder/dekóder párral. A szkepticizmus abból az időből származik, amikor egyetlen gyári éles modell sem tudta olvasni a sűrű rendereléseket; ez megváltozott, és a fenti [modell-eredménytábla](../../../README.md#-the-numbers--measured-not-estimated) pontosan megmutatja, ki olvassa ezeket ma, bizonyítékokkal. A [benchmark harness](../../../benchmarks/README.md) egyetlen paranccsal újratesztel minden új modellt — a kapu az adatokat követi, nem a hype-ot.
+
+**Használhatom Claude Code nélkül is — Cursorral, ChatGPT-vel, egyszerű pipe-pal?**
+Igen, kétféleképpen. **Proxyként** bármely olyan klienssel működik, amelyben beállíthatja az API alap-URL-jét (`ANTHROPIC_BASE_URL`, vagy az OpenAI alap-URL-je) — Claude Code, a saját szkriptjei, bármi, ami HTTP. Azoknál az eszközöknél pedig, amelyek nem tudnak proxyzni, a fenti **Offline exportálás** PNG-oldalakká rendereli a kontextust, amelyeket kézzel illeszt be — az `omniglyph export --stdin` még egy Unix pipe-ból is közvetlenül olvas.
+
+**Hogyan alakítja át valójában a szöveget képpé?**
+Újratördeli a szöveget, és egy 1-bites 5×8 pixeles glifatlasszal festi rá a sűrű 1568×728-as PNG-oldalakra — egy bit pixelenként, élsimítás nélkül —, így a modell az oldalt a méretei alapján számlázza, nem az alapján, hány karakter van benne. A fenti **Hogyan működik** tartalmazza a pipeline-t; a benchmark-dokumentum pedig a geometriát és azt, hogy miért nem mindig olcsóbb a sűrűbb.
 
 # 🔬 Minden szám reprodukálása
 
