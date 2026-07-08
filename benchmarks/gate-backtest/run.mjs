@@ -42,7 +42,6 @@ const TTL_SEC = 300;
 
 const logFile = process.argv[2] || process.env.OMNIGLYPH_LOG || path.join(os.homedir(), '.omniglyph', 'events.jsonl');
 const family = (process.argv[3] || 'fable').toLowerCase(); // imaged family to score
-const familyRe = new RegExp(family, 'i');
 
 const actualEff = (inp, cc, cr) => inp + cc * CACHE_CREATE_RATE + cr * CACHE_READ_RATE;
 function baselineEff(baseline, baseCacheable, inp, cc, cr, warm, prevCacheable) {
@@ -67,7 +66,9 @@ const rl = readline.createInterface({ input: fs.createReadStream(logFile) });
 rl.on('line', (l) => {
   if (!l.trim()) return;
   let e; try { e = JSON.parse(l); } catch { return; }
-  if (!e.model || !familyRe.test(e.model) || !e.compressed) return;
+  // Plain case-insensitive substring match — `family` is a CLI arg, so a RegExp
+  // here would be a regex-injection / ReDoS surface (CodeQL js/regex-injection).
+  if (!e.model || !e.model.toLowerCase().includes(family) || !e.compressed) return;
   if (e.baseline_probe_status !== 'ok' || !(e.baseline_tokens > 0)) return; // only honestly scorable rows
   rows.push({
     ts: Date.parse(e.ts) / 1000, sess: e.first_user_sha8 || 'nil', prefix: e.cache_prefix_sha8,
