@@ -2,6 +2,20 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- **fix(transform):** pass tool-search managed tools through the tool rewrite
+  untouched. A tool marked `defer_loading: true` (or the server `tool_search_tool_*`
+  itself) is not injected into context until the model searches for it — the API
+  bills it at ~zero until then. Imaging its docs materialized documentation the
+  API was keeping free, inflating every request (a large MCP surface ships
+  hundreds of deferred tools — ~477k chars observed). They now pass through
+  byte-identical and stay out of the imaged Tool Reference; a new
+  `deferred_tools_skipped` telemetry field reports how many were exempted.
+  (thanks @byingyang)
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.
