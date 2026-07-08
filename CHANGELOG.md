@@ -2,6 +2,14 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic versioning.
 
+## [Unreleased]
+
+### Changed
+
+- **test:** raise the Vitest per-test timeout to 30s so genuinely slow render
+  e2e cases (full reflow + PNG encode) are not false-negative timeouts on
+  slower/CI machines. Assertions are unchanged. (thanks @ousamabenyounes)
+
 ## [1.0.2] — 2026-07-08
 
 Release-automation only. No change to the package's code or behavior.
