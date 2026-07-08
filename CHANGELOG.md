@@ -27,6 +27,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(prompting):** the imaged session-configuration banner and the
+  history-transcript framing now instruct the model to defer exact identifiers,
+  hashes, version strings, and numbers to the exact-value factsheet or the
+  source text, instead of guessing a value seen only in an image. (thanks @rldyourmnd)
 - **fix(transform):** pass tool-search managed tools through the tool rewrite
   untouched. A tool marked `defer_loading: true` (or the server `tool_search_tool_*`
   itself) is not injected into context until the model searches for it — the API
