@@ -75,6 +75,27 @@ Inafanya kazi kwa njia zote mbili:
 
 Dashibodi kwenye <http://127.0.0.1:47821/>: token zilizookolewa, kila ubadilishaji wa maandishi-kwenda-picha bega kwa bega, kizima cha dharura, chip za muundo za moja kwa moja. Majibu hutiririka kama kawaida — ni *ombi* pekee linalobanwa, kamwe si matokeo ya muundo.
 
+# 🔌 Tumia na wateja wa Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Dashibodi
 
 Dashibodi kamili ya ndani inakuja ndani ya kifurushi — nje ya mtandao, faili moja, sifuri ya maombi ya nje. Kurasa sita, zinazosasishwa moja kwa moja kupitia SSE huku maombi yakiendelea kutiririka:

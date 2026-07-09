@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # насочете Claude Code
 
 Табло на <http://127.0.0.1:47821/>: спестени токени, всяко преобразуване текст→изображение едно до друго, аварийно копче, живи чипове на моделите. Отговорите се стриймват нормално — само *заявката* се компресира, никога изходът на модела.
 
+# 🔌 Използване с клиенти на Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Таблото
 
 Пълноценно локално табло се доставя вътре в пакета — офлайн, единичен файл, нула външни заявки. Шест страници, обновявани на живо през SSE, докато текат заявките:

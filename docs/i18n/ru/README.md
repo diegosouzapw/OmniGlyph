@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # направьте Claude Co
 
 Дашборд по адресу <http://127.0.0.1:47821/>: сэкономленные токены, каждая конвертация текст→изображение бок о бок, аварийный выключатель, живые чипы моделей. Ответы стримятся как обычно — сжимается только *запрос*, но никогда не вывод модели.
 
+# 🔌 Использование с клиентами Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Дашборд
 
 Полноценный локальный дашборд поставляется прямо внутри пакета — офлайн, единым файлом, без единого внешнего запроса. Шесть страниц, обновляющихся вживую по SSE по мере прохождения запросов:

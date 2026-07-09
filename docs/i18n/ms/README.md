@@ -75,6 +75,27 @@ Berfungsi dalam kedua-dua cara:
 
 Papan pemuka di <http://127.0.0.1:47821/>: token dijimatkan, setiap penukaran teks→imej bersebelahan, suis kill, cip model langsung. Respons mengalir seperti biasa — hanya *permintaan* yang dimampatkan, tidak pernah output model.
 
+# 🔌 Guna dengan klien Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Papan pemuka
 
 Papan pemuka tempatan yang lengkap disertakan dalam pakej — luar talian, fail tunggal, sifar permintaan luaran. Enam halaman, dikemas kini secara langsung melalui SSE apabila permintaan mengalir:

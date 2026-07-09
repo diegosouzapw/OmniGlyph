@@ -75,6 +75,27 @@ Toimii molemmin tavoin:
 
 Kojelauta osoitteessa <http://127.0.0.1:47821/>: säästetyt tokenit, jokainen teksti→kuva-muunnos rinnakkain, katkaisukytkin, mallit livenä. Vastaukset striimataan normaalisti — vain *pyyntö* pakataan, ei koskaan mallin tulostetta.
 
+# 🔌 Käyttö Claude-asiakkaiden kanssa
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Kojelauta
 
 Paketin mukana tulee täysi paikallinen kojelauta — offline, yksitiedostoinen, ei ulkoisia pyyntöjä. Kuusi sivua, jotka päivittyvät livenä SSE:n kautta pyyntöjen virratessa:

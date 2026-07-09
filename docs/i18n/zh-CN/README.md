@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 仪表盘位于 <http://127.0.0.1:47821/>:节省的 token 数、每一次文本→图像转换的并排对比、终止开关、实时模型标签。响应照常流式输出——只有*请求*被压缩,模型的输出从不受影响。
 
+# 🔌 配合 Claude 客户端使用
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ 仪表盘
 
 包内自带一套完整的本地仪表盘——离线运行、单文件、零外部请求。六个页面,随请求流转通过 SSE 实时更新:

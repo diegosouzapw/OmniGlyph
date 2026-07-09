@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Docs
+
+- **docs:** add a "Use with Claude clients" section to the README (and all 41
+  translations) covering Claude Code CLI on macOS/Linux, the **Windows
+  PowerShell** variant (`$env:ANTHROPIC_BASE_URL`), and **Claude Desktop** setup.
+  (thanks @ousamabenyounes)
+
+## [Unreleased]
+
 ### Added
 
 - **feat(node):** the Node proxy's OpenAI leg falls back to the **Codex ChatGPT
