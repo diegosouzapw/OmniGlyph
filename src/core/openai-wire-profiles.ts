@@ -7,13 +7,16 @@
  * developers.openai.com images-vision guide ("Model sizing behavior" +
  * "Calculating costs" tables) — see docs/ROADMAP.md Phase 1 (D1-D5).
  *
- * Retune without a code change via the OMNIGLYPH_GPT_PROFILES env var (JSON map
- * of model-id PREFIX -> partial profile; longest matching prefix wins, checked
- * BEFORE the built-in table). Partial fields fall back to the built-in match, so
- * you can override just one knob:
+ * Retune without a code change via the OMNIGLYPH_MODEL_PROFILES env var (JSON
+ * map of model-id PREFIX -> partial profile; longest matching prefix wins,
+ * checked BEFORE the built-in table). Partial fields fall back to the built-in
+ * match, so you can override just one knob:
  *
- *   OMNIGLYPH_GPT_PROFILES='{"gpt-5.6":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":200,"maxHeightPx":2400}}'
- *   OMNIGLYPH_GPT_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
+ *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":200,"maxHeightPx":2400}}'
+ *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
+ *
+ * The legacy OMNIGLYPH_GPT_PROFILES name is still accepted (falls back when
+ * OMNIGLYPH_MODEL_PROFILES is unset) so existing deployments keep working.
  */
 
 import type { RenderStyle } from './render.js';
@@ -201,7 +204,8 @@ function parseEnvProfiles(raw: string): Map<string, ModelProfile> {
 }
 
 function envProfiles(): Map<string, ModelProfile> {
-  const raw = (typeof process !== 'undefined' && process.env && process.env.OMNIGLYPH_GPT_PROFILES) || '';
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  const raw = (env && (env.OMNIGLYPH_MODEL_PROFILES || env.OMNIGLYPH_GPT_PROFILES)) || '';
   if (raw !== envRaw) {
     envRaw = raw;
     envMap = parseEnvProfiles(raw);

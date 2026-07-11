@@ -3,7 +3,7 @@
  * Phase 1, D1-D5). Ground truth: developers.openai.com images-vision guide,
  * "Model sizing behavior" + "Calculating costs" tables (captured 2026-07-05).
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { resolveModelProfile } from '../src/core/openai-wire-profiles.js';
 import { openAIVisionTokens, transformOpenAIChatCompletions } from '../src/core/openai.js';
 
@@ -113,5 +113,22 @@ describe('render style — optional per-model knob, absent for GPT', () => {
       // No style field on any shipped GPT profile → renderer keeps its {} default.
       expect(resolveModelProfile(m).style, m).toBeUndefined();
     }
+  });
+});
+
+describe('provider-neutral profile env name', () => {
+  afterEach(() => {
+    delete process.env.OMNIGLYPH_MODEL_PROFILES;
+    delete process.env.OMNIGLYPH_GPT_PROFILES;
+  });
+
+  it('OMNIGLYPH_MODEL_PROFILES overrides a profile (neutral env name)', () => {
+    process.env.OMNIGLYPH_MODEL_PROFILES = JSON.stringify({ 'gpt-5.6': { stripCols: 99 } });
+    expect(resolveModelProfile('gpt-5.6').stripCols).toBe(99);
+  });
+
+  it('legacy OMNIGLYPH_GPT_PROFILES still works', () => {
+    process.env.OMNIGLYPH_GPT_PROFILES = JSON.stringify({ 'gpt-5.6': { stripCols: 77 } });
+    expect(resolveModelProfile('gpt-5.6').stripCols).toBe(77);
   });
 });
