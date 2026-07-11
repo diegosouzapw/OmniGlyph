@@ -106,3 +106,12 @@ describe('geometry — per-profile page heights aligned to the two billing grids
     }
   });
 });
+
+describe('render style — optional per-model knob, absent for GPT', () => {
+  it('current GPT models carry no render style (style stays byte-identical default)', () => {
+    for (const m of ['gpt-5.6', 'gpt-5-chat-latest', 'o4-mini', 'gpt-4o-mini']) {
+      // No style field on any shipped GPT profile → renderer keeps its {} default.
+      expect(resolveModelProfile(m).style, m).toBeUndefined();
+    }
+  });
+});

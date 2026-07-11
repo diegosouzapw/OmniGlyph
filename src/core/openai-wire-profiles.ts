@@ -16,6 +16,8 @@
  *   OMNIGLYPH_GPT_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
  */
 
+import type { RenderStyle } from './render.js';
+
 /**
  * OpenAI-wire strip heights, DECOUPLED from render.ts's Anthropic geometry.
  * OpenAI's tile regime resizes to fit 2048×2048 then shortest side → 768; the
@@ -46,6 +48,10 @@ export interface ModelProfile {
    *  budget) exists only on gpt-5.4+ flagships — sending it elsewhere is out of
    *  contract (audit D5). Everything else gets `high`. */
   detail: 'original' | 'high';
+  /** Optional per-model render style (glyph cell padding, grid, marker). Absent
+   *  for GPT/o-series (they render at the default 5×8 cell); set only for models
+   *  that measured better at a denser cell (e.g. Grok's effective 9×12). */
+  style?: RenderStyle;
 }
 
 /** Default downscale-safe strip width (768px). Exported as the global cols default. */
@@ -188,6 +194,7 @@ function parseEnvProfiles(raw: string): Map<string, ModelProfile> {
       stripCols: posInt(p.stripCols, base.stripCols),
       maxHeightPx: posInt(p.maxHeightPx, base.maxHeightPx),
       detail: validDetail(p.detail, base.detail),
+      style: p.style ?? base.style,
     });
   }
   return out;

@@ -687,7 +687,12 @@ export async function transformOpenAIChatCompletions(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, {}, resolveModelProfile(req.model).maxHeightPx);
+  const images = await renderTextToPngs(
+    renderedText,
+    cols,
+    resolveModelProfile(req.model).style ?? {},
+    resolveModelProfile(req.model).maxHeightPx,
+  );
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };
@@ -749,6 +754,7 @@ export async function transformOpenAIChatCompletions(
       reflow: o.reflow,
       cols: o.gptHistory?.cols ?? resolveModelProfile(req.model).stripCols,
       maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveModelProfile(req.model).maxHeightPx,
+      style: resolveModelProfile(req.model).style,
     });
     foldGptHistory(info, req.model, plan);
     const allImages = [...plan.images, ...plan.imagesAfter];
@@ -894,7 +900,12 @@ export async function transformOpenAIResponses(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, {}, resolveModelProfile(req.model).maxHeightPx);
+  const images = await renderTextToPngs(
+    renderedText,
+    cols,
+    resolveModelProfile(req.model).style ?? {},
+    resolveModelProfile(req.model).maxHeightPx,
+  );
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };
@@ -987,6 +998,7 @@ export async function transformOpenAIResponses(
       reflow: o.reflow,
       cols: o.gptHistory?.cols ?? resolveModelProfile(req.model).stripCols,
       maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveModelProfile(req.model).maxHeightPx,
+      style: resolveModelProfile(req.model).style,
     });
     foldGptHistory(info, req.model, plan);
     const allImages = [...plan.images, ...plan.imagesAfter];
