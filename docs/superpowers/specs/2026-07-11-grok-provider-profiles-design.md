@@ -50,9 +50,12 @@ with its own spec/PR.
     resolves to: Spleen+Unifont **9×12 effective** (via `cellWBonus`/
     `cellHBonus` over the 5×8 base), **84 columns**, **1932 px** max height,
     `factsheet: true`, `detail: 'high'`, xAI billing.
-  - **Back-compat aliases** kept and re-exported: `resolveGptProfile =
-    resolveModelProfile`, `GptModelProfile = ModelProfile`, etc., so
-    `src/core/index.ts` public API (consumed by OmniRoute) does not break.
+  - The resolver is **internal**: `src/core/index.ts` re-exports
+    `resolveVisionCost` / `openAIVisionTokens` from `openai.ts`, **not**
+    `resolveGptProfile`. Only `openai.ts`, `openai-history.ts`, and
+    `tests/gpt-billing-audit.test.ts` import it — so the rename is internal-only
+    and needs no back-compat aliases (OmniRoute's consumed symbols are
+    unaffected). Verified against `index.ts` on 2026-07-11.
   - **Override env**: `OMNIGLYPH_GPT_PROFILES` keeps working; add the neutral
     `OMNIGLYPH_MODEL_PROFILES` (same parser, extended to accept the new style
     fields, with validation + fallback). The GPT-specific name is documented as
@@ -155,8 +158,10 @@ Grok work.
 
 - **Provider-neutral file name**: proposed `openai-wire-profiles.ts`
   (alternative `vision-model-profiles.ts`). Confirm before the rename PR.
-- **Public-API surface**: the rename must keep `src/core/index.ts` re-exports
-  stable via aliases; verify OmniRoute's consumed symbols are all aliased.
+- **Public-API surface**: resolved — the resolver is internal (not in
+  `index.ts`), so the rename is internal-only. OmniRoute consumes
+  `resolveVisionCost` / `openAIVisionTokens` (from `openai.ts`), which the
+  rename does not touch.
 - **Grok billing constants** must reflect real xAI pricing; source them
   explicitly (upstream constants + xAI docs), since they feed the profitability
   gate.
