@@ -1152,16 +1152,24 @@ function countVisualRows(text: string, cols: number): number {
  *
  *  `numCols` (default 1) packs that many text columns side-by-side per
  *  image — must match the `multiCol` setting wired through to the renderer
- *  for the math to predict the actual image count. */
+ *  for the math to predict the actual image count.
+ *
+ *  `cellH` (default the module's base `CELL_H`) is the EFFECTIVE glyph cell
+ *  height in px. Callers whose resolved render profile bumps the cell taller
+ *  than the base 5×8 (e.g. Grok's 9×12 style) must pass that effective height
+ *  so the row-capacity-per-image math — and thus the page count — matches
+ *  what render.ts will actually produce. Every existing caller keeps the
+ *  default and stays byte-identical. */
 export function estimateImageCount(
   textOrLen: string | number,
   cols: number,
   numCols: number = 1,
   maxCharsPerImage: number = READABLE_CHARS_PER_IMAGE,
   maxHeightPx: number = MAX_HEIGHT_PX,
+  cellH: number = CELL_H,
 ): number {
   const n = Math.max(1, numCols | 0);
-  const hardLinesPerImg = Math.max(1, Math.floor((maxHeightPx - 2 * PAD_Y) / CELL_H));
+  const hardLinesPerImg = Math.max(1, Math.floor((maxHeightPx - 2 * PAD_Y) / cellH));
   const readableLinesPerCol = Math.max(1, Math.floor(maxCharsPerImage / Math.max(1, cols)));
   const linesPerImage = Math.min(hardLinesPerImg, readableLinesPerCol) * n;
   const charBudget = Math.max(1, maxCharsPerImage * n);

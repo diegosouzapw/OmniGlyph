@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isGrokModel, visionTokensForModel, GROK_TOKENS_PER_MEGAPIXEL, openAIVisionTokens } from '../src/core/openai.js';
+import {
+  isGrokModel,
+  visionTokensForModel,
+  GROK_TOKENS_PER_MEGAPIXEL,
+  openAIVisionTokens,
+  evalOpenAIGate,
+} from '../src/core/openai.js';
 import { openAICacheReadRate, openAIOutputRate, GROK_CACHE_READ_RATE, GROK_OUTPUT_RATE } from '../src/core/openai-savings.js';
 import { resolveModelProfile, WIRE_MAX_HEIGHT_PX } from '../src/core/openai-wire-profiles.js';
 
@@ -41,5 +47,21 @@ describe('Grok render profile', () => {
     expect(p.maxHeightPx).toBe(WIRE_MAX_HEIGHT_PX);
     expect(p.detail).toBe('high');
     expect(p.style).toEqual({ cellWBonus: 4, cellHBonus: 4 });
+  });
+});
+
+describe('Grok profitability gate uses resolved render-style geometry', () => {
+  it('imageTokens reflect the effective 9x12 cell (wider strip + more pages), not the base 5x8', () => {
+    // Same text, same cols, same charsPerToken for both models — isolates the
+    // difference to the resolved style bonuses (grok's cellWBonus/cellHBonus)
+    // rather than to differing stripCols. Long enough to span multiple pages
+    // so the taller effective cell also changes the image *count*, not just
+    // the per-image token price.
+    const text = 'Follow the rules carefully. '.repeat(4000);
+    const cols = 100;
+    const cpt = 4;
+    const grok = evalOpenAIGate('grok-4.5', text, cols, cpt);
+    const gpt = evalOpenAIGate('gpt-5.6', text, cols, cpt);
+    expect(grok.imageTokens).toBeGreaterThan(gpt.imageTokens);
   });
 });

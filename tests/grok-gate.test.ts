@@ -60,7 +60,11 @@ function fakeUpstream() {
   return { main, restore: () => { globalThis.fetch = real; } };
 }
 
-async function driveAndCapture(path: string, body: string): Promise<{ event: ProxyEvent; out: string }> {
+async function driveAndCapture(
+  path: string,
+  body: string,
+  transform: Record<string, unknown> = {}, // realistic gate — DEFAULTS (charsPerToken 4, minCompressChars 2000)
+): Promise<{ event: ProxyEvent; out: string }> {
   const cap = fakeUpstream();
   let event: ProxyEvent | undefined;
   const proxy = createProxy({
@@ -68,7 +72,7 @@ async function driveAndCapture(path: string, body: string): Promise<{ event: Pro
     apiKey: 'sk-ant',
     openAIUpstream: 'https://openai.test',
     openAIApiKey: 'sk-oai',
-    transform: {}, // realistic gate — DEFAULTS (charsPerToken 4, minCompressChars 2000)
+    transform,
     onRequest: (e) => { event = e; },
   });
   const res = await proxy(
@@ -125,7 +129,19 @@ describe('proxy e2e: grok stays text-only until acked', () => {
 
   it('with the ack set: grok compresses normally', async () => {
     process.env.OMNIGLYPH_UNVERIFIED_MODELS = 'grok-4.5';
-    const { event, out } = await driveAndCapture('/v1/chat/completions', grokBody());
+    // FORCE (same idiom as cache-stability-e2e/design-behavior-e2e/refusal-retry):
+    // this test isolates the ACK gate flow, not the profitability math (that's
+    // covered by grok-billing.test.ts's evalOpenAIGate assertions). At the
+    // realistic charsPerToken=4 default, Grok's dense 9x12 strip genuinely
+    // costs more than plain prose text for this slab shape — see the
+    // profitability-gate fix (2026-07-11): the gate now derives image cost
+    // from the RESOLVED render geometry instead of the base 5x8 cell, so it
+    // correctly prices Grok's wider/taller strip instead of under-costing it.
+    const { event, out } = await driveAndCapture(
+      '/v1/chat/completions',
+      grokBody(),
+      { charsPerToken: 1, minCompressChars: 1 },
+    );
     expect(event.info?.compressed).toBe(true);
     expect(out).toContain('image_url');
   });

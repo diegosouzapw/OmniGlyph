@@ -74,6 +74,18 @@ describe('estimateImageCount', () => {
     expect(estimateImageCount(READABLE_CHARS_PER_IMAGE, COLS)).toBe(1);
     expect(estimateImageCount(READABLE_CHARS_PER_IMAGE + 1, COLS)).toBe(2);
   });
+
+  it('an optional trailing cellH pages a taller effective cell (e.g. Grok 9x12) into more images', () => {
+    // 10 full default pages worth of rows (900 rows at cellH=8, 90 rows/img).
+    const text = Array.from({ length: ROWS_PER_IMG * 10 }, () => 'x').join('\n');
+    const maxHeightPx = 728;
+    const defaultCount = estimateImageCount(text, COLS, 1, undefined, maxHeightPx);
+    expect(defaultCount).toBe(10);
+    // cellH=12 (Grok's effective row height) leaves only floor((728-8)/12)=60
+    // rows/img, so the same 900 rows must spread over MORE images.
+    const tallerCellCount = estimateImageCount(text, COLS, 1, undefined, maxHeightPx, 12);
+    expect(tallerCellCount).toBeGreaterThan(defaultCount);
+  });
 });
 
 describe('dense readable render profile', () => {

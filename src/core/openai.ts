@@ -12,6 +12,7 @@ import {
   shrinkColsToContent,
   PAD_X,
   CELL_W,
+  CELL_H,
   type RenderedImage,
 } from './render.js';
 import {
@@ -494,16 +495,32 @@ function droppedCodepointsTop(droppedCodepoints: Map<number, number>): Record<st
   return out;
 }
 
-/** Shared gate: compute image vs text token cost and decide profitability. */
-function evalOpenAIGate(
+/** Shared gate: compute image vs text token cost and decide profitability.
+ *  Derives the strip width and per-image row capacity from the model's
+ *  RESOLVED render style (cellWBonus/cellHBonus), not the fixed base 5×8
+ *  cell — a style override (e.g. Grok's effective 9×12) would otherwise
+ *  leave the gate under-costing the render it's actually gating, letting a
+ *  net-loss slab through as "profitable". GPT has no style override, so its
+ *  effective cell equals the base cell and this is a no-op for it. Exported
+ *  for tests. */
+export function evalOpenAIGate(
   model: string,
   renderedText: string,
   cols: number,
   charsPerToken: number,
 ): { imageTokens: number; textTokens: number; profitable: boolean } {
-  const stripW = 2 * PAD_X + cols * CELL_W;
-  const estImages = estimateImageCount(renderedText, cols, 1);
-  const perStrip = visionTokensForModel(model, stripW, resolveModelProfile(model).maxHeightPx);
+  const profile = resolveModelProfile(model);
+  const style = profile.style;
+  const effectiveCellW = CELL_W + (style?.cellWBonus ?? 0);
+  const effectiveCellH = CELL_H + (style?.cellHBonus ?? 0);
+  const stripW = 2 * PAD_X + cols * effectiveCellW;
+  // maxHeightPx intentionally NOT overridden here — the pre-existing gate
+  // estimate uses estimateImageCount's own default (render.ts's Anthropic-page
+  // MAX_HEIGHT_PX), decoupled from the model's wire maxHeightPx used below for
+  // the actual per-strip vision-token price. Only the cell geometry is in
+  // scope for this fix; changing that default would alter GPT's gate math too.
+  const estImages = estimateImageCount(renderedText, cols, 1, undefined, undefined, effectiveCellH);
+  const perStrip = visionTokensForModel(model, stripW, profile.maxHeightPx);
   const imageTokens = estImages * perStrip;
   const textTokens = renderedText.length / charsPerToken;
   return { imageTokens, textTokens, profitable: imageTokens < textTokens };
