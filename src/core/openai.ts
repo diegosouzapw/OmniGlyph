@@ -514,12 +514,16 @@ export function evalOpenAIGate(
   const effectiveCellW = CELL_W + (style?.cellWBonus ?? 0);
   const effectiveCellH = CELL_H + (style?.cellHBonus ?? 0);
   const stripW = 2 * PAD_X + cols * effectiveCellW;
-  // maxHeightPx intentionally NOT overridden here — the pre-existing gate
-  // estimate uses estimateImageCount's own default (render.ts's Anthropic-page
-  // MAX_HEIGHT_PX), decoupled from the model's wire maxHeightPx used below for
-  // the actual per-strip vision-token price. Only the cell geometry is in
-  // scope for this fix; changing that default would alter GPT's gate math too.
-  const estImages = estimateImageCount(renderedText, cols, 1, undefined, undefined, effectiveCellH);
+  // Page COUNT and per-strip PRICE must use the SAME height: the model's wire
+  // page height (profile.maxHeightPx), which is also the height render.ts
+  // actually paginates at on this leg. Counting pages at estimateImageCount's
+  // 728px Anthropic-band default while pricing each strip at the 2048px wire
+  // height over-counted pages ~2.83× — harmless-looking for GPT's tile pricing
+  // but, for Grok's linear tok/MPix price, it over-costed images ~2.8× and
+  // wrongly declined genuinely-saving slabs. Receipt: grok-billing.test.ts
+  // ("page count must match the actual render height") shows the estimate at
+  // profile.maxHeightPx matches the real rendered page count.
+  const estImages = estimateImageCount(renderedText, cols, 1, undefined, profile.maxHeightPx, effectiveCellH);
   const perStrip = visionTokensForModel(model, stripW, profile.maxHeightPx);
   const imageTokens = estImages * perStrip;
   const textTokens = renderedText.length / charsPerToken;

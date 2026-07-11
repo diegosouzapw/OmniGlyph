@@ -129,19 +129,11 @@ describe('proxy e2e: grok stays text-only until acked', () => {
 
   it('with the ack set: grok compresses normally', async () => {
     process.env.OMNIGLYPH_UNVERIFIED_MODELS = 'grok-4.5';
-    // FORCE (same idiom as cache-stability-e2e/design-behavior-e2e/refusal-retry):
-    // this test isolates the ACK gate flow, not the profitability math (that's
-    // covered by grok-billing.test.ts's evalOpenAIGate assertions). At the
-    // realistic charsPerToken=4 default, Grok's dense 9x12 strip genuinely
-    // costs more than plain prose text for this slab shape — see the
-    // profitability-gate fix (2026-07-11): the gate now derives image cost
-    // from the RESOLVED render geometry instead of the base 5x8 cell, so it
-    // correctly prices Grok's wider/taller strip instead of under-costing it.
-    const { event, out } = await driveAndCapture(
-      '/v1/chat/completions',
-      grokBody(),
-      { charsPerToken: 1, minCompressChars: 1 },
-    );
+    // Realistic DEFAULT gate (charsPerToken 4): this 60k prose slab genuinely
+    // saves tokens at Grok's dense 9x12 cell once the gate counts pages at the
+    // real 2048px wire page height (not the 728px Anthropic-band default) — so
+    // the ack path both unblocks imaging AND the profitability math approves it.
+    const { event, out } = await driveAndCapture('/v1/chat/completions', grokBody());
     expect(event.info?.compressed).toBe(true);
     expect(out).toContain('image_url');
   });
