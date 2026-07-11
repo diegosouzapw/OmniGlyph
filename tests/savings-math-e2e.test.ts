@@ -19,9 +19,25 @@
  *
  * Run just this file:  pnpm vitest run tests/savings-math-e2e.test.ts
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createProxy, type ProxyEvent } from '../src/core/proxy.js';
 import { countTokens as o200k } from 'gpt-tokenizer/encoding/o200k_base';
+
+// The GPT cases drive 'gpt-5.6', which is in the built-in default scope — but a
+// developer who exports OMNIGLYPH_MODELS in their shell (the documented way to
+// persist the scope) can narrow it to exclude GPT, at which point the proxy
+// stops imaging GPT and these assertions fail on ambient env alone. Pin the
+// scope to the built-in default so the file is deterministic regardless of the
+// shell (same snapshot/set/restore convention as proxy-usage.test.ts).
+let ambientModels: string | undefined;
+beforeAll(() => {
+  ambientModels = process.env.OMNIGLYPH_MODELS;
+  process.env.OMNIGLYPH_MODELS = 'claude-fable-5,gpt-5.6';
+});
+afterAll(() => {
+  if (ambientModels === undefined) delete process.env.OMNIGLYPH_MODELS;
+  else process.env.OMNIGLYPH_MODELS = ambientModels;
+});
 
 const PROBE_TOKENS = 9999; // canned count_tokens result from the fake upstream
 

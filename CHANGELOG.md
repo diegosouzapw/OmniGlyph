@@ -21,6 +21,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Changed
 
+- **test:** pin `OMNIGLYPH_MODELS` to the built-in default scope in the
+  savings-math e2e so the file is deterministic regardless of a developer's
+  ambient shell. The GPT cases drive `gpt-5.6`; a shell that exports a narrowed
+  `OMNIGLYPH_MODELS` (excluding GPT) previously made them fail on env alone.
+  Snapshot/set/restore, same convention as `proxy-usage.test.ts`. Assertions
+  unchanged.
 - **test:** raise the Vitest per-test timeout to 30s so genuinely slow render
   e2e cases (full reflow + PNG encode) are not false-negative timeouts on
   slower/CI machines. Assertions are unchanged. (thanks @ousamabenyounes)
