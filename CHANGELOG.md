@@ -27,6 +27,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(transform):** the profitability gate no longer counts the reflow ↵
+  sentinel as a visual row break. Reflow packs hard newlines into one
+  soft-wrapped stream (↵ is an inline glyph the renderer never breaks on), so
+  treating it as a break overstated image pages up to ~6× on reflowed history —
+  which flipped genuinely profitable history collapses to `not_profitable` and
+  left savings on the table. The gate now counts visual rows exactly as the
+  renderer wraps them.
 - **fix(factsheet):** capture transactional exact-token classes — email
   addresses, IBAN-like account strings, and currency amounts (`$14,360`). They
   join the protected tier-0 anchors (alongside SHAs, UUIDs, `CONST_IDS`, tickets,
