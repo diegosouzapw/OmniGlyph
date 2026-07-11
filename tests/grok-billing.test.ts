@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isGrokModel, visionTokensForModel, GROK_TOKENS_PER_MEGAPIXEL, openAIVisionTokens } from '../src/core/openai.js';
 import { openAICacheReadRate, openAIOutputRate, GROK_CACHE_READ_RATE, GROK_OUTPUT_RATE } from '../src/core/openai-savings.js';
+import { resolveModelProfile, WIRE_MAX_HEIGHT_PX } from '../src/core/openai-wire-profiles.js';
 
 describe('Grok pixel vision pricing', () => {
   it('detects grok models', () => {
@@ -30,5 +31,15 @@ describe('Grok billing rates', () => {
   it('leaves gpt-5 rates unchanged', () => {
     expect(openAICacheReadRate('gpt-5.6')).toBe(0.1);
     expect(openAIOutputRate('gpt-5.6')).toBe(8);
+  });
+});
+
+describe('Grok render profile', () => {
+  it('resolves grok to the dense 9x12 opt-in profile', () => {
+    const p = resolveModelProfile('grok-4.5');
+    expect(p.stripCols).toBe(84);
+    expect(p.maxHeightPx).toBe(WIRE_MAX_HEIGHT_PX);
+    expect(p.detail).toBe('high');
+    expect(p.style).toEqual({ cellWBonus: 4, cellHBonus: 4 });
   });
 });

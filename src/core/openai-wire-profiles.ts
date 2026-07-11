@@ -147,6 +147,21 @@ const BUILTIN_RULES: ProfileRule[] = [
     test: (m) => /^o[13]/.test(m),
     profile: { vision: { regime: 'tile', base: 75, perTile: 150 }, stripCols: C, maxHeightPx: H, detail: 'high' },
   },
+  // Grok (Responses path), opt-in only. Live climb 2026-07-09 on grok-4.5: 5×8
+  // and 7×10 confabulate exact IDs; effective 9×12 (Spleen 5×8 + 4px spacing) is
+  // the densest arm that reached 4/4 exact, 0 confab. The verbatim fact-sheet
+  // rides beside the images as defense in depth. Vision numbers here are a
+  // conservative placeholder — visionTokensForModel prices Grok by pixels.
+  {
+    test: (m) => /^grok-/.test(m),
+    profile: {
+      vision: { regime: 'tile', base: 85, perTile: 170 },
+      stripCols: 84,
+      maxHeightPx: H,
+      detail: 'high',
+      style: { cellWBonus: 4, cellHBonus: 4 },
+    },
+  },
 ];
 
 function resolveBuiltin(m: string): ModelProfile {
