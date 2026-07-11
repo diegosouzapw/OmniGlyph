@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { isGrokModel, visionTokensForModel, GROK_TOKENS_PER_MEGAPIXEL, openAIVisionTokens } from '../src/core/openai.js';
+import { openAICacheReadRate, openAIOutputRate, GROK_CACHE_READ_RATE, GROK_OUTPUT_RATE } from '../src/core/openai-savings.js';
 
 describe('Grok pixel vision pricing', () => {
   it('detects grok models', () => {
@@ -16,5 +17,18 @@ describe('Grok pixel vision pricing', () => {
   });
   it('leaves GPT pricing on the OpenAI tile/patch formula', () => {
     expect(visionTokensForModel('gpt-5.6', 768, 728)).toBe(openAIVisionTokens('gpt-5.6', 768, 728));
+  });
+});
+
+describe('Grok billing rates', () => {
+  it('uses xAI cache/output ratios for grok', () => {
+    expect(GROK_CACHE_READ_RATE).toBe(0.25);
+    expect(GROK_OUTPUT_RATE).toBe(3);
+    expect(openAICacheReadRate('grok-4.5')).toBe(0.25);
+    expect(openAIOutputRate('grok-4.5')).toBe(3);
+  });
+  it('leaves gpt-5 rates unchanged', () => {
+    expect(openAICacheReadRate('gpt-5.6')).toBe(0.1);
+    expect(openAIOutputRate('gpt-5.6')).toBe(8);
   });
 });
