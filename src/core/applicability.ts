@@ -5,7 +5,8 @@ export type OmniGlyphApplicabilityReason =
   | 'unsupported_model'
   | 'unsupported_method'
   | 'unsupported_path'
-  | 'empty_body';
+  | 'empty_body'
+  | 'model_unverified';
 
 export interface OmniGlyphApplicabilityInput {
   readonly model?: string | null;
@@ -114,6 +115,34 @@ export function isAnthropicMessagesPath(pathname: string): boolean {
   return pathname === '/v1/messages'
     || pathname === '/anthropic/v1/messages'
     || pathname === '/anthropic/messages';
+}
+
+/** Bases that pass reading only on upstream's n=1 evidence, not OmniGlyph's own.
+ *  Fail-closed: they may be opted into OMNIGLYPH_MODELS, but stay text-only
+ *  until an operator explicitly acks the risk (OMNIGLYPH_UNVERIFIED_MODELS) —
+ *  and are removed from this list only when OmniGlyph's own reading receipt
+ *  clears them (measurement before claims). */
+const UNVERIFIED_MODEL_BASES = ['grok'];
+
+function isUnverifiedBase(model: string | null | undefined): boolean {
+  if (typeof model !== 'string') return false;
+  const base = baseModelId(model);
+  return UNVERIFIED_MODEL_BASES.some((b) => base === b || base.startsWith(`${b}-`));
+}
+
+function unverifiedAckBases(): string[] {
+  const raw = typeof process !== 'undefined' ? process.env?.OMNIGLYPH_UNVERIFIED_MODELS : undefined;
+  if (!raw || !raw.trim()) return [];
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/** True when OmniGlyph may actually IMAGE this model (vs pass it through as
+ *  text). Verified models: always. Unverified bases (e.g. grok): only when the
+ *  exact base is acked via OMNIGLYPH_UNVERIFIED_MODELS. */
+export function isModelImageable(model: string | null | undefined): boolean {
+  if (!isUnverifiedBase(model)) return true;
+  const base = baseModelId(model as string);
+  return unverifiedAckBases().some((b) => base === b || base.startsWith(`${b}-`));
 }
 
 export function shouldTransformAnthropicMessages(
