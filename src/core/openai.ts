@@ -102,6 +102,26 @@ export function openAIVisionTokens(model: string, w: number, h: number): number 
   return c.base + c.perTile * (Math.ceil(W / 512) * Math.ceil(H / 512));
 }
 
+/** True for xAI Grok models (served on the OpenAI-compatible wire). */
+export function isGrokModel(model: string | null | undefined): boolean {
+  return (model ?? '').toLowerCase().startsWith('grok-');
+}
+
+/** Measured 2026-07-09 on grok-4.5: image-token delta ≈ 1000 per megapixel
+ *  across several page sizes (768×336 → 268, 764×980 → 748, …). */
+export const GROK_TOKENS_PER_MEGAPIXEL = 1000;
+
+/** Per-image vision-token cost for the model actually serving the request.
+ *  Grok bills by measured tokens/MPix; GPT/o-series use the OpenAI tile/patch
+ *  formula. Model-based, not endpoint-based. */
+export function visionTokensForModel(model: string, w: number, h: number): number {
+  if (isGrokModel(model)) {
+    const pixels = Math.max(0, w) * Math.max(0, h);
+    return Math.max(1, Math.ceil((pixels / 1_000_000) * GROK_TOKENS_PER_MEGAPIXEL));
+  }
+  return openAIVisionTokens(model, w, h);
+}
+
 type OpenAIRole = 'system' | 'developer' | 'user' | 'assistant' | 'tool' | string;
 
 interface OpenAITextPart {
@@ -483,7 +503,7 @@ function evalOpenAIGate(
 ): { imageTokens: number; textTokens: number; profitable: boolean } {
   const stripW = 2 * PAD_X + cols * CELL_W;
   const estImages = estimateImageCount(renderedText, cols, 1);
-  const perStrip = openAIVisionTokens(model, stripW, resolveModelProfile(model).maxHeightPx);
+  const perStrip = visionTokensForModel(model, stripW, resolveModelProfile(model).maxHeightPx);
   const imageTokens = estImages * perStrip;
   const textTokens = renderedText.length / charsPerToken;
   return { imageTokens, textTokens, profitable: imageTokens < textTokens };
@@ -522,7 +542,7 @@ function gptTextTokens(text: string): number {
  *  what GPT actually bills as input for the slab OmniGlyph imaged. */
 function gptImageTokens(model: string, images: RenderedImage[]): number {
   let n = 0;
-  for (const img of images) n += openAIVisionTokens(model, img.width, img.height);
+  for (const img of images) n += visionTokensForModel(model, img.width, img.height);
   return n;
 }
 
