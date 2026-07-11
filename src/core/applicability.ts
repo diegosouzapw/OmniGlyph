@@ -126,22 +126,25 @@ const UNVERIFIED_MODEL_BASES = ['grok'];
 
 function isUnverifiedBase(model: string | null | undefined): boolean {
   if (typeof model !== 'string') return false;
-  const base = baseModelId(model);
+  // Lowercase to match isGrokModel/resolveModelProfile — a safety gate must fail
+  // closed regardless of casing, or `Grok-4.5` would still render+price as Grok
+  // while escaping the unverified check.
+  const base = baseModelId(model).toLowerCase();
   return UNVERIFIED_MODEL_BASES.some((b) => base === b || base.startsWith(`${b}-`));
 }
 
 function unverifiedAckBases(): string[] {
   const raw = typeof process !== 'undefined' ? process.env?.OMNIGLYPH_UNVERIFIED_MODELS : undefined;
   if (!raw || !raw.trim()) return [];
-  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
 /** True when OmniGlyph may actually IMAGE this model (vs pass it through as
  *  text). Verified models: always. Unverified bases (e.g. grok): only when the
- *  exact base is acked via OMNIGLYPH_UNVERIFIED_MODELS. */
+ *  exact base is acked via OMNIGLYPH_UNVERIFIED_MODELS. Casing-insensitive. */
 export function isModelImageable(model: string | null | undefined): boolean {
   if (!isUnverifiedBase(model)) return true;
-  const base = baseModelId(model as string);
+  const base = baseModelId(model as string).toLowerCase();
   return unverifiedAckBases().some((b) => base === b || base.startsWith(`${b}-`));
 }
 

@@ -20,6 +20,13 @@ describe('unverified-model gate', () => {
     process.env.OMNIGLYPH_UNVERIFIED_MODELS = 'grok-9';
     expect(isModelImageable('grok-4.5')).toBe(false);
   });
+  it('fails closed on non-canonical casing (a safety gate must not be case-sensitive)', () => {
+    // isGrokModel/resolveModelProfile lowercase, so `Grok-4.5` still gets the
+    // Grok render + pixel pricing; the gate must match and require the ack too.
+    expect(isModelImageable('Grok-4.5')).toBe(false);
+    process.env.OMNIGLYPH_UNVERIFIED_MODELS = 'Grok-4.5';
+    expect(isModelImageable('grok-4.5')).toBe(true); // ack casing must not matter either
+  });
 });
 
 // ===========================================================================
