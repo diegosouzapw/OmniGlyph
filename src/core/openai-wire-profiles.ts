@@ -7,13 +7,13 @@
  * developers.openai.com images-vision guide ("Model sizing behavior" +
  * "Calculating costs" tables) — see docs/ROADMAP.md Phase 1 (D1-D5).
  *
- * Retune without a code change via the OMNIGLYPH_MODEL_PROFILES env var (JSON map
+ * Retune without a code change via the OMNIGLYPH_GPT_PROFILES env var (JSON map
  * of model-id PREFIX -> partial profile; longest matching prefix wins, checked
  * BEFORE the built-in table). Partial fields fall back to the built-in match, so
- * you can override just one knob (alias: OMNIGLYPH_GPT_PROFILES):
+ * you can override just one knob:
  *
- *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":200,"maxHeightPx":2400}}'
- *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
+ *   OMNIGLYPH_GPT_PROFILES='{"gpt-5.6":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":200,"maxHeightPx":2400}}'
+ *   OMNIGLYPH_GPT_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
  */
 
 /**
@@ -145,7 +145,7 @@ function resolveBuiltin(m: string): ModelProfile {
   return DEFAULT_MODEL_PROFILE;
 }
 
-// --- env override (OMNIGLYPH_MODEL_PROFILES) ---------------------------------
+// --- env override (OMNIGLYPH_GPT_PROFILES) ----------------------------------
 // Parsed lazily and memoized on the raw env string so tests can mutate
 // process.env and have it re-read, without re-parsing on every hot-path call.
 
