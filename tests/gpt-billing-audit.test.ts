@@ -4,14 +4,14 @@
  * "Model sizing behavior" + "Calculating costs" tables (captured 2026-07-05).
  */
 import { describe, expect, it } from 'vitest';
-import { resolveGptProfile } from '../src/core/gpt-model-profiles.js';
+import { resolveModelProfile } from '../src/core/openai-wire-profiles.js';
 import { openAIVisionTokens, transformOpenAIChatCompletions } from '../src/core/openai.js';
 
 const enc = new TextEncoder();
 
 describe('D1 — o4-mini multiplies patches by 1.72, not 1.62', () => {
   it('profile carries 1.72', () => {
-    const v = resolveGptProfile('o4-mini').vision;
+    const v = resolveModelProfile('o4-mini').vision;
     expect(v).toMatchObject({ regime: 'patch', multiplier: 1.72, patchCap: 1536 });
   });
 
@@ -22,7 +22,7 @@ describe('D1 — o4-mini multiplies patches by 1.72, not 1.62', () => {
 
 describe('D2 — gpt-4o-mini bills tile 2833/5667 (gate must never image it)', () => {
   it('profile carries the documented mini-tile rates', () => {
-    const v = resolveGptProfile('gpt-4o-mini').vision;
+    const v = resolveModelProfile('gpt-4o-mini').vision;
     expect(v).toMatchObject({ regime: 'tile', base: 2833, perTile: 5667 });
   });
 
@@ -46,7 +46,7 @@ describe('D2 — gpt-4o-mini bills tile 2833/5667 (gate must never image it)', (
 describe('D3 — gpt-5.1/5.2/5.3 (incl. codex/chat-latest) are cap-1536 patch, no original', () => {
   for (const m of ['gpt-5.2', 'gpt-5.2-chat-latest', 'gpt-5.2-codex', 'gpt-5.3-codex']) {
     it(`${m}: patch cap 1536, detail high`, () => {
-      const p = resolveGptProfile(m);
+      const p = resolveModelProfile(m);
       expect(p.vision).toMatchObject({ regime: 'patch', patchCap: 1536 });
       expect(p.detail).toBe('high');
     });
@@ -54,7 +54,7 @@ describe('D3 — gpt-5.1/5.2/5.3 (incl. codex/chat-latest) are cap-1536 patch, n
 
   it('flagships gpt-5.4/5.5/5.6 keep cap 10000 with detail original', () => {
     for (const m of ['gpt-5.4', 'gpt-5.5', 'gpt-5.6']) {
-      const p = resolveGptProfile(m);
+      const p = resolveModelProfile(m);
       expect(p.vision, m).toMatchObject({ regime: 'patch', multiplier: 1, patchCap: 10000 });
       expect(p.detail, m).toBe('original');
     }
@@ -64,7 +64,7 @@ describe('D3 — gpt-5.1/5.2/5.3 (incl. codex/chat-latest) are cap-1536 patch, n
 describe('D4 — codex-mini variants are patch models, not tile', () => {
   for (const m of ['gpt-5-codex-mini', 'gpt-5.1-codex-mini']) {
     it(`${m}: patch 1.62 cap 1536`, () => {
-      const p = resolveGptProfile(m);
+      const p = resolveModelProfile(m);
       expect(p.vision).toMatchObject({ regime: 'patch', multiplier: 1.62, patchCap: 1536 });
     });
   }
@@ -73,7 +73,7 @@ describe('D4 — codex-mini variants are patch models, not tile', () => {
 describe('D5 — detail derives from the profile instead of a hardcoded original', () => {
   it('non-flagship profiles carry detail high', () => {
     for (const m of ['gpt-5', 'gpt-5-chat-latest', 'gpt-4o', 'o1', 'gpt-5-mini', 'o4-mini', 'gpt-4o-mini']) {
-      expect(resolveGptProfile(m).detail, m).toBe('high');
+      expect(resolveModelProfile(m).detail, m).toBe('high');
     }
   });
 
@@ -96,13 +96,13 @@ describe('D5 — detail derives from the profile instead of a hardcoded original
 describe('geometry — per-profile page heights aligned to the two billing grids', () => {
   it('tile and flagship-patch profiles page at 2048 px (4×512 tiles / 64×32 patches)', () => {
     for (const m of ['gpt-5', 'gpt-4o', 'o1', 'gpt-5.5', 'gpt-5.6']) {
-      expect(resolveGptProfile(m).maxHeightPx, m).toBe(2048);
+      expect(resolveModelProfile(m).maxHeightPx, m).toBe(2048);
     }
   });
 
   it('cap-1536 patch profiles page at 1920 px (60×32 = 1440 patches of slack)', () => {
     for (const m of ['gpt-5-mini', 'gpt-5-nano', 'o4-mini', 'gpt-5.2', 'gpt-5-codex-mini']) {
-      expect(resolveGptProfile(m).maxHeightPx, m).toBe(1920);
+      expect(resolveModelProfile(m).maxHeightPx, m).toBe(1920);
     }
   });
 });
