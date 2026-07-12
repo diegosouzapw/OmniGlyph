@@ -4,7 +4,7 @@
  */
 
 import { transformRequest, type TransformOptions, type TransformInfo } from './transform.js';
-import { transformOpenAIChatCompletions, transformOpenAIResponses } from './openai.js';
+import { isClaudeModel, transformOpenAIChatCompletions, transformOpenAIResponses } from './openai.js';
 import {
   isAnthropicMessagesPath,
   isModelImageable,
@@ -834,8 +834,14 @@ export function createProxy(config: ProxyConfig = {}) {
         // Fail-closed: unreadable model → no compression, not a risky guess.
         const model = readModelField(bodyIn);
         requestModel = model ?? undefined;
+        // /v1/messages is only a wire schema: Claude Code can target a non-
+        // Anthropic model (for example a GPT base). Do not apply Claude's
+        // renderer or Anthropic count_tokens merely because the route is
+        // Messages-shaped. Non-Anthropic Messages requests fail closed to
+        // passthrough until a model-aware Messages→GPT transform exists.
+        const messagesAnthropic = isMessages && isClaudeModel(model);
         const modelOk = isMessages
-          ? isOmniGlyphSupportedModel(model)
+          ? messagesAnthropic && isOmniGlyphSupportedModel(model)
           : isOmniGlyphSupportedGptModel(model);
         // Supported but unverified (e.g. Grok without an operator ack): stays
         // text-only, fail-closed, until OMNIGLYPH_UNVERIFIED_MODELS explicitly
@@ -861,7 +867,7 @@ export function createProxy(config: ProxyConfig = {}) {
           reqBodySha8 = await sha8Bytes(r.body);
         }
 
-        if (isMessages) {
+        if (isMessages && messagesAnthropic) {
           baselineStatusApplies = true;
           // Probes fire on the ORIGINAL body before the main forward so all three overlap.
           // count_tokens is not billed; ~30-80ms latency is hidden by the main forward.

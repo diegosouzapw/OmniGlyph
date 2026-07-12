@@ -51,6 +51,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(proxy):** gate Messages transforms by model family. `/v1/messages` is
+  only a wire schema — Claude Code can point it at a non-Anthropic model — but
+  the proxy applied Claude's renderer and Anthropic's `count_tokens` baseline
+  probes to every Messages-shaped request. Messages requests now get the
+  Anthropic transform and probes only when the model is actually a Claude
+  model; otherwise they fail closed to passthrough.
 - **fix(transform):** the profitability gate no longer counts the reflow ↵
   sentinel as a visual row break. Reflow packs hard newlines into one
   soft-wrapped stream (↵ is an inline glyph the renderer never breaks on), so
