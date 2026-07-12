@@ -103,6 +103,27 @@ describe('factsheet extraction', () => {
     expect(extractFactSheetTokens(many).length).toBeLessThanOrEqual(96);
   });
 
+  it('prioritizes uppercase-labeled assignment values over anonymous hex log noise', () => {
+    const noise = Array.from({ length: 180 }, (_, i) =>
+      `trace8=${(0x10000000 + i * 7919).toString(16)} queue=${10000 + i}`,
+    );
+    const targetPath = '/srv/sol-pilot/releases/alpha-07/config/runtime-map.json';
+    const text = [
+      ...noise.slice(0, 60),
+      'DEPLOYMENT_FINGERPRINT=c7a1e90b4d2f',
+      'RUNTIME_FIELD=retryBudgetSeconds',
+      `ACTIVE_MANIFEST=${targetPath}`,
+      'CONTROL_PORT=47831',
+      ...noise.slice(60),
+    ].join('\n');
+    const toks = extractFactSheetTokens(text);
+    expect(toks).toContain('DEPLOYMENT_FINGERPRINT=c7a1e90b4d2f');
+    expect(toks).toContain('RUNTIME_FIELD=retryBudgetSeconds');
+    expect(toks).toContain(`ACTIVE_MANIFEST=${targetPath}`);
+    expect(toks).toContain('CONTROL_PORT=47831');
+    expect(toks.length).toBeLessThanOrEqual(MAX_TOKENS);
+  });
+
   it('protects short high-consequence tokens from eviction by long URLs', () => {
     // 80 long doc-URLs (well over the 96-token budget) plus a short commit SHA and a port —
     // the exact shape that silently dropped the SHA a coding agent needed off the image.

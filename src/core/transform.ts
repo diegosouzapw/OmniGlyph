@@ -80,6 +80,17 @@ export interface TransformOptions {
   compressReminders?: boolean;
   /** Compress large tool_result text content across all user messages. */
   compressToolResults?: boolean;
+  /** Image the static system-prompt + tool-docs slab. `false` keeps ALL
+   *  session config as native text — no slab render, no system-field
+   *  rewrite, no env relocation, no tool-doc stubbing (stubbed docs ride
+   *  inside the imaged slab, so without it they would be lost), and
+   *  first-message `<system-reminder>` blocks stay text — while tool_result
+   *  and history compression still run. Guard for Anthropic's
+   *  reasoning_extraction refusal classifier, which fires on
+   *  system-prompt-shaped content rendered inside user-message images
+   *  (2.6% refusal rate on reminder-imaged requests vs 0% uncompressed,
+   *  events.jsonl 2026-07-11). Default true. */
+  compressSystem?: boolean;
   /** Don't compress if total compressible chars below this. */
   minCompressChars?: number;
   /** Per-block threshold for compressReminders (chars). */
@@ -135,6 +146,7 @@ const DEFAULTS: Required<TransformOptions> = {
   compressTools: true,
   compressReminders: true,
   compressToolResults: true,
+  compressSystem: true,
   minCompressChars: 2000,
   // Below ~6k chars, per-image cost dominates savings (break-even territory).
   minReminderChars: 6000,
@@ -160,6 +172,14 @@ const DEFAULTS: Required<TransformOptions> = {
   collapseHistory: true,
   gptHistory: {},
 };
+
+/**
+ * Subscription OAuth requests are classified as Claude Code traffic only when
+ * this exact identity remains the first, separate top-level system block.
+ * Never render it into an image or concatenate other text into its block.
+ */
+export const CLAUDE_CODE_OAUTH_IDENTITY =
+  "You are Claude Code, Anthropic's official CLI for Claude.";
 
 // --- per-block break-even check ---
 //
@@ -962,7 +982,18 @@ function relocateAnchorToHistoryImage(messages: Message[] | undefined, anchorOrd
   if (!slabAnchor) return; // nothing to relocate → never add a marker
 
   historyImg.cache_control = slabAnchor.cache_control;
-  delete slabAnchor.cache_control;
+  // Moving a scope:"global" anchor would leave the (now unmarked) slab pages
+  // BEFORE a globally-scoped block — the invalid prefix Anthropic 400s. Global
+  // anchors are copied, not moved; plain ephemeral keeps pure relocation.
+  if (!isGlobalScopeCacheControl(slabAnchor.cache_control)) {
+    delete slabAnchor.cache_control;
+  }
+}
+
+/** Caller marker carries Anthropic's org-wide scope — subject to the
+ *  "every preceding block must also be globally scoped" prefix rule. */
+function isGlobalScopeCacheControl(cc: unknown): boolean {
+  return typeof cc === 'object' && cc !== null && (cc as { scope?: unknown }).scope === 'global';
 }
 
 /**
@@ -1525,6 +1556,7 @@ async function runHistoryCollapseAndFinalize(
       historyProfitable,
       {
         cols: o.cols, protectedPrefix: 0, reflow: o.reflow,
+        preserveReminderText: o.compressSystem === false,
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
       },
     );
@@ -1628,13 +1660,13 @@ export async function transformRequest(
   // Pull the volatile `# Environment` markdown section out BEFORE the
   // static/dynamic split so per-session git state never reaches the slab image.
   const { kept: envMarkdown, body: sysBody } = stripMarkdownEnvSection(sysBodyWithEnv);
-  const {
-    staticText,
-    dynamicText,
-    blockCount: dynBlocks,
-    unknownTags,
-    staticTagContents,
-  } = splitStaticDynamic(sysBody);
+  const splitSystem = splitStaticDynamic(sysBody);
+  let staticText = splitSystem.staticText;
+  const { dynamicText, blockCount: dynBlocks, unknownTags, staticTagContents } = splitSystem;
+  const preserveClaudeCodeIdentity = staticText.startsWith(CLAUDE_CODE_OAUTH_IDENTITY);
+  if (preserveClaudeCodeIdentity) {
+    staticText = staticText.slice(CLAUDE_CODE_OAUTH_IDENTITY.length).replace(/^\s+/, '');
+  }
   info.staticChars = staticText.length;
   info.dynamicChars = dynamicText.length + envMarkdown.length;
   info.dynamicBlockCount = dynBlocks;
@@ -1665,6 +1697,20 @@ export async function transformRequest(
     if (churning.length > 0) info.churningStaticTags = churning;
   }
 
+  // compressSystem=false: session config (system prompt, tool docs, reminders)
+  // stays native text — skip the slab gate/render, the system-field rewrite +
+  // first-message splice (sections 4/5a), AND tool-doc compression (section 2:
+  // stubbed docs ride inside the imaged slab, so without it they would be
+  // silently destroyed); tool_result (5b) and history (6) compression still
+  // run. Section 6's protectedPrefix shields the opening config-bearing user
+  // message, and demoteProtectedHeadText keeps its <system-reminder> blocks
+  // verbatim. Guard for Anthropic's reasoning_extraction refusal classifier,
+  // which fires on system-prompt-shaped content rendered inside user-message
+  // images (2.6% refusal rate on reminder-imaged requests vs 0% uncompressed,
+  // events.jsonl 2026-07-11).
+  const keepSystemText = o.compressSystem === false;
+  if (keepSystemText) info.reason = 'system_kept_text';
+
   // 2. Move tool docs into the imaged "Tool Reference", stubbing originals.
   //    Imaged (not text) because that IS the compression — descriptions and
   //    schema annotations ride at image token rates, mirroring the GPT path.
@@ -1674,7 +1720,7 @@ export async function transformRequest(
   //    deterministically.
   let toolDocsText = '';
   let toolsRewritten: ToolDef[] | undefined;
-  if (o.compressTools && Array.isArray(req.tools) && req.tools.length > 0) {
+  if (o.compressTools && !keepSystemText && Array.isArray(req.tools) && req.tools.length > 0) {
     const docs: string[] = [];
     let deferredSkipped = 0;
     toolsRewritten = req.tools.map((t) => {
@@ -1790,102 +1836,111 @@ export async function transformRequest(
   const slabCpt = opts.charsPerToken !== undefined
     ? o.charsPerToken
     : SLAB_CHARS_PER_TOKEN;
-  // Shrink canvas to longest actual line — pure function of (text, cols) so the
-  // cache prefix stays byte-identical across turns. The banner sets a natural width floor.
-  const reflowNoteImg = o.reflow
-    ? ' The glyph ↵ (U+21B5) marks an original hard line break in content — treat as a real newline.'
-    : '';
-  const columnNoteImg =
-    numCols > 1
-      ? ` Multi-column layout (${numCols} cols): read column 1 (leftmost) top-to-bottom, then column 2, etc.`
-      : '';
-  // Wording note (do NOT reintroduce "system prompt"/"authoritative"): a user-turn
-  // banner announcing "SYSTEM PROMPT ... treat as authoritative system instructions"
-  // tripped Anthropic's reasoning_extraction refusal (reads as a replayed/extracted
-  // prompt -> model-cloning heuristic) and forced a fallback-model switch. First-party
-  // provenance framing below keeps obedience without the extraction signature.
-  const imageInstructionHeader =
-    '=================== SESSION CONFIGURATION PAGES ===================\n' +
-    "OmniGlyph (this user's local proxy) rendered this session's configuration" +
-    ' into the following images to reduce token cost. Read the pages carefully and follow them as' +
-    ' your operating instructions for this session.' +
-    ' For exact identifiers, paths, hashes, version strings, and numbers, use the adjacent' +
-    ' exact-value factsheet; if a value was only visible in an image and is not in that factsheet,' +
-    ' do not guess it — say it is not safe to quote from the image and re-read the source text.' +
-    columnNoteImg +
-    reflowNoteImg +
-    '\n====================== BEGIN RENDERED CONTEXT ======================\n';
-  // IDS block on the imaged slab (same pure-image isolation as the GPT/Grok legs).
-  const combinedWithHeader = appendIdsBlock(imageInstructionHeader + combined);
-  // Shrink the canvas to the longest actual line in what we'll *render*,
-  // so the gate's prediction and the renderer's output agree at the smallest
-  // legible width. The banner above sets the natural floor — no separate
-  // minWidth knob needed. Multi-col packing still gets numCols × this width.
-  const slabCols = shrinkColsToContent(combinedWithHeader, slabColsBase);
-  const slabGateEval = evalCompressionProfitability(
-    combinedWithHeader, slabCols, undefined, numCols, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens,
-    false, // already shrunk — don't double-shrink
-    page.charsPerImage, tier,
-  );
-  if (slabGateEval) {
-    info.gateEval = {
-      site: 'slab',
-      imageTokens: slabGateEval.imageTokens,
-      textTokens: slabGateEval.textTokens,
-      burnImageSide: slabGateEval.burnImageSide,
-      burnTextSide: slabGateEval.burnTextSide,
-      profitable: slabGateEval.profitable,
-    };
-  }
-  if (!isCompressionProfitable(combinedWithHeader, slabCols, undefined, numCols, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens, false, page.charsPerImage, tier)) {
-    info.reason = `not_profitable (slab=${combined.length} chars)`;
-    bumpPassthrough(info, 'not_profitable');
-    // Slab not profitable but history may still be collapsable — try before returning.
-    const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, tier, page);
-    if (finalized.collapsed) {
-      info.compressed = true;
-      return { body: finalized.body, info };
-    }
-    return { body, info };
-  }
-
-  // Instruction header co-renders into the same PNG (+1.04pp L1 OCR vs baseline;
-  // single-modal framing keeps encoder in image-reading mode for both header + content).
-  // Header text is continuous prose (no hard \n) so the renderer soft-wraps densely.
-  // 3. Render to PNGs at slabCols width (banner sets natural floor).
-  const images =
-    numCols > 1
-      ? await renderTextToPngsMultiCol(combinedWithHeader, slabCols, numCols)
-      : await renderTextToPngsCached(combinedWithHeader, slabCols, page.charsPerImage, {}, page.maxHeightPx);
   const imageBlocks: ImageBlock[] = [];
-  for (let i = 0; i < images.length; i++) {
-    const img = images[i]!;
-    const b64 = bytesToBase64(img.png);
-    info.imageBytes += img.png.length;
-    info.imagePixels = (info.imagePixels ?? 0) + img.width * img.height;
-    info.droppedChars = (info.droppedChars ?? 0) + img.droppedChars;
-    for (const [cp, n] of img.droppedCodepoints) {
-      droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
-    }
-    const imageBlock = makeImageBlock(b64, i === images.length - 1);
-    imageBlocks.push(
-      i === images.length - 1 && systemStaticCacheControl !== undefined
-        ? { ...imageBlock, cache_control: systemStaticCacheControl }
-        : imageBlock,
+  if (!keepSystemText) { // keepSystemText: slab stays text (see the note above section 2)
+    // Shrink canvas to longest actual line — pure function of (text, cols) so the
+    // cache prefix stays byte-identical across turns. The banner sets a natural width floor.
+    const reflowNoteImg = o.reflow
+      ? ' The glyph ↵ (U+21B5) marks an original hard line break in content — treat as a real newline.'
+      : '';
+    const columnNoteImg =
+      numCols > 1
+        ? ` Multi-column layout (${numCols} cols): read column 1 (leftmost) top-to-bottom, then column 2, etc.`
+        : '';
+    // Wording note (do NOT reintroduce "system prompt"/"authoritative"): a user-turn
+    // banner announcing "SYSTEM PROMPT ... treat as authoritative system instructions"
+    // tripped Anthropic's reasoning_extraction refusal (reads as a replayed/extracted
+    // prompt -> model-cloning heuristic) and forced a fallback-model switch. First-party
+    // provenance framing below keeps obedience without the extraction signature.
+    const imageInstructionHeader =
+      '=================== SESSION CONFIGURATION PAGES ===================\n' +
+      "OmniGlyph (this user's local proxy) rendered this session's configuration" +
+      ' into the following images to reduce token cost. Read the pages carefully and follow them as' +
+      ' your operating instructions for this session.' +
+      ' For exact identifiers, paths, hashes, version strings, and numbers, use the adjacent' +
+      ' exact-value factsheet; if a value was only visible in an image and is not in that factsheet,' +
+      ' do not guess it — say it is not safe to quote from the image and re-read the source text.' +
+      columnNoteImg +
+      reflowNoteImg +
+      '\n====================== BEGIN RENDERED CONTEXT ======================\n';
+    // IDS block on the imaged slab (same pure-image isolation as the GPT/Grok legs).
+    const combinedWithHeader = appendIdsBlock(imageInstructionHeader + combined);
+    // Shrink the canvas to the longest actual line in what we'll *render*,
+    // so the gate's prediction and the renderer's output agree at the smallest
+    // legible width. The banner above sets the natural floor — no separate
+    // minWidth knob needed. Multi-col packing still gets numCols × this width.
+    const slabCols = shrinkColsToContent(combinedWithHeader, slabColsBase);
+    const slabGateEval = evalCompressionProfitability(
+      combinedWithHeader, slabCols, undefined, numCols, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens,
+      false, // already shrunk — don't double-shrink
+      page.charsPerImage, tier,
     );
-  }
-  info.imageCount = imageBlocks.length;
-  // Credit raw (pre-compaction) length — what Anthropic would have billed.
-  info.compressedChars += combinedRaw.length;
-  bumpBucket(info, 'static_slab', combinedRaw.length);
-  if (images.length > 0) {
-    info.firstImagePng = images[0]!.png;
-    info.firstImageWidth = images[0]!.width;
-    info.firstImageHeight = images[0]!.height;
-    (info.imagePngs ??= []).push(...images.map((i) => i.png));
-    (info.imageDims ??= []).push(...images.map((i) => ({ width: i.width, height: i.height })));
-    info.imageSourceText = combinedWithHeader.slice(0, 65_536);
-  }
+    if (slabGateEval) {
+      info.gateEval = {
+        site: 'slab',
+        imageTokens: slabGateEval.imageTokens,
+        textTokens: slabGateEval.textTokens,
+        burnImageSide: slabGateEval.burnImageSide,
+        burnTextSide: slabGateEval.burnTextSide,
+        profitable: slabGateEval.profitable,
+      };
+    }
+    if (!isCompressionProfitable(combinedWithHeader, slabCols, undefined, numCols, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens, false, page.charsPerImage, tier)) {
+      info.reason = `not_profitable (slab=${combined.length} chars)`;
+      bumpPassthrough(info, 'not_profitable');
+      // Slab not profitable but history may still be collapsable — try before returning.
+      const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, tier, page);
+      if (finalized.collapsed) {
+        info.compressed = true;
+        return { body: finalized.body, info };
+      }
+      return { body, info };
+    }
+
+    // Instruction header co-renders into the same PNG (+1.04pp L1 OCR vs baseline;
+    // single-modal framing keeps encoder in image-reading mode for both header + content).
+    // Header text is continuous prose (no hard \n) so the renderer soft-wraps densely.
+    // 3. Render to PNGs at slabCols width (banner sets natural floor).
+    const images =
+      numCols > 1
+        ? await renderTextToPngsMultiCol(combinedWithHeader, slabCols, numCols)
+        : await renderTextToPngsCached(combinedWithHeader, slabCols, page.charsPerImage, {}, page.maxHeightPx);
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i]!;
+      const b64 = bytesToBase64(img.png);
+      info.imageBytes += img.png.length;
+      info.imagePixels = (info.imagePixels ?? 0) + img.width * img.height;
+      info.droppedChars = (info.droppedChars ?? 0) + img.droppedChars;
+      for (const [cp, n] of img.droppedCodepoints) {
+        droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
+      }
+      const imageBlock = makeImageBlock(b64, i === images.length - 1);
+      // scope:"global" is only valid when every preceding block is also globally
+      // scoped (Anthropic prefix rule) — a trailing-only marker on a multi-page
+      // slab 400s the whole request, so the caller's global marker must cover
+      // EVERY page. Plain ephemeral keeps the cheaper trailing-only placement.
+      const markThisPage =
+        systemStaticCacheControl !== undefined
+        && (i === images.length - 1 || isGlobalScopeCacheControl(systemStaticCacheControl));
+      imageBlocks.push(
+        markThisPage
+          ? { ...imageBlock, cache_control: systemStaticCacheControl }
+          : imageBlock,
+      );
+    }
+    info.imageCount = imageBlocks.length;
+    // Credit raw (pre-compaction) length — what Anthropic would have billed.
+    info.compressedChars += combinedRaw.length;
+    bumpBucket(info, 'static_slab', combinedRaw.length);
+    if (images.length > 0) {
+      info.firstImagePng = images[0]!.png;
+      info.firstImageWidth = images[0]!.width;
+      info.firstImageHeight = images[0]!.height;
+      (info.imagePngs ??= []).push(...images.map((i) => i.png));
+      (info.imageDims ??= []).push(...images.map((i) => ({ width: i.width, height: i.height })));
+      info.imageSourceText = combinedWithHeader.slice(0, 65_536);
+    }
+  } // keepSystemText: slab stays text
 
   // 4. Splice images back into the request. OCR framing is baked into the image.
   //
@@ -1902,116 +1957,123 @@ export async function transformRequest(
   const volatileEnvParts: string[] = [];
   if (dynamicText) volatileEnvParts.push(dynamicText);
   if (envMarkdown) volatileEnvParts.push(envMarkdown);
-  const volatileEnvText = hasUserMsg ? volatileEnvParts.join('\n\n') : '';
+  // keepSystemText: env markdown never left req.system, so nothing to relocate.
+  const volatileEnvText =
+    hasUserMsg && !keepSystemText ? volatileEnvParts.join('\n\n') : '';
 
   // Images go into first user message — system field rejects images (400 system.N.type).
   {
-    const sysTail: SystemField = [];
-    // billingLine is session-stable (warm reads through the anchored prefix
-    // confirm it; a per-turn value here would zero every cache read).
-    if (billingLine) sysTail.push({ type: 'text', text: billingLine });
-    if (!hasUserMsg) {
-      if (dynamicText) sysTail.push({ type: 'text', text: dynamicText });
-      if (envMarkdown) sysTail.push({ type: 'text', text: envMarkdown });
-    }
-    if (Array.isArray(sysRemainder)) sysTail.push(...sysRemainder);
-    // Tool Reference now rides INSIDE the imaged slab (combinedRaw above) — no
-    // text splice here. Stubbed tools[] descriptions cite the "## Tool: <name>"
-    // headings inside the image; stub ↔ reference invariant holds because both
-    // are applied on this same path (gate-fail paths return earlier with
-    // original tools untouched).
-    req.system = sysTail.length > 0 ? sysTail : undefined;
-
-    const firstUserIdx = (req.messages ?? []).findIndex((m) => m.role === 'user');
-    if (firstUserIdx >= 0) {
-      const m = req.messages![firstUserIdx]!;
-      const existing = Array.isArray(m.content)
-        ? m.content
-        : [{ type: 'text' as const, text: m.content }];
-
-      // 5a. Compress <system-reminder> text blocks. cache_control on source text
-      //     moves to the LAST produced image (OmniGlyph never adds its own markers).
-      const processedExisting: ContentBlock[] = [];
-      if (o.compressReminders) {
-        for (const blk of existing) {
-          const isReminderText =
-            blk &&
-            (blk as TextBlock).type === 'text' &&
-            typeof (blk as TextBlock).text === 'string' &&
-            (blk as TextBlock).text.trimStart().startsWith('<system-reminder>');
-          if (!isReminderText) {
-            processedExisting.push(blk);
-            continue;
-          }
-          // Caller fidelity override: pin this block as text, skip imaging.
-          if (callerKeepsSharp(o.keepSharp, { kind: 'reminder', text: (blk as TextBlock).text })) {
-            bumpPassthrough(info, 'kept_sharp');
-            info.keptSharpBlocks = (info.keptSharpBlocks ?? 0) + 1;
-            processedExisting.push(blk);
-            continue;
-          }
-          const textLen = (blk as TextBlock).text.length;
-          if (textLen < o.minReminderChars) {
-            // Below coarse threshold; can't possibly be profitable. Skip.
-            bumpPassthrough(info, 'below_threshold');
-            processedExisting.push(blk);
-            continue;
-          }
-          // Lossless whitespace compaction — same dynamics as the system
-          // slab: every newline costs ≥1 visual row regardless of column
-          // width, so stripped trailing whitespace + collapsed blank-line
-          // runs reduce real renderer cost without changing what the
-          // model reads.
-          const reminderRaw = (blk as TextBlock).text;
-          const reminderText = maybeReflow(compactSlabWhitespace(reminderRaw), o.reflow);
-          if (!isCompressionProfitable(reminderText, denseGeo.cols, undefined, numCols, o.charsPerToken, 0, 0, true, denseGeo.maxChars, tier)) {
-            bumpPassthrough(info, 'not_profitable');
-            processedExisting.push(blk);
-            continue;
-          }
-          const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
-            await textToImageBlocks(reminderText, o.cols, numCols, true, page);
-          (info.imagePngs ??= []).push(...rawPngs);
-          (info.imageDims ??= []).push(...rawDims);
-          const srcCacheControl = (blk as { cache_control?: unknown }).cache_control;
-          for (let i = 0; i < imgs.length; i++) {
-            const img = imgs[i]!;
-            const out =
-              i === imgs.length - 1 && srcCacheControl !== undefined
-                ? { ...img, cache_control: srcCacheControl }
-                : img;
-            processedExisting.push(out as ImageBlock);
-            info.imageBytes += approxBlockBytes(img);
-          }
-          const reminderFactSheet = factSheetText(reminderRaw);
-          if (reminderFactSheet) processedExisting.push({ type: 'text', text: reminderFactSheet });
-          info.imagePixels = (info.imagePixels ?? 0) + pixels;
-          info.reminderImgs = (info.reminderImgs ?? 0) + imgs.length;
-          await recordRecoverable(info, o.emitRecoverable, {
-            kind: 'reminder',
-            text: reminderRaw,
-            imageCount: imgs.length,
-          });
-          info.compressedChars += reminderRaw.length;
-          bumpBucket(info, 'reminder', reminderRaw.length);
-          info.imageCount += imgs.length;
-          info.droppedChars = (info.droppedChars ?? 0) + droppedChars;
-          for (const [cp, n] of dcp) {
-            droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
-          }
-        }
-      } else {
-        processedExisting.push(...existing);
+    if (!keepSystemText) {
+      const sysTail: SystemField = [];
+      if (preserveClaudeCodeIdentity) {
+        sysTail.push({ type: 'text', text: CLAUDE_CODE_OAUTH_IDENTITY });
       }
+      // billingLine is session-stable (warm reads through the anchored prefix
+      // confirm it; a per-turn value here would zero every cache read).
+      if (billingLine) sysTail.push({ type: 'text', text: billingLine });
+      if (!hasUserMsg) {
+        if (dynamicText) sysTail.push({ type: 'text', text: dynamicText });
+        if (envMarkdown) sysTail.push({ type: 'text', text: envMarkdown });
+      }
+      if (Array.isArray(sysRemainder)) sysTail.push(...sysRemainder);
+      // Tool Reference now rides INSIDE the imaged slab (combinedRaw above) — no
+      // text splice here. Stubbed tools[] descriptions cite the "## Tool: <name>"
+      // headings inside the image; stub ↔ reference invariant holds because both
+      // are applied on this same path (gate-fail paths return earlier with
+      // original tools untouched).
+      req.system = sysTail.length > 0 ? sysTail : undefined;
 
-      const slabFactSheet = factSheetText(combinedRaw);
-      m.content = [
-        ...imageBlocks,
-        ...(slabFactSheet ? [{ type: 'text' as const, text: slabFactSheet }] : []),
-        { type: 'text' as const, text: '[End of rendered context.]' },
-        ...processedExisting,
-      ];
-    }
+      const firstUserIdx = (req.messages ?? []).findIndex((m) => m.role === 'user');
+      if (firstUserIdx >= 0) {
+        const m = req.messages![firstUserIdx]!;
+        const existing = Array.isArray(m.content)
+          ? m.content
+          : [{ type: 'text' as const, text: m.content }];
+
+        // 5a. Compress <system-reminder> text blocks. cache_control on source text
+        //     moves to the LAST produced image (OmniGlyph never adds its own markers).
+        const processedExisting: ContentBlock[] = [];
+        if (o.compressReminders) {
+          for (const blk of existing) {
+            const isReminderText =
+              blk &&
+              (blk as TextBlock).type === 'text' &&
+              typeof (blk as TextBlock).text === 'string' &&
+              (blk as TextBlock).text.trimStart().startsWith('<system-reminder>');
+            if (!isReminderText) {
+              processedExisting.push(blk);
+              continue;
+            }
+            // Caller fidelity override: pin this block as text, skip imaging.
+            if (callerKeepsSharp(o.keepSharp, { kind: 'reminder', text: (blk as TextBlock).text })) {
+              bumpPassthrough(info, 'kept_sharp');
+              info.keptSharpBlocks = (info.keptSharpBlocks ?? 0) + 1;
+              processedExisting.push(blk);
+              continue;
+            }
+            const textLen = (blk as TextBlock).text.length;
+            if (textLen < o.minReminderChars) {
+              // Below coarse threshold; can't possibly be profitable. Skip.
+              bumpPassthrough(info, 'below_threshold');
+              processedExisting.push(blk);
+              continue;
+            }
+            // Lossless whitespace compaction — same dynamics as the system
+            // slab: every newline costs ≥1 visual row regardless of column
+            // width, so stripped trailing whitespace + collapsed blank-line
+            // runs reduce real renderer cost without changing what the
+            // model reads.
+            const reminderRaw = (blk as TextBlock).text;
+            const reminderText = maybeReflow(compactSlabWhitespace(reminderRaw), o.reflow);
+            if (!isCompressionProfitable(reminderText, denseGeo.cols, undefined, numCols, o.charsPerToken, 0, 0, true, denseGeo.maxChars, tier)) {
+              bumpPassthrough(info, 'not_profitable');
+              processedExisting.push(blk);
+              continue;
+            }
+            const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
+              await textToImageBlocks(reminderText, o.cols, numCols, true, page);
+            (info.imagePngs ??= []).push(...rawPngs);
+            (info.imageDims ??= []).push(...rawDims);
+            const srcCacheControl = (blk as { cache_control?: unknown }).cache_control;
+            for (let i = 0; i < imgs.length; i++) {
+              const img = imgs[i]!;
+              const out =
+                i === imgs.length - 1 && srcCacheControl !== undefined
+                  ? { ...img, cache_control: srcCacheControl }
+                  : img;
+              processedExisting.push(out as ImageBlock);
+              info.imageBytes += approxBlockBytes(img);
+            }
+            const reminderFactSheet = factSheetText(reminderRaw);
+            if (reminderFactSheet) processedExisting.push({ type: 'text', text: reminderFactSheet });
+            info.imagePixels = (info.imagePixels ?? 0) + pixels;
+            info.reminderImgs = (info.reminderImgs ?? 0) + imgs.length;
+            await recordRecoverable(info, o.emitRecoverable, {
+              kind: 'reminder',
+              text: reminderRaw,
+              imageCount: imgs.length,
+            });
+            info.compressedChars += reminderRaw.length;
+            bumpBucket(info, 'reminder', reminderRaw.length);
+            info.imageCount += imgs.length;
+            info.droppedChars = (info.droppedChars ?? 0) + droppedChars;
+            for (const [cp, n] of dcp) {
+              droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
+            }
+          }
+        } else {
+          processedExisting.push(...existing);
+        }
+
+        const slabFactSheet = factSheetText(combinedRaw);
+        m.content = [
+          ...imageBlocks,
+          ...(slabFactSheet ? [{ type: 'text' as const, text: slabFactSheet }] : []),
+          { type: 'text' as const, text: '[End of rendered context.]' },
+          ...processedExisting,
+        ];
+      }
+    } // keepSystemText: system field, first-message layout, and reminders untouched
 
     // 5b. Compress tool_result content across ALL user messages.
     if (o.compressToolResults) {
@@ -2194,6 +2256,7 @@ export async function transformRequest(
       historyProfitable,
       {
         cols: o.cols, protectedPrefix: slabAnchorIdx >= 0 ? slabAnchorIdx + 1 : 0, reflow: o.reflow,
+        preserveReminderText: keepSystemText,
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
       },
     );
@@ -2268,7 +2331,10 @@ export async function transformRequest(
     }
   }
 
-  info.compressed = true;
+  // keepSystemText mode can reach here having imaged nothing (small session,
+  // no big tool_results, no collapsable history) — that's a passthrough, not
+  // a compression; the default path always imaged the slab to get this far.
+  info.compressed = keepSystemText ? info.imageCount > 0 : true;
   // Attribution signal for prompt-cache busts (#11): digest the exact pinned
   // prefix we send (history/slab boundary; live tail excluded) AFTER all marker
   // placement — incl. relocateAnchorToHistoryImage — is final. Read-only.
