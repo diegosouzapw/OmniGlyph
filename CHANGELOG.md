@@ -51,6 +51,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(node):** `waitForDrain` no longer leaks one `close` + one `error`
+  listener per backpressure cycle on the same `ServerResponse`. On long SSE
+  streams the old `Promise.race`/`events.once` pattern accumulated listeners
+  until `MaxListenersExceededWarning` fired and the proxy's heap grew without
+  bound; listeners are now managed manually and detached on whichever of
+  `drain`/`close`/`error` fires first. (thanks @zannensk)
 - **fix(transform):** the profitability gate no longer counts the reflow ↵
   sentinel as a visual row break. Reflow packs hard newlines into one
   soft-wrapped stream (↵ is an inline glyph the renderer never breaks on), so
