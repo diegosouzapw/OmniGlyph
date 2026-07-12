@@ -36,6 +36,8 @@ export interface TrackEvent {
   /** TEXT chars in the outgoing body (all text blocks, incl. non-compressed tool_results).
    *  With image_pixels, a regression over cold-miss events solves chars_per_token (α) and pixels_per_token (β). */
   outgoing_text_chars?: number;
+  /** Local o200k decomposition of the original OpenAI Responses request. */
+  responses_composition?: NonNullable<NonNullable<ProxyEvent['info']>['responsesComposition']>;
   static_chars?: number;
   dynamic_chars?: number;
   dynamic_block_count?: number;
@@ -212,6 +214,9 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
     }
     if (info.outgoingTextChars !== undefined && info.outgoingTextChars > 0) {
       out.outgoing_text_chars = info.outgoingTextChars;
+    }
+    if (info.responsesComposition) {
+      out.responses_composition = info.responsesComposition;
     }
     if (info.staticChars !== undefined) out.static_chars = info.staticChars;
     if (info.dynamicChars !== undefined) out.dynamic_chars = info.dynamicChars;

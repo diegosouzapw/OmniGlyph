@@ -557,6 +557,34 @@ export interface TransformInfo {
   /** Total TEXT chars in the outgoing body (system + messages, excluding image base64).
    *  Denominator for empirical chars-per-token regression on cold-miss events. */
   outgoingTextChars?: number;
+  /** OpenAI Responses only: local o200k decomposition of the ORIGINAL request
+   *  before OmniGlyph rewrites it. No provider count_tokens call. Categories are
+   *  mutually exclusive text-token estimates; imageParts counts native images. */
+  responsesComposition?: {
+    instructions: number;
+    systemDeveloper: number;
+    userAssistant: number;
+    functionCalls: number;
+    functionOutputs: number;
+    reasoningEncrypted: number;
+    compactionOpaque: number;
+    toolsJson: number;
+    other: number;
+    totalLocal: number;
+    imageParts: number;
+    /** Responses native-tool-state classification and realized image share. */
+    completedFunctionPairs?: number;
+    recentNativeFunctionPairs?: number;
+    oldFunctionPairs?: number;
+    openFunctionCalls?: number;
+    orphanFunctionOutputs?: number;
+    malformedFunctionItems?: number;
+    imageableFunctionCalls?: number;
+    imageableFunctionOutputs?: number;
+    collapsedFunctionPairs?: number;
+    collapsedFunctionCalls?: number;
+    collapsedFunctionOutputs?: number;
+  };
   /** Length of the static (cacheable) slab rendered into the image. */
   staticChars: number;
   /** Length of the dynamic (per-turn) slab kept as plain text. */
@@ -585,8 +613,12 @@ export interface TransformInfo {
   /** All rendered PNGs this request. Dashboard only; NOT persisted to JSONL. */
   imagePngs?: Uint8Array[];
   imageDims?: Array<{ width: number; height: number }>;
-  /** Source text rendered to images (slab + header), capped at 64 KiB. NOT persisted. */
+  /** Legacy shared source text for one render group (slab + header), capped at
+   *  64 KiB. Dashboard-only; NOT persisted. */
   imageSourceText?: string;
+  /** Source text parallel to imagePngs/imageDims. One entry per PNG; a multi-page
+   *  render may repeat its section source. Dashboard-only; not persisted. */
+  imageSourceTexts?: Array<string | undefined>;
   reminderImgs?: number;
   toolResultImgs?: number;
   /** Chars of tool docs moved to the system-text Tool Reference (not imaged). */

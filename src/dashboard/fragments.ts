@@ -650,9 +650,26 @@ export interface ContextMapData {
   // on the same cache state as the image path; no wall-clock-only inference.
   output: number;
   imageCount: number;
+  baselineImagedTokens?: number;
   buckets: Partial<Record<string, number>>; // bucket → chars rendered to PNG
   imageIds: number[]; // image-ring ids for the gallery
   compressed: boolean;
+  model?: string;
+  responsesComposition?: {
+    instructions: number; systemDeveloper: number; userAssistant: number;
+    functionCalls: number; functionOutputs: number; reasoningEncrypted: number;
+    compactionOpaque: number; toolsJson: number; other: number;
+    totalLocal: number; imageParts: number;
+    completedFunctionPairs?: number; recentNativeFunctionPairs?: number;
+    oldFunctionPairs?: number; openFunctionCalls?: number;
+    orphanFunctionOutputs?: number; malformedFunctionItems?: number;
+    imageableFunctionCalls?: number; imageableFunctionOutputs?: number;
+    collapsedFunctionPairs?: number; collapsedFunctionCalls?: number;
+    collapsedFunctionOutputs?: number;
+  };
+  /** Difference between the provider text counterfactual and local o200k buckets.
+   * Can include envelope, tokenizer, and server-side additions. */
+  responsesUnexplainedTokens?: number;
   restored?: boolean; // rebuilt from JSONL after a restart — PNG thumbnails are gone
 }
 
@@ -705,10 +722,42 @@ export function renderContextMapFragment(
     )
     .join('');
 
+  // Diagnostic-only panel (local o200k buckets; hardcoded English on purpose —
+  // technical bucket names, matched 1:1 with TransformInfo.responsesComposition).
+  const rc = c.responsesComposition;
+  const responseRows: ReadonlyArray<readonly [string, number]> = rc
+    ? [
+        ['Instructions', rc.instructions],
+        ['System / developer items', rc.systemDeveloper],
+        ['User / assistant text kept native', rc.userAssistant],
+        ['Native tool JSON', rc.toolsJson],
+        ['Function calls', rc.functionCalls],
+        ['Function outputs', rc.functionOutputs],
+        ['Function outputs eligible in old closed pairs', rc.imageableFunctionOutputs ?? 0],
+        ['Function outputs actually imaged this request', rc.collapsedFunctionOutputs ?? 0],
+        ['Reasoning / encrypted items', rc.reasoningEncrypted],
+        ['Compaction / opaque items', rc.compactionOpaque],
+        ['Other Responses items', rc.other],
+      ]
+    : [];
+  const responseBreakdown = rc
+    ? `<div class="split-note" style="margin-top:12px"><strong>Original Responses composition (local o200k estimate)</strong></div>` +
+      responseRows.filter(([, n]) => n > 0).map(([label, n]) =>
+        `<div class="ctx-row"><span class="ctx-lbl">${label}</span><span class="ctx-val">${kFmt(n)} tok</span></div>`,
+      ).join('') +
+      `<div class="ctx-row"><span class="ctx-lbl">Imageable text baseline</span><span class="ctx-val">${kFmt(c.baselineImagedTokens ?? 0)} tok</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">Adjacent completed pairs (old / recent native / imaged)</span><span class="ctx-val">${rc.completedFunctionPairs ?? 0} (${rc.oldFunctionPairs ?? 0} / ${rc.recentNativeFunctionPairs ?? 0} / ${rc.collapsedFunctionPairs ?? 0})</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">Open calls kept native</span><span class="ctx-val">${rc.openFunctionCalls ?? 0}</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">Native image parts</span><span class="ctx-val">${rc.imageParts}</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">Provider tokens not explained locally</span><span class="ctx-val">${kFmt(c.responsesUnexplainedTokens ?? 0)} tok</span></div>` +
+      `<div class="split-note">This diagnostic uses local o200k counts only; it never calls Anthropic /count_tokens.</div>`
+    : '';
+
   const ids = c.imageIds ?? [];
+  const modelLabel = c.model ? escapeHtml(c.model) : 'the model';
   const pageWord = (n: number): string => t(n === 1 ? 'dash.common.page' : 'dash.common.pages', locale);
   const gallery = ids.length
-    ? `<div class="pages-title">${fmt(t('dash.ctxmap.pagesTitle', locale), { n: String(ids.length), page: pageWord(ids.length) })}</div>` +
+    ? `<div class="pages-title">${fmt(t('dash.ctxmap.pagesTitle', locale), { n: String(ids.length), page: pageWord(ids.length), model: modelLabel })}</div>` +
       `<div class="pages">` +
       ids
         .map(
@@ -774,10 +823,11 @@ export function renderContextMapFragment(
     `<div class="split-col split-txt">` +
     `<div class="split-head">${t('dash.ctxmap.splitHeadTxt', locale)} <span class="split-sum">${t('dash.ctxmap.splitSumTxt', locale)}</span></div>` +
     `<div class="ctx-row"><span class="ctx-lbl">${t('dash.ctxmap.latestMessages', locale)}</span><span class="ctx-val">${t('dash.ctxmap.latestMessagesVal', locale)}</span></div>` +
-    `<div class="ctx-row"><span class="ctx-lbl">${t('dash.ctxmap.claudeReply', locale)}</span><span class="ctx-val">${fmt(t('dash.ctxmap.claudeReplyVal', locale), { tok: kFmt(c.output) })}</span></div>` +
+    `<div class="ctx-row"><span class="ctx-lbl">${fmt(t('dash.ctxmap.claudeReply', locale), { model: modelLabel })}</span><span class="ctx-val">${fmt(t('dash.ctxmap.claudeReplyVal', locale), { tok: kFmt(c.output) })}</span></div>` +
     `<div class="split-note">${t('dash.ctxmap.splitNoteTxt', locale)}</div>` +
     `</div>` +
     `</div>` +
+    responseBreakdown +
     gallery +
     `</div>`
   );

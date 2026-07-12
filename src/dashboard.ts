@@ -585,7 +585,7 @@ export class DashboardState {
         width,
         height,
         ts: Date.now() / 1000,
-        sourceText: info.imageSourceText,
+        sourceText: info.imageSourceTexts?.[i] ?? info.imageSourceText,
       });
       ids.push(id);
     }
@@ -778,9 +778,15 @@ export class DashboardState {
         warm: warmForRow,
         output: out,
         imageCount: info.imageCount ?? 0,
+        baselineImagedTokens: info.baselineImagedTokens,
         buckets: { ...(info.bucketChars ?? {}) },
         imageIds: [...imgIds],
         compressed,
+        model: ev.model,
+        responsesComposition: info.responsesComposition,
+        responsesUnexplainedTokens: info.responsesComposition
+          ? Math.max(0, rawBaseline - info.responsesComposition.totalLocal)
+          : undefined,
       });
       // Keep in lockstep with RECENT_CAP so every "view" link in the recent
       // table resolves to a real breakdown (was 30 < 50, so older visible rows
@@ -1163,9 +1169,15 @@ export class DashboardState {
           warm: warmForRow,
           output: out,
           imageCount,
+          baselineImagedTokens: (t as { baseline_imaged_tokens?: number }).baseline_imaged_tokens,
           buckets: { ...((t as { bucket_chars?: Record<string, number> }).bucket_chars ?? {}) },
           imageIds: [], // PNG ring is in-memory; not restorable across restart
           compressed,
+          model: t.model,
+          responsesComposition: (t as { responses_composition?: ContextMapData['responsesComposition'] }).responses_composition,
+          responsesUnexplainedTokens: (t as { responses_composition?: ContextMapData['responsesComposition'] }).responses_composition
+            ? Math.max(0, rawBaseline - ((t as { responses_composition?: ContextMapData['responsesComposition'] }).responses_composition?.totalLocal ?? 0))
+            : undefined,
           restored: true,
         });
         if (this.contextHistory.length > RECENT_CAP) {

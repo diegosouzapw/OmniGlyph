@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   planGptCollapse,
-  responsesItemsToTurns,
+  planResponsesPairCollapse,
   chatMessagesToTurns,
   GPT_HISTORY_DEFAULTS,
   type HistoryTurn,
@@ -26,40 +26,6 @@ function plainTurns(n: number, chars = 1000): HistoryTurn[] {
     opaque: false,
   }));
 }
-
-describe('responsesItemsToTurns', () => {
-  it('lowers user/assistant message items with role headers', () => {
-    const turns = responsesItemsToTurns([
-      { role: 'user', content: 'hello' },
-      { role: 'assistant', content: [{ type: 'output_text', text: 'hi there' }] },
-    ]);
-    expect(turns[0]!.text).toBe('<user t="0">\nhello\n</user>');
-    expect(turns[1]!.text).toBe('<assistant t="1">\nhi there\n</assistant>');
-    expect(turns.every((t) => !t.opaque)).toBe(true);
-  });
-
-  it('tracks function_call open / function_call_output close ids', () => {
-    const turns = responsesItemsToTurns([
-      { type: 'function_call', call_id: 'c1', name: 'read', arguments: '{"path":"a"}' },
-      { type: 'function_call_output', call_id: 'c1', output: 'file body' },
-    ]);
-    expect(turns[0]!.openIds).toEqual(['c1']);
-    expect(turns[0]!.text).toContain('[tool_use read]');
-    expect(turns[1]!.closeIds).toEqual(['c1']);
-    expect(turns[1]!.text).toContain('[tool_result]');
-  });
-
-  it('drops reasoning items (empty text, not opaque)', () => {
-    const [t] = responsesItemsToTurns([{ type: 'reasoning', summary: [] }]);
-    expect(t!.text).toBe('');
-    expect(t!.opaque).toBe(false);
-  });
-
-  it('marks unknown item kinds opaque (collapse barrier)', () => {
-    const [t] = responsesItemsToTurns([{ type: 'item_reference', id: 'x' }]);
-    expect(t!.opaque).toBe(true);
-  });
-});
 
 describe('chatMessagesToTurns', () => {
   it('lowers assistant tool_calls into open ids + [tool_use] text', () => {
@@ -370,5 +336,136 @@ describe('planGptCollapse — chunk-snapped boundary (cache byte-stability)', ()
     const a = await planGptCollapse(base.slice(0, 34), 0, yes, { collapseChunk: 0 });
     const b = await planGptCollapse(base.slice(0, 38), 0, yes, { collapseChunk: 0 });
     expect(b.endExclusive).toBeGreaterThan(a.endExclusive);
+  });
+});
+
+describe('planGptCollapse — per-image dashboard source mapping', () => {
+  it('returns source text parallel to every history image', async () => {
+    const turns = Array.from({ length: 40 }, (_, i) => ({
+      text: `<assistant t="${i}">source-marker-${i} ${'x'.repeat(500)}</assistant>`,
+      openIds: [], closeIds: [], opaque: false,
+    }));
+    const plan = await planGptCollapse(turns, 0, yes, {
+      keepTail: 0,
+      minCollapsePrefix: 1,
+      minCollapseTokens: 1,
+      collapseChunk: 0,
+      freezeChunk: 0,
+      sectionTokens: 1,
+      maxImages: 100,
+    });
+    expect(plan.imageSources.length).toBe(plan.images.length);
+    expect(plan.imageSourcesAfter.length).toBe(plan.imagesAfter.length);
+    expect(plan.imageSources.length).toBeGreaterThan(0);
+    expect(plan.imageSources[0]).toContain('source-marker-0');
+  });
+});
+
+describe('GPT history defaults', () => {
+  it('uses the validated 32-image Responses history budget', () => {
+    expect(GPT_HISTORY_DEFAULTS.maxImages).toBe(32);
+  });
+});
+
+describe('planResponsesPairCollapse — native state classification', () => {
+  function pair(id: string, outputChars = 1400): Array<Record<string, unknown>> {
+    return [
+      { type: 'function_call', id: `fc_${id}`, call_id: id, name: 'exec_command', arguments: `{"cmd":"${id}"}` },
+      { type: 'function_call_output', call_id: id, output: `${id} ${'output '.repeat(outputChars / 7)}` },
+    ];
+  }
+
+  it('images only old completed pairs; recent completed and open calls stay unselected', async () => {
+    const items: Array<Record<string, unknown>> = [{ role: 'user', content: 'live request' }];
+    for (let i = 0; i < 18; i++) items.push(...pair(`call_${i}`));
+    items.push({ type: 'reasoning', id: 'rs_live', encrypted_content: 'opaque-native-state' });
+    items.push({ type: 'function_call', id: 'fc_open', call_id: 'call_open', name: 'exec_command', arguments: '{}' });
+
+    const plan = await planResponsesPairCollapse(items, yes, {
+      keepRecentPairs: 4,
+      minCollapseTokens: 1,
+      maxImages: 100,
+      reflow: true,
+    });
+    expect(plan.images.length).toBeGreaterThan(0);
+    expect(plan.pairState.completedPairs).toBe(18);
+    expect(plan.pairState.recentCompletedPairs).toBe(4);
+    expect(plan.pairState.oldCompletedPairs).toBe(14);
+    expect(plan.pairState.openCalls).toBe(1);
+    expect(plan.pairState.collapsedPairs).toBeGreaterThan(0);
+    expect(plan.pairState.collapsedPairs).toBeLessThanOrEqual(14);
+    const selected = new Set(plan.selectedIndices);
+    expect(selected.has(items.findIndex((x) => x.call_id === 'call_open'))).toBe(false);
+    for (let i = 14; i < 18; i++) {
+      const indices = items.map((x, idx) => x.call_id === `call_${i}` ? idx : -1).filter((x) => x >= 0);
+      expect(indices.every((idx) => !selected.has(idx))).toBe(true);
+    }
+    expect(plan.pairState.collapsedFunctionOutputTokens).toBeGreaterThan(0);
+    expect(plan.pairState.collapsedFunctionOutputTokens)
+      .toBeLessThanOrEqual(plan.pairState.imageableFunctionOutputTokens);
+  });
+
+  it('fills the image budget while keeping the cutoff on a complete pair', async () => {
+    const items: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < 80; i++) items.push(...pair(`budget_${i}`, 7000));
+    const plan = await planResponsesPairCollapse(items, yes, {
+      keepRecentPairs: 6, minCollapseTokens: 1, maxImages: 8, reflow: true,
+    });
+    expect(plan.images).toHaveLength(8);
+    expect(plan.pairState.collapsedPairs).toBeGreaterThan(0);
+    expect(plan.pairState.collapsedPairs).toBeLessThanOrEqual(74);
+    const selected = new Set(plan.selectedIndices);
+    for (let i = 0; i < items.length; i += 2) {
+      expect(selected.has(i)).toBe(selected.has(i + 1));
+    }
+  });
+
+  it('gates each replacement independently', async () => {
+    const items: Array<Record<string, unknown>> = [
+      ...pair('small', 1400),
+      { role: 'assistant', content: 'native gap' },
+      ...pair('large', 7000),
+    ];
+    const plan = await planResponsesPairCollapse(
+      items,
+      (text) => text.length > 5000,
+      { keepRecentPairs: 0, minCollapseTokens: 1, maxImages: 100 },
+    );
+    expect(plan.segments).toHaveLength(1);
+    expect(plan.segments[0]!.selectedIndices).toEqual([3, 4]);
+    expect(plan.selectedIndices).toEqual([3, 4]);
+  });
+
+  it('keeps non-adjacent call/output pairs native', async () => {
+    const items: Array<Record<string, unknown>> = [
+      ...pair('good'),
+      { type: 'function_call', call_id: 'split', name: 'read', arguments: '{}' },
+      { role: 'assistant', content: 'native state between call and output' },
+      { type: 'function_call_output', call_id: 'split', output: 'result' },
+    ];
+    const plan = await planResponsesPairCollapse(items, yes, {
+      keepRecentPairs: 0, minCollapseTokens: 1, maxImages: 100,
+    });
+    expect(plan.selectedIndices).toEqual([0, 1]);
+    expect(plan.pairState.malformedItems).toBe(2);
+  });
+
+  it('keeps orphan, duplicate, reversed, and missing-id items native', async () => {
+    const items: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < 12; i++) items.push(...pair(`good_${i}`));
+    items.push({ type: 'function_call_output', call_id: 'orphan', output: 'orphan output' });
+    items.push({ type: 'function_call', call_id: 'dup', name: 'x', arguments: '{}' });
+    items.push({ type: 'function_call', call_id: 'dup', name: 'x', arguments: '{}' });
+    items.push({ type: 'function_call_output', call_id: 'dup', output: 'one output' });
+    items.push({ type: 'function_call_output', call_id: 'reverse', output: 'first' });
+    items.push({ type: 'function_call', call_id: 'reverse', name: 'x', arguments: '{}' });
+    items.push({ type: 'function_call', name: 'missing', arguments: '{}' });
+    const plan = await planResponsesPairCollapse(items, yes, {
+      keepRecentPairs: 0, minCollapseTokens: 1, maxImages: 100,
+    });
+    expect(plan.pairState.orphanOutputs).toBe(1);
+    expect(plan.pairState.malformedItems).toBe(6);
+    const selected = new Set(plan.selectedIndices);
+    for (let i = 24; i < items.length; i++) expect(selected.has(i)).toBe(false);
   });
 });

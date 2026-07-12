@@ -37,7 +37,7 @@ const GPT_HISTORY_COLS = 152;
 // Long OpenCode sessions can otherwise turn old history into 80+ images: token-cheap
 // but slow enough that gpt-5.5 times out before first token. When this cap trips,
 // callers leave the old history as text rather than dropping or de-prioritizing it.
-const GPT_HISTORY_MAX_IMAGES = 16;
+const GPT_HISTORY_MAX_IMAGES = 32;
 
 /** Break-even gate predicate, injected to avoid a circular import with openai.ts.
  *  Receives the full string (not length) so the renderer's row-aware image-count
@@ -47,6 +47,15 @@ export type GptProfitableFn = (text: string, cols: number) => boolean;
 export interface GptHistoryOptions {
   /** Trailing items kept as live text (never collapsed). */
   keepTail: number;
+  /** Total history-image budget. This is a TRUE cap, not a threshold: collapse
+   *  the oldest completed sections/pairs until the next would exceed the cap,
+   *  then leave the remaining history as ordinary text. Prevents 80+ image
+   *  gpt-5.5 requests without dropping context or live tool state. The static
+   *  slab has its own images. */
+  maxImages: number;
+  /** Responses only: newest completed function-call/output pairs kept native.
+   *  Open calls and malformed/orphan items are always native regardless of this value. */
+  keepRecentPairs: number;
   /** Minimum collapsible items in [protectedPrefix..boundary]; below this the
    *  cache-amortization math doesn't pay (imaging a tiny prefix is net cost). */
   minCollapsePrefix: number;
@@ -85,11 +94,6 @@ export interface GptHistoryOptions {
    *  renderTextToPngs; undefined for every current GPT/o-series model, so the
    *  renderer keeps its `{}` default. */
   style?: RenderStyle;
-  /** Hard cap on GPT history image count. This is a TRUE cap, not a threshold:
-   *  collapse the oldest completed sections until the next section would exceed
-   *  the cap, then leave the remaining history as ordinary text. Prevents 80+
-   *  image gpt-5.5 requests without dropping context or live tool state. */
-  maxImages: number;
   /** Reflow the transcript before rendering: pack soft-wrapped lines and mark
    *  every hard newline with the ↵ sentinel — same treatment as the static
    *  slab. History text is newline-heavy (role headers, JSON args), so without
@@ -103,6 +107,7 @@ export interface GptHistoryOptions {
 
 export const GPT_HISTORY_DEFAULTS: GptHistoryOptions = {
   keepTail: 6,
+  keepRecentPairs: 6,
   minCollapsePrefix: 10,
   minCollapseTokens: 2000,
   cols: GPT_HISTORY_COLS,
@@ -134,6 +139,44 @@ export interface HistoryTurn {
   userText?: string;
 }
 
+export interface ResponsesPairState {
+  /** Strict adjacent call/output pairs found in the original request. */
+  completedPairs: number;
+  /** Newest completed pairs deliberately retained as native Responses items. */
+  recentCompletedPairs: number;
+  /** Older completed pairs eligible for image serialization before render caps/gates. */
+  oldCompletedPairs: number;
+  /** Calls with no output in this request: active/open state, always native. */
+  openCalls: number;
+  /** Outputs without a unique preceding call, always native. */
+  orphanOutputs: number;
+  /** Duplicate, reversed, or non-adjacent shapes that cannot be paired safely. */
+  malformedItems: number;
+  /** Original-request o200k bucket share belonging to eligible old pairs. */
+  imageableFunctionCallTokens: number;
+  imageableFunctionOutputTokens: number;
+  /** Eligible pairs actually removed from native input and represented by images. */
+  collapsedPairs: number;
+  collapsedFunctionCallTokens: number;
+  collapsedFunctionOutputTokens: number;
+}
+
+export interface ResponsesPairCollapseSegment {
+  /** Position of the original function call. The synthetic image item is inserted here. */
+  insertAt: number;
+  selectedIndices: number[];
+  images: RenderedImage[];
+  imageSources: string[];
+  text: string;
+}
+
+export interface ResponsesPairCollapsePlan extends GptCollapsePlan {
+  /** Complete call/output replacements, each kept at its original position. */
+  segments: ResponsesPairCollapseSegment[];
+  selectedIndices: number[];
+  pairState: ResponsesPairState;
+}
+
 export interface GptCollapsePlan {
   /** Rendered history images BEFORE the pinned user turn (or ALL images when no
    *  turn was pinned). Empty when no collapse happened. */
@@ -141,6 +184,10 @@ export interface GptCollapsePlan {
   /** Rendered history images AFTER the pinned user turn. Empty unless a pin split
    *  the range. Total imaged = images ∪ imagesAfter. */
   imagesAfter: RenderedImage[];
+  /** Original source text parallel to images/imagesAfter. Each rendered page
+   *  points to the sealed section that produced it (repeated for multipage sections). */
+  imageSources: string[];
+  imageSourcesAfter: string[];
   /** Raw text of the most-recent user request, kept legible (NOT imaged) and
    *  spliced between `images` and `imagesAfter`. undefined = nothing pinned. */
   pinText?: string;
@@ -233,6 +280,8 @@ export async function planGptCollapse(
   const base: GptCollapsePlan = {
     images: [],
     imagesAfter: [],
+    imageSources: [],
+    imageSourcesAfter: [],
     text: '',
     start: 0,
     endExclusive: 0,
@@ -406,9 +455,19 @@ export async function planGptCollapse(
   const pinConsumed = pinIdx >= pp && collapseEnd > pinIdx;
   const imagesBefore: RenderedImage[] = [];
   const imagesAfter: RenderedImage[] = [];
+  const imageSources: string[] = [];
+  const imageSourcesAfter: string[] = [];
   for (const r of rendered) {
-    if (pinConsumed && r.s >= pinIdx + 1) imagesAfter.push(...r.imgs);
-    else imagesBefore.push(...r.imgs);
+    // Source preview uses the original serialized section (not reflow/IDS) so it
+    // remains byte-exact. Multipage sections repeat the same source for each PNG.
+    const source = joinTurns(turns, r.s, r.e, -1);
+    if (pinConsumed && r.s >= pinIdx + 1) {
+      imagesAfter.push(...r.imgs);
+      imageSourcesAfter.push(...r.imgs.map(() => source));
+    } else {
+      imagesBefore.push(...r.imgs);
+      imageSources.push(...r.imgs.map(() => source));
+    }
   }
   if (imagesBefore.length === 0 && imagesAfter.length === 0) {
     // First section alone exceeded the cap (or cap <= 0). Fall back to text.
@@ -429,6 +488,8 @@ export async function planGptCollapse(
   return {
     images: imagesBefore,
     imagesAfter,
+    imageSources,
+    imageSourcesAfter,
     pinText,
     text: collapsedText,
     start: pp,
@@ -451,79 +512,247 @@ function gptCountTokens(text: string): number {
   }
 }
 
-// ---- Responses API lowering -------------------------------------------------
+// ---- Responses completed-pair planning -------------------------------------
 
-function responsesContentToText(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  const parts: string[] = [];
-  for (const p of content) {
-    if (!p || typeof p !== 'object') continue;
-    const t = (p as { type?: string }).type;
-    if (t === 'input_text' || t === 'output_text' || t === 'text' || t === 'summary_text') {
-      const txt = (p as { text?: unknown }).text;
-      if (typeof txt === 'string') parts.push(txt);
-    } else if (t === 'input_image' || t === 'image' || t === 'output_image') {
-      parts.push('[image]');
-    } else if (t === 'refusal') {
-      const r = (p as { refusal?: unknown }).refusal;
-      if (typeof r === 'string') parts.push(r);
+function responseCallText(item: Record<string, unknown>): string {
+  const name = typeof item.name === 'string' ? item.name : 'tool';
+  const args = typeof item.arguments === 'string'
+    ? item.arguments
+    : safeJson(item.arguments);
+  return `[tool_use ${name}]\n${args}`;
+}
+
+function responseOutputText(item: Record<string, unknown>): string {
+  const output = typeof item.output === 'string' ? item.output : safeJson(item.output);
+  return `[tool_result]\n${output}`;
+}
+
+interface ResponsesCompletedPair {
+  callIndex: number;
+  outputIndex: number;
+  text: string;
+  callTokens: number;
+  outputTokens: number;
+}
+
+function responseItemType(item: unknown): string {
+  const o = item as Record<string, unknown> | null;
+  return o && typeof o.type === 'string' ? o.type : '';
+}
+
+function responseCallId(item: unknown): string {
+  const o = item as Record<string, unknown> | null;
+  return o && typeof o.call_id === 'string' ? o.call_id : '';
+}
+
+/** Classify Responses tool state without interpreting recency from raw item count.
+ * Only an unambiguous adjacent call/output pair is collapsible. Native items
+ * between the call and output would be reordered by a single image replacement. */
+function classifyResponsesPairs(
+  items: unknown[],
+  keepRecentPairs: number,
+): { old: ResponsesCompletedPair[]; state: ResponsesPairState } {
+  const calls = new Map<string, number[]>();
+  const outputs = new Map<string, number[]>();
+  let missingIdItems = 0;
+  for (let i = 0; i < items.length; i++) {
+    const type = responseItemType(items[i]);
+    if (type !== 'function_call' && type !== 'function_call_output') continue;
+    const id = responseCallId(items[i]);
+    if (!id) { missingIdItems++; continue; }
+    const map = type === 'function_call' ? calls : outputs;
+    const at = map.get(id) ?? [];
+    at.push(i);
+    map.set(id, at);
+  }
+
+  const completed: ResponsesCompletedPair[] = [];
+  let openCalls = 0;
+  let orphanOutputs = 0;
+  let malformedItems = missingIdItems;
+  const ids = new Set([...calls.keys(), ...outputs.keys()]);
+  for (const id of ids) {
+    const cs = calls.get(id) ?? [];
+    const os = outputs.get(id) ?? [];
+    if (cs.length === 1 && os.length === 1 && os[0] === cs[0]! + 1) {
+      const callIndex = cs[0]!;
+      const outputIndex = os[0]!;
+      const call = items[callIndex] as Record<string, unknown>;
+      const output = items[outputIndex] as Record<string, unknown>;
+      completed.push({
+        callIndex,
+        outputIndex,
+        text: `${responseCallText(call)}\n${responseOutputText(output)}`,
+        // Match measureResponsesComposition exactly so the share is comparable
+        // to its functionCalls/functionOutputs buckets.
+        callTokens: gptCountTokens(JSON.stringify(call)),
+        outputTokens: gptCountTokens(
+          typeof output.output === 'string' ? output.output : safeJson(output.output),
+        ),
+      });
+      continue;
+    }
+    if (cs.length > 0 && os.length === 0) openCalls += cs.length;
+    else if (os.length > 0 && cs.length === 0) orphanOutputs += os.length;
+    else malformedItems += cs.length + os.length;
+  }
+  completed.sort((a, b) => a.outputIndex - b.outputIndex);
+  const keep = Math.max(0, Math.floor(keepRecentPairs));
+  const oldCount = Math.max(0, completed.length - keep);
+  const old = completed.slice(0, oldCount);
+  const imageableFunctionCallTokens = old.reduce((n, p) => n + p.callTokens, 0);
+  const imageableFunctionOutputTokens = old.reduce((n, p) => n + p.outputTokens, 0);
+  return {
+    old,
+    state: {
+      completedPairs: completed.length,
+      recentCompletedPairs: completed.length - old.length,
+      oldCompletedPairs: old.length,
+      openCalls,
+      orphanOutputs,
+      malformedItems,
+      imageableFunctionCallTokens,
+      imageableFunctionOutputTokens,
+      collapsedPairs: 0,
+      collapsedFunctionCallTokens: 0,
+      collapsedFunctionOutputTokens: 0,
+    },
+  };
+}
+
+function emptyResponsesPairPlan(state: ResponsesPairState): ResponsesPairCollapsePlan {
+  return {
+    images: [], imagesAfter: [], imageSources: [], imageSourcesAfter: [],
+    text: '', start: 0, endExclusive: 0, collapsedTurns: 0,
+    collapsedChars: 0, droppedChars: 0, droppedCodepoints: new Map(),
+    segments: [], selectedIndices: [], pairState: state,
+  };
+}
+
+/** Render only old, unambiguously completed Responses call/output pairs.
+ * Native messages, reasoning, recent pairs, open calls, and malformed state stay
+ * in place. Consecutive pairs may share pages, but no segment crosses native state. */
+export async function planResponsesPairCollapse(
+  items: unknown[],
+  isProfitable: GptProfitableFn,
+  opts: Partial<GptHistoryOptions> = {},
+): Promise<ResponsesPairCollapsePlan> {
+  const o: GptHistoryOptions = { ...GPT_HISTORY_DEFAULTS, ...opts };
+  const { old, state } = classifyResponsesPairs(items, o.keepRecentPairs);
+  const base = emptyResponsesPairPlan(state);
+  if (old.length === 0) return { ...base, reason: 'no_closed_prefix' };
+
+  const allText = old.map((pair) => pair.text).join('\n\n');
+  if (!allText || gptCountTokens(allText) < o.minCollapseTokens) {
+    return { ...base, reason: 'below_min_tokens', collapsedChars: allText.length };
+  }
+
+  const maxImages = Math.max(0, Math.floor(o.maxImages));
+  if (maxImages === 0) {
+    return { ...base, reason: 'too_many_images', collapsedChars: allText.length };
+  }
+
+  const runs: ResponsesCompletedPair[][] = [];
+  for (const pair of old) {
+    const run = runs.at(-1);
+    if (run && pair.callIndex === run.at(-1)!.outputIndex + 1) run.push(pair);
+    else runs.push([pair]);
+  }
+
+  const renderPairs = async (pairs: ResponsesCompletedPair[]) => {
+    const source = pairs.map((pair) => pair.text).join('\n\n');
+    const safe = neutralizeSentinel(source);
+    let renderedText = o.reflow ? reflow(safe) ?? safe : safe;
+    if (o.idsBlock) renderedText = appendIdsBlock(renderedText);
+    const images = await renderTextToPngs(
+      renderedText, o.cols, o.style ?? {}, o.maxHeightPx,
+    );
+    return { source, renderedText, images };
+  };
+
+  const segments: ResponsesPairCollapseSegment[] = [];
+  let remainingImages = maxImages;
+  let hitImageCap = false;
+  for (const run of runs) {
+    if (remainingImages === 0) { hitImageCap = true; break; }
+
+    let low = 0;
+    let high = run.length + 1;
+    let best: Awaited<ReturnType<typeof renderPairs>> | undefined;
+    while (low + 1 < high) {
+      const count = Math.floor((low + high) / 2);
+      const rendered = await renderPairs(run.slice(0, count));
+      if (rendered.images.length > 0 && rendered.images.length <= remainingImages) {
+        low = count;
+        best = rendered;
+      } else {
+        high = count;
+      }
+    }
+    if (!best || low === 0) { hitImageCap = true; break; }
+    if (!isProfitable(best.renderedText, o.cols)) continue;
+
+    const selected = run.slice(0, low);
+    const selectedIndices = selected
+      .flatMap((pair) => [pair.callIndex, pair.outputIndex])
+      .sort((a, b) => a - b);
+    segments.push({
+      insertAt: selected[0]!.callIndex,
+      selectedIndices,
+      images: best.images,
+      imageSources: best.images.map(() => best.source),
+      text: best.source,
+    });
+    remainingImages -= best.images.length;
+    if (low < run.length) { hitImageCap = true; break; }
+  }
+
+  if (segments.length === 0) {
+    return {
+      ...base,
+      reason: hitImageCap ? 'too_many_images' : 'not_profitable',
+      collapsedChars: allText.length,
+    };
+  }
+
+  const selectedIndices = segments
+    .flatMap((segment) => segment.selectedIndices)
+    .sort((a, b) => a - b);
+  const images = segments.flatMap((segment) => segment.images);
+  const imageSources = segments.flatMap((segment) => segment.imageSources);
+  const text = segments.map((segment) => segment.text).join('\n\n');
+  const selectedIds = new Set(selectedIndices);
+  const selectedPairs = old.filter(
+    (pair) => selectedIds.has(pair.callIndex) && selectedIds.has(pair.outputIndex),
+  );
+  state.collapsedPairs = selectedPairs.length;
+  state.collapsedFunctionCallTokens = selectedPairs.reduce((n, pair) => n + pair.callTokens, 0);
+  state.collapsedFunctionOutputTokens = selectedPairs.reduce((n, pair) => n + pair.outputTokens, 0);
+
+  const droppedCodepoints = new Map<number, number>();
+  let droppedChars = 0;
+  for (const image of images) {
+    droppedChars += image.droppedChars;
+    for (const [codepoint, count] of image.droppedCodepoints) {
+      droppedCodepoints.set(codepoint, (droppedCodepoints.get(codepoint) ?? 0) + count);
     }
   }
-  return parts.join('\n');
-}
 
-function responsesItemToTurn(item: unknown, idx: number): HistoryTurn {
-  const o = (item ?? {}) as Record<string, unknown>;
-  const type = typeof o.type === 'string' ? o.type : undefined;
-  if (type === 'reasoning') {
-    return { text: '', openIds: [], closeIds: [], opaque: false };
-  }
-  if (type === 'function_call') {
-    const callId =
-      typeof o.call_id === 'string' ? o.call_id : typeof o.id === 'string' ? o.id : '';
-    const name = typeof o.name === 'string' ? o.name : 'tool';
-    const args = typeof o.arguments === 'string' ? o.arguments : safeJson(o.arguments);
-    return {
-      text: `[tool_use ${name}]\n${args}`,
-      openIds: callId ? [callId] : [],
-      closeIds: [],
-      opaque: false,
-    };
-  }
-  if (type === 'function_call_output') {
-    const callId = typeof o.call_id === 'string' ? o.call_id : '';
-    const out = typeof o.output === 'string' ? o.output : safeJson(o.output);
-    return {
-      text: `[tool_result]\n${out}`,
-      openIds: [],
-      closeIds: callId ? [callId] : [],
-      opaque: false,
-    };
-  }
-  const role = typeof o.role === 'string' ? o.role : undefined;
-  if (role) {
-    const body = responsesContentToText(o.content);
-    if (!body.trim()) return { text: '', openIds: [], closeIds: [], opaque: false };
-    const tag = role === 'assistant' ? 'assistant' : role === 'user' ? 'user' : role;
-    // Absolute turn index (item position) — recency anchor so the model can tell turn 1
-    // from turn 60 instead of resurfacing the salient opening turn. Stable per item →
-    // cache-safe (mirrors src/core/history.ts). Tool turns stay unindexed (not mistakable
-    // for a live request); the index rides the conversational role tags.
-    return {
-      text: `<${tag} t="${idx}">\n${body}\n</${tag}>`,
-      openIds: [],
-      closeIds: [],
-      opaque: false,
-      userText: role === 'user' ? body : undefined,
-    };
-  }
-  // Unknown item kind (e.g. item_reference) we can't safely serialize → barrier.
-  return { text: '', openIds: [], closeIds: [], opaque: true };
-}
-
-export function responsesItemsToTurns(items: unknown[]): HistoryTurn[] {
-  return items.map((item, i) => responsesItemToTurn(item, i));
+  return {
+    ...base,
+    segments,
+    images,
+    imageSources,
+    text,
+    start: selectedIndices[0] ?? 0,
+    endExclusive: (selectedIndices.at(-1) ?? -1) + 1,
+    collapsedTurns: selectedIndices.length,
+    collapsedChars: text.length,
+    droppedChars,
+    droppedCodepoints,
+    selectedIndices,
+    pairState: state,
+  };
 }
 
 // ---- Chat Completions lowering ----------------------------------------------

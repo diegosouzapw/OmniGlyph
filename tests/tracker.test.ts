@@ -67,6 +67,34 @@ describe('toTrackEvent', () => {
     expect(out.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it('persists Responses completed-pair imageability telemetry', () => {
+    const out = toTrackEvent({
+      method: 'POST', path: '/v1/responses', status: 200, durationMs: 1,
+      info: {
+        compressed: true, origChars: 1, compressedChars: 1,
+        imageCount: 1, imageBytes: 1, staticChars: 1, dynamicChars: 0,
+        dynamicBlockCount: 0, droppedChars: 0,
+        responsesComposition: {
+          instructions: 0, systemDeveloper: 0, userAssistant: 1,
+          functionCalls: 100, functionOutputs: 449922, reasoningEncrypted: 0,
+          compactionOpaque: 0, toolsJson: 0, other: 0, totalLocal: 450023,
+          imageParts: 0, completedFunctionPairs: 20, recentNativeFunctionPairs: 6,
+          oldFunctionPairs: 14, openFunctionCalls: 1, orphanFunctionOutputs: 0,
+          malformedFunctionItems: 0, imageableFunctionCalls: 90,
+          imageableFunctionOutputs: 440000, collapsedFunctionPairs: 8,
+          collapsedFunctionCalls: 50, collapsedFunctionOutputs: 250000,
+        },
+      },
+    });
+    expect(out.responses_composition).toMatchObject({
+      functionOutputs: 449922,
+      imageableFunctionOutputs: 440000,
+      collapsedFunctionOutputs: 250000,
+      recentNativeFunctionPairs: 6,
+      openFunctionCalls: 1,
+    });
+  });
+
   it('captures the nested cache_creation split and server_tool_use counters', () => {
     // Anthropic's `usage` block carries some fields inline and others nested
     // under `cache_creation` / `server_tool_use`. The flat 4-field view we
