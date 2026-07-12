@@ -42,6 +42,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(factsheet):** keep uppercase-labeled assignments
+  (`ACTIVE_MANIFEST=/path/to/file`) as a single token instead of splitting the
+  label from its value. The `LABEL=value` pair is extracted whole (most-specific
+  pattern, tried first) and joins the protected tier-0 anchors, so the
+  label→value association is never evicted from the 64-token budget by
+  anonymous hex/number log noise.
 - **fix(node):** `waitForDrain` no longer leaks one `close` + one `error`
   listener per backpressure cycle on the same `ServerResponse`. On long SSE
   streams the old `Promise.race`/`events.once` pattern accumulated listeners
