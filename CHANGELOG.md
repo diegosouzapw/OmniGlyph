@@ -32,14 +32,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   upstream: 2.6% refusals on reminder-imaged requests vs 0% uncompressed).
   (thanks @adrade2)
 - **feat(grok):** opt-in support for xAI **Grok** on the OpenAI-compatible wire.
-  Grok renders at an effective 9×12 cell (denser than the 5×8 default) with the
-  verbatim fact-sheet, is priced by a measured ~1000 tokens/megapixel model and
-  xAI cache/output rates, and stays **fail-closed**: even in `OMNIGLYPH_MODELS`
-  it is text-only until an operator explicitly acks the risk via
-  `OMNIGLYPH_UNVERIFIED_MODELS=grok-4.5` — pending OmniGlyph's own reading
-  receipt. The OpenAI-wire profile resolver is now provider-neutral and accepts
-  the `OMNIGLYPH_MODEL_PROFILES` env (legacy `OMNIGLYPH_GPT_PROFILES` still
-  works).
+  Grok renders at **stock Spleen 5×8 on white AA** — no grid, 152-col strip
+  (768px short-side floor), short 512px pages — with an in-image **IDS block**
+  beside the verbatim fact-sheet (the dense 9×12 cell confabulated exact IDs in
+  measurement; white 5×8 + IDS is the stable exact-recall recipe). Grok is
+  priced by a measured ~1000 tokens/megapixel model and xAI cache/output rates,
+  and stays **fail-closed**: even in `OMNIGLYPH_MODELS` it is text-only until an
+  operator explicitly acks the risk via `OMNIGLYPH_UNVERIFIED_MODELS=grok-4.5` —
+  pending OmniGlyph's own reading receipt in `eval/grok-density`. The OpenAI-wire
+  profile resolver is now provider-neutral and accepts the
+  `OMNIGLYPH_MODEL_PROFILES` env (legacy `OMNIGLYPH_GPT_PROFILES` still works),
+  with retunable-per-model render knobs (`inkDilate`/`inkDilateAxis`, `invert`,
+  `colorByClass`, `classTick`, `paperGray`) that stay off in production.
+- **feat(render):** the in-image **IDS block** (`appendIdsBlock`:
+  hex/uuid/camel/path/port tokens, one per rendered row, max 16, deterministic)
+  now rides inside **every** imaged path — the Anthropic slab, tool results,
+  collapsed history, and both OpenAI-wire slab and history legs — as defense in
+  depth beside the text fact-sheet. The fact-sheet budget grows 64 → 96 tokens
+  and `factSheetText` pages past the 262 KiB scan bound so late identifiers
+  still surface. The OpenAI-wire profitability gate now bills the **last page at
+  its residual height** (not a full strip) and uses the real **o200k** count as
+  its default text baseline (`grok-billing.test.ts` renders real PNGs and
+  matches the gate token for token).
 - **feat(node):** the Node proxy's OpenAI leg falls back to the **Codex ChatGPT
   login** (`~/.codex/auth.json`, override with `OMNIGLYPH_CODEX_AUTH_FILE`) when
   `OPENAI_API_KEY` is unset. An explicit `OPENAI_API_KEY` still wins; only the
@@ -64,25 +78,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Changed
 
-- **feat(grok):** repack the opt-in Grok render profile from the dense
-  effective 9×12 cell to **stock Spleen 5×8 on white AA** — no grid, 152-col
-  strip (768px short-side floor), short 512px pages. Upstream re-measured
-  pure-image on grok-4.5: the dense cell confabulates exact IDs, while white
-  5×8 + an in-image **IDS block** is the stable exact-recall recipe. That IDS
-  block (`appendIdsBlock`: hex/uuid/camel/path/port tokens, one per rendered
-  row, max 16, deterministic) now rides inside **every** imaged path — the
-  Anthropic slab, tool results, collapsed history, and both OpenAI-wire slab
-  and history legs — as defense in depth beside the text fact-sheet. The
-  fact-sheet budget grows 64 → 96 tokens and `factSheetText` pages past the
-  262 KiB scan bound so late identifiers still surface. The OpenAI-wire
-  profitability gate now bills the **last page at its residual height** (not a
-  full strip) and uses the real **o200k** count as its default text baseline
-  (`grok-billing.test.ts` renders real PNGs and matches the gate token for
-  token). New render knobs (`inkDilate`/`inkDilateAxis`, `invert`,
-  `colorByClass`, `classTick`, `paperGray`) stay off in production and are
-  retunable per model via `OMNIGLYPH_MODEL_PROFILES`. Grok itself remains
-  **fail-closed** (`OMNIGLYPH_UNVERIFIED_MODELS` ack still required) pending
-  OmniGlyph's own reading receipt in `eval/grok-density`.
 - **test:** pin `OMNIGLYPH_MODELS` to the built-in default scope in the
   savings-math e2e so the file is deterministic regardless of a developer's
   ambient shell. The GPT cases drive `gpt-5.6`; a shell that exports a narrowed
@@ -192,6 +187,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   translations) covering Claude Code CLI on macOS/Linux, the **Windows
   PowerShell** variant (`$env:ANTHROPIC_BASE_URL`), and **Claude Desktop** setup.
   (thanks @ousamabenyounes)
+- **eval:** two `$0` measurement harnesses (score through the Claude Code CLI).
+  `eval/grok-density` validates that the shipped Grok profile reads exact tokens
+  back before the fail-closed gate is flipped; `eval/ab/guards-3arm` isolates the
+  in-image IDS block's read value against the text fact-sheet (three arms:
+  IDS+sheet / sheet-only / neither). Generated corpora and per-run logs are
+  git-ignored so a run never poses as a receipt; neither changes shipped
+  behavior.
 
 ## [1.2.0] — 2026-07-08
 
