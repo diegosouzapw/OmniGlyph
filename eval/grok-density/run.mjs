@@ -88,7 +88,7 @@ async function callModel(model, dataUrls, question) {
       signal: controller.signal,
     });
   } catch (err) {
-    throw new Error(`fetch failed: ${err && err.message ? err.message : err}`);
+    throw new Error(`fetch failed: ${err && err.message ? err.message : err}`, { cause: err });
   } finally {
     clearTimeout(timer);
   }
@@ -156,7 +156,7 @@ if (live) {
   const dataUrls = pages.map((p) => 'data:image/png;base64,' + Buffer.from(p.png).toString('base64'));
   const m = { exactCorrect: 0, exactTotal: 0, confab: 0, abstain: 0, refused: 0, gistOk: false, guardOk: false, answers: [] };
   for (const q of QUESTIONS) {
-    let text = '', ms = 0, status = null;
+    let text, ms, status;
     try {
       ({ text, ms, status } = await callModel(MODEL, dataUrls, q.q));
     } catch (err) {

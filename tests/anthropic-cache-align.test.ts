@@ -98,6 +98,83 @@ describe('Anthropic cache contract — invariants that should already hold', () 
   });
 });
 
+describe('Anthropic cache contract — scope:"global" prefix consistency (upstream #95 shape)', () => {
+  // Anthropic rejects scope:"global" unless every preceding block is also
+  // globally scoped. A multi-image slab whose caller marker lands only on the
+  // LAST page is therefore an invalid prefix → every compressed request 400s.
+  // For the global-scope variant the caller's ONE marker must cover EVERY
+  // rendered page of the slab — a deliberate exception to "out count <= in
+  // count", which continues to hold for plain ephemeral markers (tests above).
+  const globalMark = { type: 'ephemeral', ttl: '1h', scope: 'global' };
+
+  function slabImagesOf(msgs: Message[]): any[] {
+    // slab pages = image blocks BEFORE the '[End of rendered context.]' boundary
+    for (const m of msgs) {
+      if (!Array.isArray(m.content)) continue;
+      const blocks = m.content as any[];
+      const end = blocks.findIndex((b) => b?.type === 'text' && b.text === '[End of rendered context.]');
+      if (end === -1) continue;
+      return blocks.slice(0, end).filter((b) => b?.type === 'image');
+    }
+    return [];
+  }
+
+  it('a scope:"global" caller marker lands on EVERY page of a multi-image slab', async () => {
+    const body = enc({
+      model: 'claude-3-5-sonnet',
+      system: [{ type: 'text', text: big(260_000), cache_control: globalMark }],
+      messages: [usr('hello, quick question')],
+    });
+    const { body: out, info } = await transformRequest(body);
+    expect(info.compressed).toBe(true);
+    const msgs = JSON.parse(new TextDecoder().decode(out)).messages as Message[];
+    const slabImgs = slabImagesOf(msgs);
+    expect(slabImgs.length).toBeGreaterThan(1); // must exercise the multi-page case
+    for (const img of slabImgs) {
+      expect(img.cache_control, 'every slab page must carry the global marker').toEqual(globalMark);
+    }
+  });
+
+  it('history-anchor relocation never opens a gap in a global-scoped prefix', async () => {
+    // With history collapse, the anchor extends onto the history image. Moving
+    // the slab marker there (the plain-ephemeral behaviour) would leave slab
+    // pages unmarked BEFORE a global block — the exact invalid shape. Global
+    // markers must be copied, never moved: slab pages keep theirs.
+    const body = enc({
+      model: 'claude-3-5-sonnet',
+      system: [{ type: 'text', text: big(260_000), cache_control: globalMark }],
+      messages: convo(15),
+    });
+    const { body: out, info } = await transformRequest(body);
+    expect(info.compressed).toBe(true);
+    const msgs = JSON.parse(new TextDecoder().decode(out)).messages as Message[];
+    const all = imagesOf(msgs);
+    const slabImgs = slabImagesOf(msgs);
+    expect(slabImgs.length).toBeGreaterThan(1);
+    for (const img of slabImgs) {
+      expect(img.cache_control, 'slab pages must keep the global marker after relocation').toEqual(globalMark);
+    }
+    // Prefix rule over image blocks: nothing unmarked may precede a global-marked block.
+    let gapped = false;
+    for (const img of all) {
+      if ((img.cache_control as any)?.scope === 'global') break;
+      gapped = true;
+      break;
+    }
+    expect(gapped, 'first image block must already be globally scoped').toBe(false);
+  });
+
+  it('plain ephemeral (no scope) keeps the existing single-marker behaviour', async () => {
+    const body = enc({
+      model: 'claude-3-5-sonnet',
+      system: [{ type: 'text', text: big(260_000), cache_control: { type: 'ephemeral' } }],
+      messages: [usr('hello, quick question')],
+    });
+    const { body: out } = await transformRequest(body);
+    expect(countCacheControlMarkers(out)).toBe(1);
+  });
+});
+
 describe('Anthropic cache contract — our agreed model (EXPECTED FAIL today)', () => {
   it('APPEND-ONLY: earlier history image stays byte-identical as the conversation grows past a chunk boundary', async () => {
     // Conversation P, then P + more turns that advance the collapse boundary.
