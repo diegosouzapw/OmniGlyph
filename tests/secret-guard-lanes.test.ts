@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { transformRequest, isCompressionProfitable } from '../src/core/transform.js';
 import { collapseHistory } from '../src/core/history.js';
 import type { Message } from '../src/core/types.js';
+import { transformOpenAIChatCompletions, transformOpenAIResponses } from '../src/core/openai.js';
+import {
+  planGptCollapse,
+  planResponsesPairCollapse,
+  type HistoryTurn,
+} from '../src/core/openai-history.js';
 
 const SECRET = 'sk-live-abcdefghijklmnop1234';
 const enc = new TextEncoder();
@@ -358,5 +364,174 @@ describe('Anthropic history lane via transformRequest (secretHits aggregation)',
     const { info } = await transformRequest(body);
     expect(info.historyReason).toBe('collapsed');
     expect(info.secretHits).toBeGreaterThan(0);
+  });
+});
+
+// ── Task 5: OpenAI legs (Chat Completions + Responses) ──────────────────────
+// Same fixture shapes as tests/openai-gpt5.test.ts (charsPerToken:1,
+// minCompressChars:1 so the small fixtures here clear the profitability gate).
+
+const OPENAI_BIG_INSTRUCTIONS = 'These are detailed instructions. '.repeat(600); // ~20k chars
+const OPENAI_BIG_SYSTEM = 'System instruction with lots of detail. '.repeat(500); // ~20k chars
+
+function responsesFixtureWithSecret() {
+  const body = enc.encode(JSON.stringify({
+    model: 'gpt-5.6',
+    instructions: `DEPLOY_API_TOKEN=${SECRET} ` + OPENAI_BIG_INSTRUCTIONS,
+    input: [{ role: 'user', content: 'Please do the thing.' }],
+  }));
+  return transformOpenAIResponses(body, { charsPerToken: 1, minCompressChars: 1 });
+}
+
+function chatFixtureWithSecret() {
+  const body = enc.encode(JSON.stringify({
+    model: 'gpt-5.6',
+    messages: [
+      { role: 'system', content: `DEPLOY_API_TOKEN=${SECRET} ` + OPENAI_BIG_SYSTEM },
+      { role: 'user', content: 'hello' },
+    ],
+  }));
+  return transformOpenAIChatCompletions(body, { charsPerToken: 1, minCompressChars: 1 });
+}
+
+describe('OpenAI slab lane (Responses)', () => {
+  it('off (default): images as today, secret rides natively in the render source', async () => {
+    const r = await responsesFixtureWithSecret();
+    expect(r.info.compressed).toBe(true);
+    expect(r.info.secretHits ?? 0).toBe(0);
+    expect(r.info.imageSourceText).toContain(SECRET);
+  });
+
+  it('text: instructions with a secret stay native; reason=secret_kept_text', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const r = await responsesFixtureWithSecret();
+    expect(r.info.compressed).toBe(false);
+    expect(r.info.reason).toBe('secret_kept_text');
+    expect(r.info.secretHits).toBeGreaterThan(0);
+    expect(new TextDecoder().decode(r.body)).toContain(SECRET);
+  });
+
+  it('redact: images, and imageSourceText + factsheet are masked', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const r = await responsesFixtureWithSecret();
+    expect(r.info.compressed).toBe(true);
+    expect(r.info.secretHits).toBeGreaterThan(0);
+    expect(r.info.imageSourceText).toContain('[REDACTED:');
+    expect(r.info.imageSourceText).not.toContain(SECRET);
+    expect(dec.decode(r.body)).not.toContain(SECRET);
+  });
+});
+
+describe('OpenAI slab lane (Chat)', () => {
+  it('text: system message with a secret stays native; reason=secret_kept_text', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const r = await chatFixtureWithSecret();
+    expect(r.info.compressed).toBe(false);
+    expect(r.info.reason).toBe('secret_kept_text');
+    expect(r.info.secretHits).toBeGreaterThan(0);
+    expect(dec.decode(r.body)).toContain(SECRET);
+  });
+
+  it('redact: slab still images; imageSourceText and the factsheet text block carry the mask, not the secret', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const r = await chatFixtureWithSecret();
+    expect(r.info.compressed).toBe(true);
+    expect(r.info.secretHits).toBeGreaterThan(0);
+    expect(r.info.imageSourceText).toContain('[REDACTED:');
+    expect(r.info.imageSourceText).not.toContain(SECRET);
+    const out = JSON.parse(dec.decode(r.body)) as { messages: Array<{ content?: unknown }> };
+    const firstUser = out.messages.find((m) => Array.isArray(m.content)) as
+      | { content: Array<{ type?: string; text?: string }> }
+      | undefined;
+    const textBlocks = (firstUser?.content ?? []).filter((b) => b.type === 'text');
+    expect(textBlocks.length).toBeGreaterThan(0);
+    for (const b of textBlocks) expect(b.text).not.toContain(SECRET);
+  });
+});
+
+// planGptCollapse decides ONE contiguous [start, endExclusive) range for the whole
+// collapse (the caller does a single splice over it) — unlike
+// planResponsesPairCollapse's independent per-run segments, there is no way to skip
+// just the section carrying the secret without leaving a gap the splice would
+// silently drop. So here a block aborts the WHOLE collapse (see comments in
+// src/core/openai-history.ts on the preflight/section guards in planGptCollapse).
+describe('OpenAI history lane — planGptCollapse (Chat)', () => {
+  const yes = () => true;
+
+  function turnsWithSecretAt(n: number, secretIdx: number, chars = 1000): HistoryTurn[] {
+    return Array.from({ length: n }, (_, i) => ({
+      text: `--- ${i % 2 === 0 ? 'user' : 'assistant'} ---\n`
+        + (i === secretIdx ? `DEPLOY_TOKEN=${SECRET} ` : '') + 'x'.repeat(chars),
+      openIds: [],
+      closeIds: [],
+      opaque: false,
+    }));
+  }
+
+  it('text: a secret anywhere in the range aborts the WHOLE collapse (no partial splice)', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const turns = turnsWithSecretAt(40, 5);
+    const plan = await planGptCollapse(turns, 0, yes);
+    expect(plan.images).toHaveLength(0);
+    expect(plan.reason).toBe('secret_kept_text');
+    expect(plan.secretHits).toBeGreaterThan(0);
+  });
+
+  it('redact: collapses fully; imageSources (dashboard artifact) carry the mask, never the secret', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const turns = turnsWithSecretAt(40, 5);
+    const plan = await planGptCollapse(turns, 0, yes);
+    expect(plan.images.length).toBeGreaterThan(0);
+    expect(plan.secretHits).toBeGreaterThan(0);
+    const dump = plan.imageSources.join('\n');
+    expect(dump).not.toContain(SECRET);
+    expect(dump).toContain('[REDACTED:');
+  });
+});
+
+// planResponsesPairCollapse's segments are independent per-run inserts (each pair
+// run keeps its own position in inputItems), so — unlike planGptCollapse above —
+// blocking one run cannot orphan another: the secret-bearing run stays fully
+// native while every OTHER run still collapses.
+describe('OpenAI history lane — planResponsesPairCollapse (Responses)', () => {
+  const yes = () => true;
+
+  function pair(id: string, text: string, outputChars = 1400): Array<Record<string, unknown>> {
+    return [
+      { type: 'function_call', id: `fc_${id}`, call_id: id, name: 'exec_command', arguments: `{"cmd":"${id}"}` },
+      { type: 'function_call_output', call_id: id, output: `${text} ${'output '.repeat(outputChars / 7)}` },
+    ];
+  }
+
+  function twoRunItems(): Array<Record<string, unknown>> {
+    return [
+      ...pair('secret_run', `DEPLOY_TOKEN=${SECRET}`, 1400),
+      { role: 'assistant', content: 'native gap separates the two runs' },
+      ...pair('clean_run', 'nothing sensitive here', 7000),
+    ];
+  }
+
+  it('text: the run carrying the secret stays native; the OTHER run still collapses', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const items = twoRunItems();
+    const plan = await planResponsesPairCollapse(items, yes, {
+      keepRecentPairs: 0, minCollapseTokens: 1, maxImages: 100,
+    });
+    expect(plan.secretHits).toBeGreaterThan(0);
+    expect(plan.segments.length).toBeGreaterThan(0);
+    // Only the clean run's pair (indices 3,4) collapsed; the secret run (0,1) stayed native.
+    expect(plan.selectedIndices).toEqual([3, 4]);
+  });
+
+  it('redact: both runs collapse; segment text/imageSources are masked, never the secret', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const items = twoRunItems();
+    const plan = await planResponsesPairCollapse(items, yes, {
+      keepRecentPairs: 0, minCollapseTokens: 1, maxImages: 100,
+    });
+    expect(plan.secretHits).toBeGreaterThan(0);
+    const dump = plan.imageSources.join('\n') + plan.text;
+    expect(dump).not.toContain(SECRET);
+    expect(dump).toContain('[REDACTED:');
   });
 });

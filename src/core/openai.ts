@@ -42,6 +42,7 @@ import {
 } from './openai-history.js';
 import { HISTORY_SYNTHETIC_INTRO, HISTORY_SYNTHETIC_OUTRO } from './history.js';
 import { appendIdsBlock, factSheetText } from './factsheet.js';
+import { guardImagedText } from './secret-guard.js';
 import { countTokens as o200kCountTokens } from 'gpt-tokenizer/encoding/o200k_base';
 
 // Per-model OpenAI-wire rendering + vision-cost profiles (portrait-strip width,
@@ -292,11 +293,16 @@ function emptyInfo(reason?: string): TransformInfo {
   };
 }
 
-/** Append IDS block so precision tokens get isolated pure-image rows (all models).
+/** Guard + append IDS block for any text about to become an OpenAI-leg image.
  *  IDS alone is not enough for Grok exact recall on live multi-seed; production
- *  still attaches factSheetText next to images (see slab/history below). */
-function prepareImagedRenderText(text: string): string {
-  return appendIdsBlock(text);
+ *  still attaches factSheetText next to images (see slab/history below).
+ *  blocked=true means the guard found a live credential under mode='text': the
+ *  caller must keep this slab as native, uncompressed text (same path as the
+ *  gate declining) rather than append IDS/render — `text` is then the ORIGINAL
+ *  (unmasked) input, since it will never reach the renderer. */
+function prepareImagedRenderText(text: string): { text: string; blocked: boolean; hits: number } {
+  const g = guardImagedText(text);
+  return { text: g.blocked ? text : appendIdsBlock(g.text), blocked: g.blocked, hits: g.hits };
 }
 
 function maybeReflow(text: string, enabled: boolean): string {
@@ -745,6 +751,7 @@ function foldGptHistory(
 ): void {
   // A pin can split the collapse into before/after image groups — account for both.
   const allImages = [...plan.images, ...plan.imagesAfter];
+  if (plan.secretHits) info.secretHits = (info.secretHits ?? 0) + plan.secretHits;
   if (allImages.length === 0) {
     if (plan.reason) info.historyReason = plan.reason;
     if (plan.collapsedChars > 0) info.historyTextChars = plan.collapsedChars;
@@ -858,7 +865,16 @@ export async function transformOpenAIChatCompletions(
     ? ' The glyph ↵ (U+21B5) marks an original hard line break in content; treat it as a real newline.'
     : '';
   const header = CHAT_HEADER.replace('\n====', reflowNote + '\n====');
-  const renderedText = prepareImagedRenderText(header + combined);
+  const prep = prepareImagedRenderText(header + combined);
+  if (prep.hits > 0) info.secretHits = (info.secretHits ?? 0) + prep.hits;
+  if (prep.blocked) {
+    // Same "leave the request untouched" path as the !gate.profitable branch
+    // directly below — the slab stays native text, never imaged.
+    info.reason ??= 'secret_kept_text';
+    info.passthroughReasons = { not_profitable: 1 };
+    return { body, info };
+  }
+  const renderedText = prep.text;
   const cols = Math.min(shrinkColsToContent(renderedText, o.cols), resolveModelProfile(req.model).stripCols);
 
   const gate = evalOpenAIGate(req.model, renderedText, cols, o.charsPerToken);
@@ -914,7 +930,10 @@ export async function transformOpenAIChatCompletions(
   // Verbatim fact-sheet: precision-critical tokens (paths, ids, versions, flags)
   // pulled from the pre-image text so exact strings survive OCR loss. Deterministic
   // → stays inside the cached prefix. See src/core/factsheet.ts.
-  const slabFactSheet = factSheetText(combinedRaw);
+  // combinedRaw is unrelated to prep.text above (no header, no reflow) — guard it
+  // separately so the raw secret can't ride into this text block instead (hits
+  // already accounted via prep.hits above; this call is redaction-only).
+  const slabFactSheet = factSheetText(guardImagedText(combinedRaw).text);
   const slabUserMsg: OpenAIChatMessage = {
     role: 'user',
     content: [
@@ -960,7 +979,9 @@ export async function transformOpenAIChatCompletions(
         for (const img of plan.imagesAfter) content.push(openAIImagePart(img, resolveModelProfile(req.model).detail));
       }
       // Verbatim fact-sheet for the imaged transcript (exact ids survive OCR loss).
-      const histFactSheet = factSheetText(plan.text);
+      // plan.text is the raw joined collapsed range (hits already accounted via
+      // planGptCollapse's own secretHits above; this call is redaction-only).
+      const histFactSheet = factSheetText(guardImagedText(plan.text).text);
       if (histFactSheet) content.push({ type: 'text', text: histFactSheet });
       content.push({ type: 'text', text: HISTORY_TRANSCRIPT_OUTRO });
       const synthetic: OpenAIChatMessage = { role: 'user', content };
@@ -1078,7 +1099,16 @@ export async function transformOpenAIResponses(
     ? ' The glyph ↵ (U+21B5) marks an original hard line break in content; treat it as a real newline.'
     : '';
   const header = RESPONSES_HEADER.replace('\n====', reflowNote + '\n====');
-  const renderedText = prepareImagedRenderText(header + combined);
+  const prep = prepareImagedRenderText(header + combined);
+  if (prep.hits > 0) info.secretHits = (info.secretHits ?? 0) + prep.hits;
+  if (prep.blocked) {
+    // Same "leave the request untouched" path as the !gate.profitable branch
+    // directly below — the slab stays native text, never imaged.
+    info.reason ??= 'secret_kept_text';
+    info.passthroughReasons = { not_profitable: 1 };
+    return { body, info };
+  }
+  const renderedText = prep.text;
   const cols = Math.min(shrinkColsToContent(renderedText, o.cols), resolveModelProfile(req.model).stripCols);
 
   const gate = evalOpenAIGate(req.model, renderedText, cols, o.charsPerToken);
@@ -1132,7 +1162,10 @@ export async function transformOpenAIResponses(
   const imagePartsResp: ResponsesInputImagePart[] = images.map((img) => responsesImagePart(img, resolveModelProfile(req.model).detail));
   const endMarker: ResponsesInputTextPart = { type: 'input_text', text: '[End of rendered GPT system/tool context.]' };
   // Verbatim fact-sheet (see src/core/factsheet.ts): exact tokens that survive OCR loss.
-  const slabFactSheet = factSheetText(combinedRaw);
+  // combinedRaw is unrelated to prep.text above (no header, no reflow) — guard it
+  // separately so the raw secret can't ride into this text part instead (hits
+  // already accounted via prep.hits above; this call is redaction-only).
+  const slabFactSheet = factSheetText(guardImagedText(combinedRaw).text);
   const slabFactSheetPart: ResponsesInputTextPart[] = slabFactSheet
     ? [{ type: 'input_text', text: slabFactSheet }]
     : [];
@@ -1220,7 +1253,12 @@ export async function transformOpenAIResponses(
           { type: 'input_text', text: HISTORY_TRANSCRIPT_INTRO },
           ...segment.images.map((img) => responsesImagePart(img, resolveModelProfile(req.model).detail)),
         ];
-        const sheet = factSheetText(segment.text);
+        // segment.text is already the guarded (redact-masked) source (see
+        // planResponsesPairCollapse/renderPairs) — re-guarding here is a cheap
+        // idempotent no-op, kept for parity with the other 3 factSheetText
+        // call sites in this file so none of them silently depend on an
+        // upstream implementation detail to stay secret-safe.
+        const sheet = factSheetText(guardImagedText(segment.text).text);
         if (sheet) content.push({ type: 'input_text', text: sheet });
         content.push({ type: 'input_text', text: HISTORY_TRANSCRIPT_OUTRO });
         replacements.set(segment.insertAt, { role: 'user', content });
