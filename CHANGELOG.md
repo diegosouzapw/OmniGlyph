@@ -4,15 +4,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
-### Docs
-
-- **docs:** add a "Use with Claude clients" section to the README (and all 41
-  translations) covering Claude Code CLI on macOS/Linux, the **Windows
-  PowerShell** variant (`$env:ANTHROPIC_BASE_URL`), and **Claude Desktop** setup.
-  (thanks @ousamabenyounes)
-
-## [Unreleased]
-
 ### Added
 
 - **feat(openai):** compress completed **Responses tool pairs**. The Responses
@@ -27,6 +18,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   outputs / reasoning / compaction) persisted to JSONL and rendered in the
   dashboard Details panel, and each dashboard page thumbnail now maps to the
   exact source text that produced that page.
+- **feat(transform):** new `compressSystem` option (default `true`, behavior
+  unchanged). With `false`, the session config is never imaged: the system
+  field passes through byte-identical, tool docs stay in `tools[]` unstubbed,
+  the first user message keeps its layout, and head `<system-reminder>`
+  blocks survive history collapse verbatim — while tool_results and collapsed
+  history still image. On the Node host, `OMNIGLYPH_KEEP_SYSTEM_TEXT=1` (or
+  `{"keepSystemText": true}` in the config file) turns the mode on. Guard for
+  Anthropic's reasoning_extraction refusal classifier, which fires on
+  system-prompt-shaped content rendered inside user-message images (measured
+  upstream: 2.6% refusals on reminder-imaged requests vs 0% uncompressed).
+  (thanks @adrade2)
 - **feat(grok):** opt-in support for xAI **Grok** on the OpenAI-compatible wire.
   Grok renders at an effective 9×12 cell (denser than the 5×8 default) with the
   verbatim fact-sheet, is priced by a measured ~1000 tokens/megapixel model and
@@ -91,6 +93,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(transform):** preserve the exact Claude Code OAuth identity ("You are
+  Claude Code, Anthropic's official CLI for Claude.") as the first, separate
+  top-level system text block. Subscription OAuth traffic is classified as
+  Claude Code only while that identity stays a standalone text block — imaging
+  it into the static slab pushed requests out of the Claude Code lane (measured
+  as a generic 429 on enterprise OAuth). The identity is now excluded from the
+  imaged slab and re-emitted ahead of the billing line in the system tail; the
+  rest of the system prompt compresses as before. (thanks @mkhalid-s)
+- **fix(proxy):** gate Messages transforms by model family. `/v1/messages` is
+  only a wire schema — Claude Code can point it at a non-Anthropic model — but
+  the proxy applied Claude's renderer and Anthropic's `count_tokens` baseline
+  probes to every Messages-shaped request. Messages requests now get the
+  Anthropic transform and probes only when the model is actually a Claude
+  model; otherwise they fail closed to passthrough.
+- **fix(render):** codepoints absent from the glyph atlas (emoji, astral-plane
+  symbols) are no longer silently rendered as blank cells. Each miss is now
+  substituted with a deterministic ASCII escape — 🔥 becomes `[U+1F525]` — at
+  the same layer as tab expansion, so wrap math and canvas measurement stay
+  consistent with what is drawn, and the model reads the codepoint instead of a
+  gap. Invisibles and modifiers (C0 controls, combining diacritics, zero-width
+  chars, variation selectors) are exempt and still drop as blank cells, keeping
+  slot-string alignment and role coloring intact; `droppedChars` telemetry now
+  counts only these exempt drops. (thanks @roethlar)
+- **fix(factsheet):** keep uppercase-labeled assignments
+  (`ACTIVE_MANIFEST=/path/to/file`) as a single token instead of splitting the
+  label from its value. The `LABEL=value` pair is extracted whole (most-specific
+  pattern, tried first) and joins the protected tier-0 anchors, so the
+  label→value association is never evicted from the 64-token budget by
+  anonymous hex/number log noise.
+- **fix(node):** `waitForDrain` no longer leaks one `close` + one `error`
+  listener per backpressure cycle on the same `ServerResponse`. On long SSE
+  streams the old `Promise.race`/`events.once` pattern accumulated listeners
+  until `MaxListenersExceededWarning` fired and the proxy's heap grew without
+  bound; listeners are now managed manually and detached on whichever of
+  `drain`/`close`/`error` fires first. (thanks @zannensk)
+- **fix(transform):** keep `scope: "global"` `cache_control` valid across
+  multi-image slabs. Anthropic rejects a globally-scoped block unless every
+  preceding block is also globally scoped; the caller's marker used to land
+  only on the LAST rendered page (and the history-anchor relocation then moved
+  it off the slab entirely), so any multi-page slab 400'd the whole request.
+  A global marker now covers every slab page and is copied — not moved — onto
+  the history anchor. Plain ephemeral markers keep the existing single,
+  trailing placement. (thanks @jasminaladdn)
 - **fix(transform):** the profitability gate no longer counts the reflow ↵
   sentinel as a visual row break. Reflow packs hard newlines into one
   soft-wrapped stream (↵ is an inline glyph the renderer never breaks on), so
@@ -127,6 +172,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   image pixels — while the savings baseline credited only the stripped-schema
   delta. The imaged tool doc is now heading + schema only; the rendered-context
   framing no longer claims the image holds "full tool" docs. (thanks @rldyourmnd)
+
+### Docs
+
+- **docs:** add a "Use with Claude clients" section to the README (and all 41
+  translations) covering Claude Code CLI on macOS/Linux, the **Windows
+  PowerShell** variant (`$env:ANTHROPIC_BASE_URL`), and **Claude Desktop** setup.
+  (thanks @ousamabenyounes)
 
 ## [1.2.0] — 2026-07-08
 

@@ -7,7 +7,6 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -98,6 +97,15 @@ function applyConfigFileDefaults(): void {
   if (process.env.OMNIGLYPH_MODELS === undefined) {
     const models = normalizeModelsConfig(cfg.models);
     if (models !== undefined) process.env.OMNIGLYPH_MODELS = models;
+  }
+  if (
+    process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT === undefined &&
+    typeof (cfg as { keepSystemText?: unknown }).keepSystemText === 'boolean'
+  ) {
+    process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT = (cfg as { keepSystemText: boolean })
+      .keepSystemText
+      ? '1'
+      : '0';
   }
 }
 
@@ -229,12 +237,36 @@ function isConnectionAbort(err: unknown): boolean {
     causeMessage.includes('other side closed');
 }
 
-async function waitForDrain(out: ServerResponse): Promise<void> {
-  const event = await Promise.race([
-    once(out, 'drain').then(() => 'drain'),
-    once(out, 'close').then(() => 'close'),
-  ]);
-  if (event === 'close') throw new Error('client response closed');
+export function waitForDrain(out: ServerResponse): Promise<void> {
+  // Do NOT use Promise.race([once(out,'drain'), once(out,'close')]): the losing
+  // once() never detaches its listener, and events.once() also attaches an
+  // implicit 'error' listener. On a long streamed response every backpressure
+  // cycle would then leak one 'close' + one 'error' listener on the same
+  // ServerResponse, triggering MaxListenersExceededWarning, unbounded heap
+  // growth, and eventually a silent OOM exit of the proxy. Manage the listeners
+  // manually and remove all of them on whichever event fires first.
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      out.off('drain', onDrain);
+      out.off('close', onClose);
+      out.off('error', onError);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error('client response closed'));
+    };
+    const onError = (err: Error) => {
+      cleanup();
+      reject(err);
+    };
+    out.once('drain', onDrain);
+    out.once('close', onClose);
+    out.once('error', onError);
+  });
 }
 
 async function writeWebResponse(res: Response, out: ServerResponse): Promise<void> {
@@ -922,6 +954,15 @@ async function main(): Promise<void> {
       // still logging real usage + count_tokens baselines to its own OMNIGLYPH_LOG.
       // (The dashboard kill switch does the same thing at runtime.)
       if (forcePassthrough || !dashboard.getCompressionEnabled()) return { compress: false };
+      // OMNIGLYPH_KEEP_SYSTEM_TEXT: session config (system prompt, tool docs,
+      // <system-reminder> init blocks) stays native text; only tool_results
+      // and collapsed history image. Guards against Anthropic's
+      // reasoning_extraction refusal classifier, which fires on system-
+      // prompt-shaped content rendered inside user-message images (2.6% of
+      // reminder-imaged requests vs 0% uncompressed, events.jsonl 2026-07-11).
+      if (/^(1|true|on|yes)$/i.test(process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT ?? '')) {
+        return { compressSystem: false, compressTools: false, compressReminders: false };
+      }
       // Active path: use DEFAULTS in transform.ts for break-even gating.
       return {};
     },
