@@ -53,3 +53,147 @@ describe('Anthropic slab lane', () => {
     // …while the un-imaged native remainder is untouched (never mutate client traffic).
   });
 });
+
+// Big enough to clear minReminderChars/minToolResultChars (6000) AND the
+// multi-col profitability break-even, same budget as render.test.ts's
+// imaging fixtures. Secret rides at the front so it is never truncated by
+// paging.
+const BIG_TAIL = 'output line. '.repeat(2400);
+
+function reminderReq(): Uint8Array {
+  const reminder = `<system-reminder>\n${SECRET} ` + 'a long policy note. '.repeat(1550) + '\n</system-reminder>';
+  return enc.encode(JSON.stringify({
+    model: 'claude',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: 'real user prompt' },
+        { type: 'text', text: reminder },
+      ],
+    }],
+    system: 'x'.repeat(150000),
+  }));
+}
+
+function toolResultStringReq(): Uint8Array {
+  return enc.encode(JSON.stringify({
+    model: 'claude',
+    messages: [{
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 'toolu_x', content: `${SECRET} ${BIG_TAIL}` }],
+    }],
+    system: 'x'.repeat(150000),
+  }));
+}
+
+function toolResultArrayReq(): Uint8Array {
+  return enc.encode(JSON.stringify({
+    model: 'claude',
+    messages: [{
+      role: 'user',
+      content: [{
+        type: 'tool_result',
+        tool_use_id: 'toolu_y',
+        content: [{ type: 'text', text: `${SECRET} ${BIG_TAIL}` }],
+      }],
+    }],
+    system: 'x'.repeat(150000),
+  }));
+}
+
+describe('reminder block lane (<system-reminder> in the first user message)', () => {
+  it('off (default): images as today — secret never lands in plaintext body/info', async () => {
+    const { body, info } = await transformRequest(reminderReq());
+    expect(info.reminderImgs ?? 0).toBeGreaterThan(0);
+    expect(dec.decode(body)).not.toContain(SECRET);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+
+  it('text: block stays native (not imaged), secret intact in the forwarded body', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const { body, info } = await transformRequest(reminderReq());
+    expect(info.reminderImgs ?? 0).toBe(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(dec.decode(body)).toContain(SECRET);
+  });
+
+  it('redact: block images; secret raw text appears nowhere in body or JSON.stringify(info)', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { body, info } = await transformRequest(reminderReq());
+    expect(info.reminderImgs ?? 0).toBeGreaterThan(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(dec.decode(body)).not.toContain(SECRET);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+});
+
+describe('tool_result block lane (string content)', () => {
+  it('off (default): images as today — secret never lands in plaintext body/info', async () => {
+    const { body, info } = await transformRequest(toolResultStringReq());
+    expect(info.toolResultImgs ?? 0).toBeGreaterThan(0);
+    expect(dec.decode(body)).not.toContain(SECRET);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+
+  it('text: block stays native (not imaged), secret intact in the forwarded body', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const { body, info } = await transformRequest(toolResultStringReq());
+    expect(info.toolResultImgs ?? 0).toBe(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(dec.decode(body)).toContain(SECRET);
+  });
+
+  it('redact: block images; secret raw text appears nowhere in body or JSON.stringify(info)', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { body, info } = await transformRequest(toolResultStringReq());
+    expect(info.toolResultImgs ?? 0).toBeGreaterThan(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(dec.decode(body)).not.toContain(SECRET);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+});
+
+describe('tool_result block lane (array content, tool_result_part)', () => {
+  it('off (default): images as today — secret never lands in plaintext body/info', async () => {
+    const { body, info } = await transformRequest(toolResultArrayReq());
+    expect(info.toolResultImgs ?? 0).toBeGreaterThan(0);
+    expect(dec.decode(body)).not.toContain(SECRET);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+
+  it('text: block stays native (not imaged), secret intact in the forwarded body', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const { body, info } = await transformRequest(toolResultArrayReq());
+    expect(info.toolResultImgs ?? 0).toBe(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(dec.decode(body)).toContain(SECRET);
+  });
+
+  it('redact: block images; secret raw text appears nowhere in body or JSON.stringify(info)', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { body, info } = await transformRequest(toolResultArrayReq());
+    expect(info.toolResultImgs ?? 0).toBeGreaterThan(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(dec.decode(body)).not.toContain(SECRET);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+});
+
+describe('recoverable channel under the guard (info.recoverable[].text)', () => {
+  it('redact + emitRecoverable: recoverable text is the GUARDED (masked) render source, never the raw secret', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { info } = await transformRequest(toolResultStringReq(), { emitRecoverable: true });
+    expect(info.recoverable?.length ?? 0).toBeGreaterThan(0);
+    for (const r of info.recoverable ?? []) {
+      expect(r.text).not.toContain(SECRET);
+    }
+    expect(info.recoverable!.some((r) => r.text.includes('[REDACTED:'))).toBe(true);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+
+  it('off + emitRecoverable: recoverable text stays byte-exact original (regression guard)', async () => {
+    const { info } = await transformRequest(toolResultStringReq(), { emitRecoverable: true });
+    expect(info.recoverable?.length ?? 0).toBeGreaterThan(0);
+    expect(info.recoverable![0]!.text).toBe(`${SECRET} ${BIG_TAIL}`);
+  });
+});

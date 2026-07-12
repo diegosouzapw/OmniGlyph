@@ -61,13 +61,21 @@ export interface KeepSharpBlock {
 
 /** A block OmniGlyph rendered to image(s), returned in `TransformInfo.recoverable`
  *  when the caller sets `emitRecoverable`. Lets a stateful harness restore
- *  byte-exact content if the model needs the imaged region verbatim. */
+ *  byte-exact content if the model needs the imaged region verbatim.
+ *
+ *  "Byte-exact" is relative to what OmniGlyph RENDERED, not the block's
+ *  pre-guard original: when OMNIGLYPH_GUARD_SECRETS is `text`/`redact`,
+ *  `text` is the guarded (secret-masked) render source, same as the image
+ *  and factsheet — the constraint that a live secret never appears in
+ *  `info`/telemetry is unconditional and outranks recovery fidelity. */
 export interface RecoverableBlock {
   /** `rec_` + 8 hex SHA-256 over kind + toolUseId + original text. */
   readonly id: string;
   readonly kind: 'reminder' | 'tool_result' | 'tool_result_part';
   readonly toolUseId?: string;
-  /** Original text before compaction/reflow/paging — the bytes to restore. */
+  /** Text before compaction/reflow/paging — the bytes to restore. Guard-masked
+   *  when the secret guard is active (see interface doc); byte-exact original
+   *  otherwise (guard off). */
   readonly text: string;
   readonly imageCount: number;
 }
@@ -127,7 +135,9 @@ export interface TransformOptions {
   keepSharp?: (block: KeepSharpBlock) => boolean;
   /** When true, populate `TransformInfo.recoverable` with original text + provenance
    *  for every block rendered to images. Off by default (entries inflate `info`;
-   *  only a stateful harness can use them). */
+   *  only a stateful harness can use them). Under OMNIGLYPH_GUARD_SECRETS
+   *  `text`/`redact`, entries carry the guarded text, never the raw secret —
+   *  see `RecoverableBlock`. */
   emitRecoverable?: boolean;
 }
 
@@ -635,7 +645,8 @@ export interface TransformInfo {
   historyTextChars?: number;
   /** Blocks pinned as text by the caller's `keepSharp` predicate this request. */
   keptSharpBlocks?: number;
-  /** Imaged live-region blocks with original text + provenance, when `emitRecoverable`. */
+  /** Imaged live-region blocks with original text + provenance, when `emitRecoverable`.
+   *  Guard-masked under OMNIGLYPH_GUARD_SECRETS `text`/`redact` — see `RecoverableBlock`. */
   recoverable?: RecoverableBlock[];
   truncatedToolResults?: number;
   omittedChars?: number;
@@ -2016,13 +2027,17 @@ export async function transformRequest(
           // Factsheet reads the RAW (pre-reflow) text at every site — guard that
           // text independently (hits already accounted via reminderGuard above;
           // this call is redaction-only, same pattern as the slab's factsheet).
-          const reminderFactSheet = factSheetText(guardImagedText(reminderRaw).text);
+          // Recoverable reuses the same guarded text: the recoverable channel's
+          // byte-exact contract holds relative to what OmniGlyph RENDERED, not
+          // the pre-guard original — a live secret must never ride telemetry.
+          const reminderRawGuarded = guardImagedText(reminderRaw).text;
+          const reminderFactSheet = factSheetText(reminderRawGuarded);
           if (reminderFactSheet) processedExisting.push({ type: 'text', text: reminderFactSheet });
           info.imagePixels = (info.imagePixels ?? 0) + pixels;
           info.reminderImgs = (info.reminderImgs ?? 0) + imgs.length;
           await recordRecoverable(info, o.emitRecoverable, {
             kind: 'reminder',
-            text: reminderRaw,
+            text: reminderRawGuarded,
             imageCount: imgs.length,
           });
           info.compressedChars += reminderRaw.length;
@@ -2107,10 +2122,16 @@ export async function transformRequest(
                   info.imagePixels = (info.imagePixels ?? 0) + pixels;
                   info.toolResultImgs = (info.toolResultImgs ?? 0) + imgs.length;
                   info.imageCount += imgs.length;
+                  // Guard independently (hits already accounted via trGuard above;
+                  // redaction-only here). Recoverable reuses the same guarded text:
+                  // the recoverable channel's byte-exact contract holds relative to
+                  // what OmniGlyph RENDERED, not the pre-guard original — a live
+                  // secret must never ride telemetry.
+                  const innerRawGuarded = guardImagedText(innerRaw).text;
                   await recordRecoverable(info, o.emitRecoverable, {
                     kind: 'tool_result',
                     toolUseId: tr.tool_use_id,
-                    text: innerRaw,
+                    text: innerRawGuarded,
                     imageCount: imgs.length,
                   });
                   info.compressedChars += innerRaw.length; // original length = what text billing would be
@@ -2118,9 +2139,8 @@ export async function transformRequest(
                   for (const [cp, n] of dcp) {
                     droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
                   }
-                  // Factsheet reads RAW (pre-reflow) text — guard independently
-                  // (hits already accounted via trGuard above; redaction-only here).
-                  const trFactSheet = factSheetText(guardImagedText(innerRaw).text);
+                  // Factsheet reads RAW (pre-reflow) text.
+                  const trFactSheet = factSheetText(innerRawGuarded);
                   rewritten.push({
                     ...tr,
                     content: trFactSheet ? [...imgs, { type: 'text' as const, text: trFactSheet }] : imgs,
@@ -2193,9 +2213,13 @@ export async function transformRequest(
                   newInner.push(out as ImageBlock);
                   info.imageBytes += approxBlockBytes(img);
                 }
-                // Factsheet reads RAW (pre-reflow) text — guard independently
-                // (hits already accounted via partGuard above; redaction-only here).
-                const partFactSheet = factSheetText(guardImagedText(innerTextRaw).text);
+                // Guard independently (hits already accounted via partGuard above;
+                // redaction-only here). Recoverable reuses the same guarded text:
+                // the recoverable channel's byte-exact contract holds relative to
+                // what OmniGlyph RENDERED, not the pre-guard original — a live
+                // secret must never ride telemetry.
+                const innerTextRawGuarded = guardImagedText(innerTextRaw).text;
+                const partFactSheet = factSheetText(innerTextRawGuarded);
                 if (partFactSheet) newInner.push({ type: 'text', text: partFactSheet });
                 info.imagePixels = (info.imagePixels ?? 0) + pixels;
                 info.toolResultImgs = (info.toolResultImgs ?? 0) + imgs.length;
@@ -2203,7 +2227,7 @@ export async function transformRequest(
                 await recordRecoverable(info, o.emitRecoverable, {
                   kind: 'tool_result_part',
                   toolUseId: tr.tool_use_id,
-                  text: innerTextRaw,
+                  text: innerTextRawGuarded,
                   imageCount: imgs.length,
                 });
                 info.compressedChars += innerTextRaw.length;
