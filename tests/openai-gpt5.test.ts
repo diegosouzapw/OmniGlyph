@@ -14,6 +14,7 @@ import {
   CHAT_POINTER,
   RESPONSES_POINTER,
 } from '../src/core/openai.js';
+import { resolveModelProfile } from '../src/core/openai-wire-profiles.js';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -218,10 +219,13 @@ describe('transformOpenAIChatCompletions (gpt-5.6)', () => {
   });
 
   it('does not image (double-bill) the native GPT tool description', async () => {
-    // A big description over a tiny schema: the description stays native, so
-    // there is nothing left worth imaging and the gate declines. Before the
-    // tool-doc dedupe this imaged the ~8k description and reported compressed=true
-    // while the description ALSO rode native — paying for it twice.
+    // A big description over a tiny schema: the description stays native and is
+    // NEVER part of the imaged doc. Before the tool-doc dedupe this imaged the
+    // ~8k description and reported compressed=true while the description ALSO
+    // rode native — paying for it twice. (Under the residual-last-page gate the
+    // tiny schema doc itself is now genuinely profitable to image — a partial
+    // strip costs less than its text — so compressed=true is correct; the
+    // protected invariant is that only the heading+schema doc is imaged.)
     const body = enc.encode(JSON.stringify({
       model: 'gpt-5.6',
       messages: [{ role: 'user', content: 'hello' }],
@@ -231,7 +235,10 @@ describe('transformOpenAIChatCompletions (gpt-5.6)', () => {
       }],
     }));
     const result = await transformOpenAIChatCompletions(body, { charsPerToken: 1, minCompressChars: 1 });
-    expect(result.info.compressed).toBe(false);
+    const doc = `## Tool: do_thing\n\`\`\`json\n${JSON.stringify(CHAT_TOOL_PARAMS)}\n\`\`\``;
+    // The imaged source is the schema doc alone — the description's ~8k chars
+    // are not in it (origChars would jump by BIG_TOOL_DESC.length if they were).
+    expect(result.info.origChars).toBe(doc.length);
     // Native tool passes through untouched.
     const out = JSON.parse(dec.decode(result.body)) as any;
     expect(out.tools[0].function.description).toBe(BIG_TOOL_DESC);
@@ -847,5 +854,121 @@ describe('image parts request detail = "original" (avoid downscale of dense text
     const imgs = parts.filter((p) => p.type === 'input_image');
     expect(imgs.length).toBeGreaterThan(0);
     for (const p of imgs) expect(p.detail).toBe('original');
+  });
+});
+
+// ── Grok repack: stock 5×8 white pages, no short-side resize ─────────────────
+
+describe('Grok no-resize geometry (pure-image 5x8 packing)', () => {
+  it('renders the opt-in profile at 768px wide (no short-side resize) with pages ≤ 512px', async () => {
+    // 2026-07-11 pure-image 5x8 (upstream re-measure): white AA + IDS block is
+    // the stable 4/4 recipe (7/7 retest). No grid; width stays at the 768 floor.
+    const body = enc.encode(JSON.stringify({
+      model: 'grok-4.5',
+      instructions: BIG_INSTRUCTIONS,
+      input: [{ role: 'user', content: 'hello' }],
+    }));
+    const result = await transformOpenAIResponses(body, { charsPerToken: 1, minCompressChars: 1 });
+    expect(result.info.compressed).toBe(true);
+    // 152 cols × 5px + padding = 768px short-side floor.
+    expect(result.info.firstImageWidth).toBe(768);
+    expect(result.info.firstImageHeight ?? 0).toBeLessThanOrEqual(512);
+    for (const d of result.info.imageDims ?? []) {
+      expect(d.width).toBeLessThanOrEqual(768);
+      expect(d.height).toBeLessThanOrEqual(512);
+    }
+  });
+
+  it('keeps the derived strip inside the 768px short side for slab and history packing', () => {
+    const profile = resolveModelProfile('grok-4.5');
+    const cellW = 5 + (profile.style?.cellWBonus ?? 0);
+    const stripW = 8 + profile.stripCols * cellW; // 2*PAD_X=8
+    expect(stripW).toBeLessThanOrEqual(768);
+    expect(profile.stripCols).toBe(152);
+    expect(cellW).toBe(5);
+    expect(profile.maxHeightPx).toBe(512);
+  });
+});
+
+describe('IDS block rides inside the imaged slab (all models)', () => {
+  it('renders extra isolated ID rows when the slab carries precision tokens', async () => {
+    // Differential fixture: identical char length, one variant carries ten
+    // extractable 12-char hex ids, the other same-length inert words. With the
+    // IDS block appended to the render text, the id-bearing slab must render
+    // strictly more pixels (≥ 11 extra 8px rows: 'IDS' + 10 id lines).
+    const hexes = Array.from({ length: 10 }, (_, i) => `a3f9c1e0b7d${i}`);
+    const inert = Array.from({ length: 10 }, () => 'zqwrtypsdfgh'); // same length, no ids
+    const mk = (toks: string[]) =>
+      'Follow every rule carefully and keep values exact. '.repeat(80) +
+      toks.map((t, i) => `value ${i} is ${t}.`).join(' ');
+    const run = async (instructions: string) => {
+      const body = enc.encode(JSON.stringify({
+        model: 'gpt-5.6',
+        instructions,
+        input: [{ role: 'user', content: 'hello' }],
+      }));
+      return transformOpenAIResponses(body, { charsPerToken: 1, minCompressChars: 1 });
+    };
+    const withIds = await run(mk(hexes));
+    const without = await run(mk(inert));
+    expect(withIds.info.compressed).toBe(true);
+    expect(without.info.compressed).toBe(true);
+    const px = (r: { info: { imagePixels?: number } }) => r.info.imagePixels ?? 0;
+    // ≥ 11 extra rows × 8px × 768px width.
+    expect(px(withIds) - px(without)).toBeGreaterThanOrEqual(11 * 8 * 768);
+  });
+});
+
+describe('Grok history compression under default gate', () => {
+  it('collapses long Grok Responses history under default charsPerToken (o200k gate)', async () => {
+    // Production gate path: no charsPerToken override.
+    const items: Array<Record<string, unknown>> = [
+      { role: 'user', content: 'start the long autonomous run now please' },
+    ];
+    for (let i = 0; i < 40; i++) {
+      const id = `call_${i}`;
+      items.push({ role: 'assistant', content: `Working on step ${i}. `.repeat(40) });
+      items.push({ type: 'function_call', call_id: id, name: 'read', arguments: `{"path":"src/f${i}.ts"}` });
+      items.push({ type: 'function_call_output', call_id: id, output: (`result ${i} path=/tmp/out${i}.json `).repeat(60) });
+    }
+    const body = enc.encode(JSON.stringify({
+      model: 'grok-4.5',
+      instructions: 'You are a careful coding agent. '.repeat(200),
+      input: items,
+    }));
+    const result = await transformOpenAIResponses(body, { minCompressChars: 1 });
+    expect(result.info.compressed).toBe(true);
+    expect(result.info.historyReason).toBe('collapsed');
+    expect(result.info.collapsedImages ?? 0).toBeGreaterThan(0);
+    expect(result.info.imageTokens ?? 0).toBeLessThan(result.info.baselineImagedTokens ?? 0);
+  });
+
+  it('pages factsheet across long collapsed history so early exact ids survive', async () => {
+    const earlyHex = 'a3f9c1e0b7d2';
+    const items: Array<Record<string, unknown>> = [
+      { role: 'user', content: `remember ${earlyHex} and path src/core/anthropic-vision.ts port 47821` },
+    ];
+    // Long enough that a single-pass factsheet scan would miss the head.
+    for (let i = 0; i < 80; i++) {
+      const id = `call_${i}`;
+      items.push({ role: 'assistant', content: `Working on step ${i}. `.repeat(30) });
+      items.push({ type: 'function_call', call_id: id, name: 'read', arguments: `{"path":"src/f${i}.ts"}` });
+      items.push({
+        type: 'function_call_output',
+        call_id: id,
+        output: (`result ${i} blob=` + 'x'.repeat(400) + ' ').repeat(8),
+      });
+    }
+    const body = enc.encode(JSON.stringify({
+      model: 'grok-4.5',
+      instructions: 'Keep identifiers exact. '.repeat(100),
+      input: items,
+    }));
+    const result = await transformOpenAIResponses(body, { minCompressChars: 1 });
+    expect(result.info.historyReason).toBe('collapsed');
+    const out = JSON.parse(dec.decode(result.body)) as { input: Array<Record<string, unknown>> };
+    const serialized = JSON.stringify(out.input);
+    expect(serialized).toContain(earlyHex);
+    expect(serialized).toContain('47821');
   });
 });

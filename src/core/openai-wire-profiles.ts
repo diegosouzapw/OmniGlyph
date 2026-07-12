@@ -51,9 +51,11 @@ export interface ModelProfile {
    *  budget) exists only on gpt-5.4+ flagships — sending it elsewhere is out of
    *  contract (audit D5). Everything else gets `high`. */
   detail: 'original' | 'high';
-  /** Optional per-model render style (glyph cell padding, grid, marker). Absent
-   *  for GPT/o-series (they render at the default 5×8 cell); set only for models
-   *  that measured better at a denser cell (e.g. Grok's effective 9×12). */
+  /** Optional per-model render style (glyph cell padding, grid, AA, inkDilate…).
+   *  Absent for GPT/o-series (they render at the default 1-bit 5×8 cell); set
+   *  only for models that measured better under a different recipe (e.g. Grok's
+   *  white-AA 5×8). Env-override styles pass through as-is, so new RenderStyle
+   *  knobs (inkDilate, paperGray, …) are retunable without a code change. */
   style?: RenderStyle;
 }
 
@@ -147,19 +149,33 @@ const BUILTIN_RULES: ProfileRule[] = [
     test: (m) => /^o[13]/.test(m),
     profile: { vision: { regime: 'tile', base: 75, perTile: 150 }, stripCols: C, maxHeightPx: H, detail: 'high' },
   },
-  // Grok (Responses path), opt-in only. Live climb 2026-07-09 on grok-4.5: 5×8
-  // and 7×10 confabulate exact IDs; effective 9×12 (Spleen 5×8 + 4px spacing) is
-  // the densest arm that reached 4/4 exact, 0 confab. The verbatim fact-sheet
-  // rides beside the images as defense in depth. Vision numbers here are a
-  // conservative placeholder — visionTokensForModel prices Grok by pixels.
+  // Grok (Responses path), opt-in only (fail-closed until OmniGlyph's own
+  // reading receipt clears it). Upstream re-measured pure-image on grok-4.5
+  // (2026-07-11 brute force): the dense 9×12 cell confabulates exact IDs; the
+  // best stable recipe is stock Spleen 5×8, white AA, no grid, short 512px
+  // pages at the 768px short-side floor, plus the in-image IDS block applied
+  // on every model path (appendIdsBlock) — white+ids_block scored 7/7 with
+  // full 4/4 exact recall there. paperGray 240 without grid confabulates
+  // ports; grid alone does not fix hex. The verbatim fact-sheet remains
+  // optional defense in depth.
   {
     test: (m) => /^grok-/.test(m),
     profile: {
+      // Vision struct unused: visionTokensForModel prices Grok by pixels.
       vision: { regime: 'tile', base: 85, perTile: 170 },
-      stripCols: 84,
-      maxHeightPx: H,
+      // 152 cols × 5px + pad = 768px short-side floor.
+      stripCols: C,
+      maxHeightPx: 512,
       detail: 'high',
-      style: { cellWBonus: 4, cellHBonus: 4 },
+      // Explicit cell bonuses pin the REAL 5×8 cell (grok-billing receipt).
+      style: {
+        aa: true,
+        grid: false,
+        gridCols: 0,
+        colorCycle: false,
+        cellWBonus: 0,
+        cellHBonus: 0,
+      },
     },
   },
 ];

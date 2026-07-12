@@ -117,11 +117,14 @@ export function isAnthropicMessagesPath(pathname: string): boolean {
     || pathname === '/anthropic/messages';
 }
 
-/** Bases that pass reading only on upstream's n=1 evidence, not OmniGlyph's own.
- *  Fail-closed: they may be opted into OMNIGLYPH_MODELS, but stay text-only
- *  until an operator explicitly acks the risk (OMNIGLYPH_UNVERIFIED_MODELS) —
- *  and are removed from this list only when OmniGlyph's own reading receipt
- *  clears them (measurement before claims). */
+/** Bases that pass reading only on upstream's evidence, not OmniGlyph's own.
+ *  Grok 4.5 upstream: 5×8 white packing + the in-image IDS block reads exact
+ *  IDs (7/7 retest), but pure-image is still not Fable-level and the full
+ *  quality suite is incomplete — synthetic fixtures only. Fail-closed: these
+ *  bases may be opted into OMNIGLYPH_MODELS, but stay text-only until an
+ *  operator explicitly acks the risk (OMNIGLYPH_UNVERIFIED_MODELS) — and are
+ *  removed from this list only when OmniGlyph's own reading receipt clears
+ *  them (measurement before claims; see eval/grok-density). */
 const UNVERIFIED_MODEL_BASES = ['grok'];
 
 function isUnverifiedBase(model: string | null | undefined): boolean {

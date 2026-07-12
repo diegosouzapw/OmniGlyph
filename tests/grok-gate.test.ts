@@ -129,10 +129,10 @@ describe('proxy e2e: grok stays text-only until acked', () => {
 
   it('with the ack set: grok compresses normally', async () => {
     process.env.OMNIGLYPH_UNVERIFIED_MODELS = 'grok-4.5';
-    // Realistic DEFAULT gate (charsPerToken 4): this 60k prose slab genuinely
-    // saves tokens at Grok's dense 9x12 cell once the gate counts pages at the
-    // real 2048px wire page height (not the 728px Anthropic-band default) — so
-    // the ack path both unblocks imaging AND the profitability math approves it.
+    // Realistic DEFAULT gate (o200k baseline): this 60k prose slab genuinely
+    // saves tokens at Grok's stock 5x8 white profile once the gate counts pages
+    // at the real 512px page height with a residual last page — so the ack path
+    // both unblocks imaging AND the profitability math approves it.
     const { event, out } = await driveAndCapture('/v1/chat/completions', grokBody());
     expect(event.info?.compressed).toBe(true);
     expect(out).toContain('image_url');

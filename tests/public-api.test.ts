@@ -80,9 +80,10 @@ describe('public library API', () => {
       // empty list = compress nothing
       setAllowedModelBases([]);
       expect(isOmniGlyphSupportedModel('claude-fable-5')).toBe(false);
-      // null clears the override → back to the Fable-only default
+      // null clears the override → back to the built-in default
       setAllowedModelBases(null);
       expect(isOmniGlyphSupportedModel('claude-fable-5')).toBe(true);
+      expect(isOmniGlyphSupportedGptModel('grok-4.5')).toBe(false);
       expect(isOmniGlyphSupportedModel('claude-opus-4-8')).toBe(false);
     } finally {
       setAllowedModelBases(null); // never leak the override into other tests
@@ -104,6 +105,23 @@ describe('public library API', () => {
     expect(isOmniGlyphSupportedGptModel('')).toBe(false);
     expect(isOmniGlyphSupportedGptModel('claude-opus-4-8')).toBe(false);
     expect(isOmniGlyphSupportedGptModel(null)).toBe(false);
+  });
+
+  it('keeps Grok opt-in only (off by default, like Opus and GPT 5.5)', () => {
+    // Grok packing + IDS helps exact IDs upstream, but OmniGlyph has no reading
+    // receipt of its own yet — opt-in only, and still behind the unverified ack.
+    const prev = process.env.OMNIGLYPH_MODELS;
+    try {
+      delete process.env.OMNIGLYPH_MODELS;
+      expect(isOmniGlyphSupportedGptModel('grok-4.5')).toBe(false);
+      process.env.OMNIGLYPH_MODELS = 'claude-fable-5,gpt-5.6,grok-4.5';
+      expect(isOmniGlyphSupportedGptModel('grok-4.5')).toBe(true);
+      expect(isOmniGlyphSupportedGptModel('grok-4.5-fast')).toBe(true); // -suffix alias
+      expect(isOmniGlyphSupportedGptModel('gpt-5.6')).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.OMNIGLYPH_MODELS;
+      else process.env.OMNIGLYPH_MODELS = prev;
+    }
   });
 
   it('honors the single OMNIGLYPH_MODELS scope for GPT families', () => {
