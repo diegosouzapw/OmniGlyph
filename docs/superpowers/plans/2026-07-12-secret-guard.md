@@ -14,7 +14,7 @@
 
 - Branch: `feat/secret-guard` based on `origin/feat/port-responses-tool-pairs` (stack tip; PR will be stacked on #29). Worktree: `.claude/worktrees/secret-guard` (remove the stale `feat/port-pr-39-secret-guard` branch/worktree first if present).
 - Strict TDD: every task writes the failing test first and watches it fail for the right reason.
-- Rebrand guard: the strings `pxpipe`, `teamchong`, `claude-image-proxy` are forbidden in every tracked file. Upstream URL only in the `Inspired-by:` commit trailer.
+- Rebrand guard: the three upstream brand terms (see the `forbidden` regex in `tests/docs-integrity.test.ts`) must not appear in any tracked file — including this plan. Upstream URL only in the `Inspired-by:` commit trailer.
 - NEVER `git stash`. Never weaken an existing test or gate. Never touch `benchmarks/*/results/`.
 - The forwarded/upstream request body must be byte-identical in ALL modes (the guard only affects OmniGlyph-created artifacts).
 - The matched secret text NEVER reaches info/tracker/dashboard/logs — counts only.
@@ -22,7 +22,7 @@
 - Attribution (Task 1's commit only): the upstream commits are bot-authored — credit the human PR author:
   ```
   Co-authored-by: rYo-STUDIO-1bit <rYo-STUDIO-1bit@users.noreply.github.com>
-  Inspired-by: https://github.com/teamchong/pxpipe/pull/39
+  Inspired-by: <the upstream PR-39 URL — real trailer in the commit only; spelled out here it would trip the rebrand guard>
   ```
   No AI attribution trailers anywhere.
 - Validation per task: the named test files + `pnpm run typecheck`. Final: `pnpm run lint && pnpm run typecheck && pnpm test && pnpm run build` (full suite in background; the 4xx-gzip test in `proxy-usage.test.ts` is a known load flake — re-run the file isolated to distinguish).
@@ -252,7 +252,7 @@ high-entropy shape the factsheet grammar already trusts (SHAs, UUIDs,
 tickets, consts, numbers, URLs, paths). Detection only — no integration yet.
 
 Co-authored-by: rYo-STUDIO-1bit <rYo-STUDIO-1bit@users.noreply.github.com>
-Inspired-by: https://github.com/teamchong/pxpipe/pull/39"
+Inspired-by: <the upstream PR-39 URL — real trailer in the commit only; spelled out here it would trip the rebrand guard>"
 git push -u origin feat/secret-guard
 ```
 
