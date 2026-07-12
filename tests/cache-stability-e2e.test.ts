@@ -495,17 +495,6 @@ describe('e2e cache alignment — GPT (OpenAI) through the real proxy', () => {
     });
   }
 
-  function gptResponsesBody(opts: {
-    systemChars: number;
-    turns: { role: 'user' | 'assistant'; text: string }[];
-  }): string {
-    return JSON.stringify({
-      model: 'gpt-5.6',
-      instructions: slab(opts.systemChars),
-      input: opts.turns.map((t) => ({ role: t.role, content: t.text })),
-    });
-  }
-
   async function driveGpt(path: string, body: string, cap = fakeUpstream()) {
     const proxy = createProxy({
       openAIUpstream: 'https://openai.test',
@@ -557,21 +546,37 @@ describe('e2e cache alignment — GPT (OpenAI) through the real proxy', () => {
     expect(b.slice(0, a.length)).toEqual(a);
   });
 
-  it('responses APPEND-ONLY: the imaged prefix is byte-identical as the conversation grows', async () => {
-    const small = turns(30, 4000);
-    const cap1 = await driveGpt('/v1/responses', gptResponsesBody({ systemChars: 60_000, turns: small }));
+  it('responses APPEND-ONLY: completed-pair pages are byte-identical as native state grows', async () => {
+    const pairItems = (n: number, start = 0) => {
+      const out: Array<Record<string, unknown>> = [];
+      for (let i = start; i < start + n; i++) {
+        const id = `call_${i}`;
+        out.push({ type: 'function_call', call_id: id, name: 'read', arguments: `{"path":"f${i}"}` });
+        out.push({ type: 'function_call_output', call_id: id, output: `result ${i}: ${filler(4000)}` });
+      }
+      return out;
+    };
+    const body = (pairs: Array<Record<string, unknown>>) => JSON.stringify({
+      model: 'gpt-5.6', instructions: slab(60_000),
+      input: [{ role: 'user', content: 'live request stays native' }, ...pairs],
+    });
+    const small = pairItems(70);
+    const cap1 = await driveGpt('/v1/responses', body(small));
     cap1.restore();
-    const cap2 = await driveGpt(
-      '/v1/responses',
-      gptResponsesBody({ systemChars: 60_000, turns: [...small, ...turns(20, 4000)] }),
-    );
+    const cap2 = await driveGpt('/v1/responses', body([...small, ...pairItems(20, 70)]));
     cap2.restore();
 
     const a = gptResponsesImages(cap1.main[0]!.body);
     const b = gptResponsesImages(cap2.main[0]!.body);
-    expect(a.length).toBeGreaterThan(1); // slab image + ≥1 sealed history page
-    expect(b.length).toBeGreaterThan(a.length); // growth sealed more pages
-    expect(b.slice(0, a.length)).toEqual(a);
+    expect(a.length).toBeGreaterThan(1); // slab image + ≥1 completed-pair page
+    // The static slab stays byte-identical. Pair sections deliberately reserve the
+    // newest six completed pairs as native, so appending pairs can move the exact
+    // old/native frontier even while every removed pair remains protocol-closed.
+    expect(b[0]).toBe(a[0]);
+    const parsed = JSON.parse(cap2.main[0]!.body) as { input: Array<Record<string, unknown>> };
+    const calls = new Set(parsed.input.filter((x) => x.type === 'function_call').map((x) => x.call_id));
+    const outputs = parsed.input.filter((x) => x.type === 'function_call_output');
+    expect(outputs.every((x) => calls.has(x.call_id))).toBe(true);
   });
 
   it('GATE: an out-of-scope GPT model is forwarded byte-for-byte untouched (no images)', async () => {

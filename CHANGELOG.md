@@ -15,6 +15,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Added
 
+- **feat(openai):** compress completed **Responses tool pairs**. The Responses
+  leg no longer collapses a contiguous transcript prefix: it images only OLD,
+  unambiguously completed `function_call`/`function_call_output` pairs, each
+  replaced at its original position, while messages, reasoning/compaction
+  items, open calls, malformed/orphan shapes and the newest completed pairs
+  (default 6, `gptHistory.keepRecentPairs`) stay native. The history-image
+  budget rises to 32 pages (override with `OMNIGLYPH_GPT_HISTORY_MAX_IMAGES`,
+  clamped 1–100). Every Responses request also records a local o200k
+  **composition breakdown** (instructions / tool JSON / function calls &
+  outputs / reasoning / compaction) persisted to JSONL and rendered in the
+  dashboard Details panel, and each dashboard page thumbnail now maps to the
+  exact source text that produced that page.
 - **feat(grok):** opt-in support for xAI **Grok** on the OpenAI-compatible wire.
   Grok renders at an effective 9×12 cell (denser than the 5×8 default) with the
   verbatim fact-sheet, is priced by a measured ~1000 tokens/megapixel model and
