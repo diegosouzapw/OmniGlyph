@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-12
+
 ### Added
 
 - **feat(openai):** compress completed **Responses tool pairs**. The Responses
