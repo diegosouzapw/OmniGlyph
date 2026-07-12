@@ -9,7 +9,7 @@ describe('findSecrets — prefix patterns', () => {
     expect(kinds('ghp_abcdefghijklmnopqrst0123456789')).toContain('key');
     expect(kinds('xoxb-1234567890-abcdefghij')).toContain('key');
     expect(kinds('AKIAIOSFODNN7EXAMPLE')).toContain('key');
-    expect(kinds('AIzaSyA-abcdefghijklmnopqrstuvwxyz0123456')).toContain('key');
+    expect(kinds('AIzaSyA-abcdefghijklmnopqrstuvwxy012345')).toContain('key');
   });
   it('catches PEM private key blocks as one hit', () => {
     const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIEow…snip…\n-----END RSA PRIVATE KEY-----';
@@ -63,5 +63,37 @@ describe('findSecrets — entropy fallback excludes every public factsheet shape
       'src/core/anthropic-vision.ts /home/user/.config/app.json' // paths
     ].join('\n');
     expect(findSecrets(publicText)).toHaveLength(0);
+  });
+});
+
+describe('findSecrets — entropy fallback isolates the value of NAME=value / NAME: value chunks (C1)', () => {
+  it('still treats a path-shaped assignment value as public', () => {
+    expect(findSecrets('ACTIVE_MANIFEST=/srv/x/runtime-map.json')).toHaveLength(0);
+  });
+  it('still treats a number-shaped assignment value as public', () => {
+    expect(findSecrets('CONTROL_PORT=47831')).toHaveLength(0);
+  });
+  it('detects a high-entropy value on a non-secret-named assignment (was a false negative)', () => {
+    const t = 'FOO_BAR=kJ8#mQz!vR2$xN9pLw4Yt7Bc12';
+    const hits = findSecrets(t);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.kind).toBe('entropy');
+    expect(t.slice(hits[0]!.start, hits[0]!.end)).toBe('kJ8#mQz!vR2$xN9pLw4Yt7Bc12');
+  });
+});
+
+describe('findSecrets — dedup prefers the more specific kind over entropy (I2/M2)', () => {
+  it('reports "assignment" (not "entropy") for a secret-named assignment, spanning the value', () => {
+    const t = 'ACCESS_TOKEN=abcdefgh12345678';
+    const hits = findSecrets(t);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.kind).toBe('assignment');
+    expect(t.slice(hits[0]!.start, hits[0]!.end)).toBe('abcdefgh12345678');
+  });
+  it('reports "key" (not "entropy") when a vendor prefix sits inside a larger high-entropy chunk', () => {
+    const t = 'token dump: prefix-sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH end';
+    const hits = findSecrets(t);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.kind).toBe('key');
   });
 });

@@ -21,7 +21,7 @@ const KEY_PATTERNS: readonly RegExp[] = [
   /\bgh[pousr]_[A-Za-z0-9]{20,}/g,        // GitHub tokens
   /\bxox[baprs]-[A-Za-z0-9-]{10,}/g,      // Slack tokens
   /\bAKIA[0-9A-Z]{16}\b/g,                // AWS access key id
-  /\bAIza[0-9A-Za-z_-]{35,}\b/g,          // Google API key
+  /\bAIza[0-9A-Za-z_-]{35}\b/g,           // Google API key
 ];
 const PEM_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
 const BEARER_PATTERN = /\bBearer\s+([A-Za-z0-9._~+/=-]{20,})/g;
@@ -65,18 +65,37 @@ function isPublicChunk(chunk: string): boolean {
     return !chunk.includes('@') && !/[?&](?:key|token|secret|password|sig)=/i.test(chunk);
   }
   if (PATHISH.test(chunk)) return true;
-  // Non-secret assignments are public (ACTIVE_MANIFEST=/path, PORT=123, etc.)
-  if (chunk.includes('=') || chunk.includes(':')) {
-    const beforeAssign = chunk.split(/[=:]/, 1)[0]!;
-    if (!/(?:API|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|ACCESS)/i.test(beforeAssign)) {
-      return true;
-    }
-  }
   return PUBLIC_SHAPES.some((re) => re.test(chunk));
 }
 
-/** All secret spans in `text`, sorted by start; overlaps collapse to the first
- *  (earliest, then longest) match so redaction never splices twice. */
+/** For a `NAME=value` / `NAME: value` chunk, isolate the value so entropy and
+ *  public-shape checks judge it alone — never the chunk as a whole. Otherwise
+ *  a secret-looking value hides behind an innocuous-looking name (`FOO_BAR=
+ *  kJ8#mQz!...`), because the combined chunk's entropy is diluted by the
+ *  low-entropy `NAME=` prefix. Skips URLs: `scheme://` contains ':' but is
+ *  not a name/value pair, and splitting it would corrupt URL-credential
+ *  detection in `isPublicChunk`. */
+function isolateAssignmentValue(chunk: string): { value: string; offset: number } {
+  if (!URLISH.test(chunk)) {
+    const sepIndex = chunk.search(/[=:]/);
+    if (sepIndex > 0 && sepIndex < chunk.length - 1) {
+      return { value: chunk.slice(sepIndex + 1), offset: sepIndex + 1 };
+    }
+  }
+  return { value: chunk, offset: 0 };
+}
+
+/** All secret spans in `text`, sorted by start. Overlapping hits collapse to
+ *  the more specific kind first (pem/key/bearer/assignment over entropy),
+ *  then earliest-start/longest-match — never the first pattern that happened
+ *  to run. This matters because the entropy fallback can produce a hit that
+ *  starts earlier than, and fully contains, a narrower pem/key/bearer/
+ *  assignment hit: a whole `NAME=value` chunk can itself read as high-entropy
+ *  (e.g. the raw text still contains the low-entropy `NAME=` prefix inside a
+ *  wider `\S+` token boundary), while the assignment pattern only claims the
+ *  value's span. Picking "earliest, then longest" alone would keep the vague
+ *  entropy hit and lose the precise kind; specificity-first keeps the
+ *  precise one so redaction never splices twice. */
 export function findSecrets(text: string): SecretHit[] {
   if (!text) return [];
   const hits: SecretHit[] = [];
@@ -97,14 +116,17 @@ export function findSecrets(text: string): SecretHit[] {
     const start = m.index + m[0].lastIndexOf(val);
     push(start, start + val.length, 'assignment');
   }
-  // Entropy fallback over whitespace-free chunks.
+  // Entropy fallback over whitespace-free chunks. A NAME=value chunk is
+  // judged on its value alone (see isolateAssignmentValue) so a secret value
+  // behind an innocuous name is still caught.
   for (const m of text.matchAll(/\S+/g)) {
     const chunk = m[0];
-    if (chunk.length < ENTROPY_MIN_LEN || chunk.length > ENTROPY_MAX_LEN) continue;
     if (chunk.includes('[REDACTED:')) continue;
-    if (isPublicChunk(chunk)) continue;
-    if (shannonBitsPerChar(chunk) < ENTROPY_BITS) continue;
-    push(m.index, m.index + chunk.length, 'entropy');
+    const { value, offset } = isolateAssignmentValue(chunk);
+    if (value.length < ENTROPY_MIN_LEN || value.length > ENTROPY_MAX_LEN) continue;
+    if (isPublicChunk(value)) continue;
+    if (shannonBitsPerChar(value) < ENTROPY_BITS) continue;
+    push(m.index + offset, m.index + offset + value.length, 'entropy');
   }
 
   const SPECIFICITY: Record<string, number> = {
