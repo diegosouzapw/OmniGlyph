@@ -95,6 +95,22 @@ describe('toTrackEvent', () => {
     });
   });
 
+  it('persists secret guard hit telemetry', () => {
+    const out = toTrackEvent({
+      method: 'POST', path: '/v1/messages', status: 200, durationMs: 1,
+      info: { compressed: true, origChars: 1, secretHits: 3 },
+    });
+    expect(out.secret_hits).toBe(3);
+  });
+
+  it('omits secret_hits when the guard is off or found nothing', () => {
+    const out = toTrackEvent({
+      method: 'POST', path: '/v1/messages', status: 200, durationMs: 1,
+      info: { compressed: true, origChars: 1 },
+    });
+    expect(out.secret_hits).toBeUndefined();
+  });
+
   it('captures the nested cache_creation split and server_tool_use counters', () => {
     // Anthropic's `usage` block carries some fields inline and others nested
     // under `cache_creation` / `server_tool_use`. The flat 4-field view we

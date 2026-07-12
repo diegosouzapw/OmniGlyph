@@ -23,6 +23,7 @@
 
 import { renderTextToPngs, reflow, neutralizeSentinel, type RenderedImage, type RenderStyle } from './render.js';
 import { appendIdsBlock } from './factsheet.js';
+import { guardImagedText } from './secret-guard.js';
 import { WIRE_MAX_HEIGHT_PX } from './openai-wire-profiles.js';
 import { countTokens as o200kCountTokens } from 'gpt-tokenizer/encoding/o200k_base';
 
@@ -205,9 +206,17 @@ export interface GptCollapsePlan {
     | 'below_min_tokens'
     | 'not_profitable'
     | 'too_many_images'
-    | 'render_empty';
+    | 'render_empty'
+    | 'secret_kept_text';
   droppedChars: number;
   droppedCodepoints: Map<number, number>;
+  /** Secret hits detected while guarding this collapse's render text(s) (see
+   *  secret-guard.ts / OMNIGLYPH_GUARD_SECRETS). Present whenever mode is
+   *  'text'/'redact' and at least one hit was found — mirrors
+   *  TransformInfo.secretHits / HistoryCollapseInfo.secretHits for the other
+   *  lanes. undefined, not 0, when nothing was found (so callers can `?? 0` or
+   *  `if (plan.secretHits)` without a stray zero-valued key). */
+  secretHits?: number;
 }
 
 function safeJson(v: unknown): string {
@@ -356,9 +365,23 @@ export async function planGptCollapse(
   // the chunk-snapped cache byte-stability, so it must not change shape here.
   const safeText = neutralizeSentinel(text);
   let renderText = o.reflow ? reflow(safeText) ?? safeText : text;
-  if (o.idsBlock) renderText = appendIdsBlock(renderText);
+  // Secret guard: never create a rendered artifact (image, IDS block) of a live
+  // credential. blocked aborts the WHOLE collapse here — [pp, rawEnd) becomes a
+  // SINGLE contiguous [start, endExclusive) range below, and the caller does one
+  // splice over that whole range (req.messages.slice(0, plan.start) + synthetic
+  // + slice(plan.endExclusive)). There is no way to carve just the offending
+  // part out of a single splice without silently dropping it, so this collapse
+  // stays native text entirely — contrast planResponsesPairCollapse below,
+  // whose segments are independent per-run inserts and CAN skip one run alone.
+  let secretHits = 0;
+  const preGuard = guardImagedText(renderText);
+  if (preGuard.hits > 0) secretHits += preGuard.hits;
+  if (preGuard.blocked) {
+    return { ...base, reason: 'secret_kept_text', collapsedChars: text.length, secretHits };
+  }
+  renderText = o.idsBlock ? appendIdsBlock(preGuard.text) : preGuard.text;
   if (!isProfitable(renderText, o.cols)) {
-    return { ...base, reason: 'not_profitable', collapsedChars: text.length };
+    return { ...base, reason: 'not_profitable', collapsedChars: text.length, secretHits: secretHits || undefined };
   }
   // APPEND-ONLY, TOKEN-LENGTH sectioning. Cut the closed prefix [pp..rawEnd) into
   // sections of ~sectionTokens o200k tokens by walking turns from pp and sealing a
@@ -424,7 +447,7 @@ export async function planGptCollapse(
     // Closed prefix cleared the floor but no single section sealed (only when
     // sectionTokens > the whole prefix). Treat as below-min rather than emit a
     // cache-unstable partial blob.
-    return { ...base, reason: 'below_min_tokens', collapsedChars: text.length };
+    return { ...base, reason: 'below_min_tokens', collapsedChars: text.length, secretHits: secretHits || undefined };
   }
   const maxImages = Math.max(0, Math.floor(o.maxImages));
   const rendered: Array<{ s: number; e: number; imgs: RenderedImage[] }> = [];
@@ -435,7 +458,16 @@ export async function planGptCollapse(
     if (!sectionText || sectionText.length === 0) continue;
     const safeSection = neutralizeSentinel(sectionText);
     let sectionRender = o.reflow ? reflow(safeSection) ?? safeSection : sectionText;
-    if (o.idsBlock) sectionRender = appendIdsBlock(sectionRender);
+    // Secret guard, section-level: defense in depth only — the preflight guard
+    // above already scanned this same union of turns and would have returned
+    // before this loop ever ran. Abort the whole collapse (not a partial
+    // mid-range splice) for the same reason given on the preflight guard.
+    const sectionGuard = guardImagedText(sectionRender);
+    if (sectionGuard.hits > 0) secretHits += sectionGuard.hits;
+    if (sectionGuard.blocked) {
+      return { ...base, reason: 'secret_kept_text', collapsedChars: text.length, secretHits };
+    }
+    sectionRender = o.idsBlock ? appendIdsBlock(sectionGuard.text) : sectionGuard.text;
     // Readable portrait strips (≤768px wide) — legible to OpenAI vision, same as
     // the static slab. renderTextToPngs caps each PNG at MAX_HEIGHT_PX so a tall
     // section pages into N images, all still well under the 10,000-patch budget.
@@ -459,8 +491,12 @@ export async function planGptCollapse(
   const imageSourcesAfter: string[] = [];
   for (const r of rendered) {
     // Source preview uses the original serialized section (not reflow/IDS) so it
-    // remains byte-exact. Multipage sections repeat the same source for each PNG.
-    const source = joinTurns(turns, r.s, r.e, -1);
+    // remains byte-exact — except secrets: guard independently (hits already
+    // accounted via sectionGuard above; this call is redaction-only, same
+    // pattern as the historyFactSheet site in history.ts) since this feeds
+    // info.imageSourceTexts, a dashboard artifact the raw secret must never
+    // reach. Multipage sections repeat the same source for each PNG.
+    const source = guardImagedText(joinTurns(turns, r.s, r.e, -1)).text;
     if (pinConsumed && r.s >= pinIdx + 1) {
       imagesAfter.push(...r.imgs);
       imageSourcesAfter.push(...r.imgs.map(() => source));
@@ -471,7 +507,7 @@ export async function planGptCollapse(
   }
   if (imagesBefore.length === 0 && imagesAfter.length === 0) {
     // First section alone exceeded the cap (or cap <= 0). Fall back to text.
-    return { ...base, reason: 'too_many_images', collapsedChars: text.length };
+    return { ...base, reason: 'too_many_images', collapsedChars: text.length, secretHits: secretHits || undefined };
   }
   const pinText = pinConsumed ? turns[pinIdx]!.userText : undefined;
   // The collapsed transcript / o200k baseline reflects ONLY what we imaged — the
@@ -498,6 +534,7 @@ export async function planGptCollapse(
     collapsedChars: collapsedText.length,
     droppedChars,
     droppedCodepoints,
+    secretHits: secretHits || undefined,
   };
 }
 
@@ -660,9 +697,16 @@ export async function planResponsesPairCollapse(
   }
 
   const renderPairs = async (pairs: ResponsesCompletedPair[]) => {
-    const source = pairs.map((pair) => pair.text).join('\n\n');
+    const rawSource = pairs.map((pair) => pair.text).join('\n\n');
+    // Secret guard (redaction-only): blocking for this run was already decided
+    // by the run-level guard below, before the binary search that calls this
+    // closure ever runs — so this call only ever masks. `source` feeds
+    // segment.imageSources/segment.text (info.imageSourceTexts + factSheetText
+    // in openai.ts), both dashboard/model-facing artifacts the raw secret must
+    // never reach.
+    const source = guardImagedText(rawSource).text;
     const safe = neutralizeSentinel(source);
-    let renderedText = o.reflow ? reflow(safe) ?? safe : safe;
+    let renderedText = o.reflow ? reflow(safe) ?? safe : source;
     if (o.idsBlock) renderedText = appendIdsBlock(renderedText);
     const images = await renderTextToPngs(
       renderedText, o.cols, o.style ?? {}, o.maxHeightPx,
@@ -673,8 +717,22 @@ export async function planResponsesPairCollapse(
   const segments: ResponsesPairCollapseSegment[] = [];
   let remainingImages = maxImages;
   let hitImageCap = false;
+  let anyBlocked = false;
+  let secretHits = 0;
   for (const run of runs) {
     if (remainingImages === 0) { hitImageCap = true; break; }
+
+    // Secret guard: scan the WHOLE run before spending binary-search effort on
+    // it. blocked -> this run stays fully native (skip via `continue`);
+    // segments are independent per-run inserts (unlike planGptCollapse's single
+    // contiguous [start, endExclusive) range), so skipping one run can never
+    // orphan a function_call/output pair belonging to another run.
+    const runSource = run.map((pair) => pair.text).join('\n\n');
+    const runSafe = neutralizeSentinel(runSource);
+    const runRenderText = o.reflow ? reflow(runSafe) ?? runSafe : runSafe;
+    const runGuard = guardImagedText(runRenderText);
+    if (runGuard.hits > 0) secretHits += runGuard.hits;
+    if (runGuard.blocked) { anyBlocked = true; continue; }
 
     let low = 0;
     let high = run.length + 1;
@@ -710,8 +768,12 @@ export async function planResponsesPairCollapse(
   if (segments.length === 0) {
     return {
       ...base,
-      reason: hitImageCap ? 'too_many_images' : 'not_profitable',
+      // Priority: a structural cap always wins (it's why nothing collapsed
+      // regardless of secrets); otherwise report the secret block if that's
+      // why every run was skipped; otherwise the generic profitability bail.
+      reason: hitImageCap ? 'too_many_images' : anyBlocked ? 'secret_kept_text' : 'not_profitable',
       collapsedChars: allText.length,
+      secretHits: secretHits || undefined,
     };
   }
 
@@ -752,6 +814,7 @@ export async function planResponsesPairCollapse(
     droppedCodepoints,
     selectedIndices,
     pairState: state,
+    secretHits: secretHits || undefined,
   };
 }
 

@@ -50,6 +50,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   from `first_user_sha8` + `ts`, and scores hypothetical passthrough gates using
   only what the proxy knows at transform time — an honest test of a shippable
   rule. Scoring mirrors `src/core/baseline.ts` exactly. (thanks @akigogikar)
+- **feat(secret-guard):** opt-in detection of live credentials (API keys, PEM
+  blocks, bearer tokens, secret-named assignments, high-entropy values) in any
+  text bound for a rendered artifact — image, factsheet line, or IDS block.
+  `OMNIGLYPH_GUARD_SECRETS=text` keeps the whole block native instead of
+  imaging it; `redact` masks each match in place (short prefix +
+  `[REDACTED:kind]`) so the rest of the block still images normally. Off by
+  default and traffic-invariant: the guard only changes what gets rendered,
+  never what the upstream API receives. Hit counts (never the matched text)
+  are persisted per request as `secret_hits`. (thanks @rYo-STUDIO-1bit)
 
 ### Changed
 

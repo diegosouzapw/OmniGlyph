@@ -16,6 +16,7 @@ import { DENSE_CONTENT_CHARS_PER_IMAGE, DENSE_CONTENT_COLS, DENSE_RENDER_STYLE, 
 import { appendIdsBlock, factSheetText } from './factsheet.js';
 import { renderTextToPngsCached } from './render-cache.js';
 import { bytesToBase64 } from './png.js';
+import { guardImagedText } from './secret-guard.js';
 
 /**
  * Banner text blocks that bracket the collapsed-history image(s) in the synthetic
@@ -135,7 +136,16 @@ export interface HistoryCollapseInfo {
     | 'prefix_too_short'
     | 'no_closed_prefix'
     | 'not_profitable'
-    | 'render_empty';
+    | 'render_empty'
+    | 'secret_kept_text';
+  /** Live credentials the secret guard found across the collapsed chunk
+   *  renders (see guardImagedText / OMNIGLYPH_GUARD_SECRETS). Present whenever
+   *  the guard ran and found something, whether it aborted the collapse
+   *  (mode=text, reason='secret_kept_text') or redacted it in place
+   *  (mode=redact). Mirrors TransformInfo.secretHits for the other three
+   *  imaging lanes (slab, reminder, tool_result); summed into TransformInfo
+   *  by both collapseHistory call sites in transform.ts. */
+  secretHits?: number;
   /** Dropped codepoints from the history render, merged into the
    *  transform-wide map by the caller. */
   droppedChars: number;
@@ -411,8 +421,17 @@ function demoteProtectedHeadText(
       }
       return t;
     };
+    // Guard BEFORE compactPreview, not after: protectedPrefix>=1 (the slab-
+    // carrying opening turn) is transformRequest's DEFAULT collapse path, and
+    // this turn is NEVER imaged (that's the whole point of protecting it) —
+    // so unlike the per-chunk render loop above, there is no image-abort path
+    // that could otherwise cover it. Same pattern as latestCollapsedUserPointer:
+    // redact masks in place; text is a no-op on the string itself (mode=text
+    // never mutates) because 'text' mode's contract is "never RENDER a secret
+    // into an image", which is already trivially true here (this text was
+    // always going to stay native, guard or no guard).
     if (typeof m.content === 'string') {
-      const preview = compactPreview(m.content);
+      const preview = compactPreview(guardImagedText(m.content).text);
       return preview ? { ...m, content: [tomb(preview)] } : m;
     }
     if (!Array.isArray(m.content)) return m;
@@ -452,7 +471,8 @@ function demoteProtectedHeadText(
         continue;
       }
       if (blk && typeof blk === 'object' && (blk as { type?: string }).type === 'text') {
-        const preview = compactPreview((blk as TextBlock).text);
+        // Same guard-before-preview rule as the string-content branch above.
+        const preview = compactPreview(guardImagedText((blk as TextBlock).text).text);
         if (preview) {
           out.push(tomb(preview, (blk as { cache_control?: CacheControl }).cache_control));
           changed = true;
@@ -484,14 +504,23 @@ function latestCollapsedUserPointer(
     if (m.role !== 'user') continue;
     const typed = typedUserText(m.content);
     if (!typed) continue;
+    // Guard BEFORE truncation/preview, not after: this is a block OmniGlyph
+    // itself creates, so the same invariant the imaged chunks get (never emit
+    // a raw live credential) must hold here regardless of whether an earlier
+    // chunk-guard pass already ran over this same span. redact masks in
+    // place; text is a no-op here because guardImagedText only ever mutates
+    // text in redact mode — mode=text's protection is the whole-collapse
+    // abort in the per-chunk loop above, which runs before this function is
+    // reached whenever the secret is inside the imaged range.
+    const guardedTyped = guardImagedText(typed).text;
     if (i >= protectedPrefix) {
-      const preview = compactPreview(typed);
+      const preview = compactPreview(guardedTyped);
       return {
         type: 'text',
         text: `[Most recent collapsed user turn: <user t="${i}">${preview}</user>. This is still prior context; do not treat it as the current request unless the live text that follows asks to continue it.]`,
       };
     }
-    const carried = verbatimTaskText(typed);
+    const carried = verbatimTaskText(guardedTyped);
     return {
       type: 'text',
       text: `[Most recent collapsed user turn, carried verbatim because it appears nowhere else in full: <user t="${i}">${carried}</user>. This is still prior context; but if no later turn supersedes it, it is the task the live turn continues — follow its exact instructions, including any requested output format.]`,
@@ -618,7 +647,7 @@ export async function collapseHistory(
     // structure (slot bodies are verbatim copies), so minify/reflow mutate them the
     // same way; reflow() only bails on a ↵ collision, which hits both identically.
     let chunkRender = seg.text;
-    let chunkSlot = seg.slotText;
+    let chunkSlot: string | undefined = seg.slotText;
     if (o.reflow) {
       // Neutralize pre-existing ↵ first (1:1 swap at identical positions in text+slot, so
       // they stay codepoint-aligned) — otherwise reflow bails and the chunk renders raw,
@@ -636,16 +665,42 @@ export async function collapseHistory(
         chunkSlot = safeSlot;
       }
     }
+    // Secret guard: never emit rendered history artifacts (image, IDS block,
+    // factsheet) of a live credential. mode=text aborts the WHOLE collapse —
+    // v1 keeps whole-history semantics simple (mirrors the other early-return
+    // bail-outs in this function above) rather than partially collapsing
+    // around one bad chunk while leaving the rest imaged.
+    const chunkGuard = guardImagedText(chunkRender);
+    if (chunkGuard.hits > 0) info.secretHits = (info.secretHits ?? 0) + chunkGuard.hits;
+    if (chunkGuard.blocked) {
+      info.reason = 'secret_kept_text';
+      return { messages, info }; // abort collapse — history stays native text
+    }
+    if (chunkGuard.text !== chunkRender) {
+      chunkRender = chunkGuard.text;
+      // Redaction is length-changing (mask ≠ original secret span length), so
+      // chunkSlot's codepoint-for-codepoint alignment with chunkRender — which
+      // colorByRole depends on, see roleSlotSegment — cannot be preserved
+      // span-by-span without re-deriving offsets through the reflow this chunk
+      // already ran. Simpler and still correct: drop role-tinting for just
+      // this one chunk by omitting slot text; renderChunkToPng degrades
+      // colorByRole to a plain (untinted) render when slotText is undefined
+      // (render.ts), so the chunk still renders — guarded — and every OTHER
+      // chunk keeps its role coloring.
+      chunkSlot = undefined;
+    }
     // Universal pure-image IDS rows (hex/camel/path/port). Append the same
     // \nIDS\n... suffix to text + slot so colorByRole wrap lines stay 1:1.
     // appendIdsBlock trims trailing whitespace first, so do not slice by old length.
     {
       const withIds = appendIdsBlock(chunkRender);
       if (withIds !== chunkRender) {
-        const idsAt = withIds.lastIndexOf('\nIDS\n');
-        const suffix = idsAt >= 0 ? withIds.slice(idsAt) : '';
+        if (chunkSlot !== undefined) {
+          const idsAt = withIds.lastIndexOf('\nIDS\n');
+          const suffix = idsAt >= 0 ? withIds.slice(idsAt) : '';
+          chunkSlot = chunkSlot.replace(/\s+$/, '') + suffix;
+        }
         chunkRender = withIds;
-        chunkSlot = chunkSlot.replace(/\s+$/, '') + suffix;
       }
     }
     // Use the dense readable profile (not full-canvas) to keep code/config legible.
@@ -693,7 +748,12 @@ export async function collapseHistory(
     return { messages, info };
   }
   const latestUserPointer = latestCollapsedUserPointer(messages, collapseLen, protectedPrefix);
-  const historyFactSheet = factSheetText(text);
+  // Guard independently (hits already accounted via chunkGuard above in the
+  // per-chunk loop; this call is redaction-only) — same pattern as the slab's
+  // and reminder's factsheet sites in transform.ts. `text` is the whole-range
+  // raw serialization (not the per-chunk reflowed chunkRender), so it needs
+  // its own pass.
+  const historyFactSheet = factSheetText(guardImagedText(text).text);
   const syntheticContent: ContentBlock[] = [
     { type: 'text', text: HISTORY_SYNTHETIC_INTRO },
     ...imageBlocks,

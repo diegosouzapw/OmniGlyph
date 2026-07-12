@@ -32,6 +32,7 @@ import {
   DENSE_RENDER_STYLE,
 } from './render.js';
 import { appendIdsBlock, factSheetText } from './factsheet.js';
+import { guardImagedText } from './secret-guard.js';
 import { stripSchemaDescriptions, schemaHasStructure } from './schema-strip.js';
 import { bytesToBase64 } from './png.js';
 import { collapseHistory, HISTORY_SYNTHETIC_INTRO } from './history.js';
@@ -60,13 +61,21 @@ export interface KeepSharpBlock {
 
 /** A block OmniGlyph rendered to image(s), returned in `TransformInfo.recoverable`
  *  when the caller sets `emitRecoverable`. Lets a stateful harness restore
- *  byte-exact content if the model needs the imaged region verbatim. */
+ *  byte-exact content if the model needs the imaged region verbatim.
+ *
+ *  "Byte-exact" is relative to what OmniGlyph RENDERED, not the block's
+ *  pre-guard original: when OMNIGLYPH_GUARD_SECRETS is `text`/`redact`,
+ *  `text` is the guarded (secret-masked) render source, same as the image
+ *  and factsheet — the constraint that a live secret never appears in
+ *  `info`/telemetry is unconditional and outranks recovery fidelity. */
 export interface RecoverableBlock {
   /** `rec_` + 8 hex SHA-256 over kind + toolUseId + original text. */
   readonly id: string;
   readonly kind: 'reminder' | 'tool_result' | 'tool_result_part';
   readonly toolUseId?: string;
-  /** Original text before compaction/reflow/paging — the bytes to restore. */
+  /** Text before compaction/reflow/paging — the bytes to restore. Guard-masked
+   *  when the secret guard is active (see interface doc); byte-exact original
+   *  otherwise (guard off). */
   readonly text: string;
   readonly imageCount: number;
 }
@@ -137,7 +146,9 @@ export interface TransformOptions {
   keepSharp?: (block: KeepSharpBlock) => boolean;
   /** When true, populate `TransformInfo.recoverable` with original text + provenance
    *  for every block rendered to images. Off by default (entries inflate `info`;
-   *  only a stateful harness can use them). */
+   *  only a stateful harness can use them). Under OMNIGLYPH_GUARD_SECRETS
+   *  `text`/`redact`, entries carry the guarded text, never the raw secret —
+   *  see `RecoverableBlock`. */
   emitRecoverable?: boolean;
 }
 
@@ -628,6 +639,10 @@ export interface TransformInfo {
   deferredToolsSkipped?: number;
   /** Codepoints missing from the atlas (rendered as blank cells). Telemetry for atlas tuning. */
   droppedChars?: number;
+  /** Live credentials the secret guard found in text bound for a rendered
+   *  artifact (image, factsheet, IDS block) this request. Absent when the
+   *  guard is off or found nothing — see OMNIGLYPH_GUARD_SECRETS. */
+  secretHits?: number;
   /** Top dropped codepoints by frequency (`U+HHHH` → count), at most 20 entries. */
   droppedCodepointsTop?: Record<string, number>;
   /** Why blocks passed through without compression. Only present when count > 0. */
@@ -650,7 +665,8 @@ export interface TransformInfo {
   historyTextChars?: number;
   /** Blocks pinned as text by the caller's `keepSharp` predicate this request. */
   keptSharpBlocks?: number;
-  /** Imaged live-region blocks with original text + provenance, when `emitRecoverable`. */
+  /** Imaged live-region blocks with original text + provenance, when `emitRecoverable`.
+   *  Guard-masked under OMNIGLYPH_GUARD_SECRETS `text`/`redact` — see `RecoverableBlock`. */
   recoverable?: RecoverableBlock[];
   truncatedToolResults?: number;
   omittedChars?: number;
@@ -683,7 +699,8 @@ export interface TransformInfo {
     | 'not_profitable'
     | 'too_many_images'
     | 'render_empty'
-    | 'collapsed';
+    | 'collapsed'
+    | 'secret_kept_text';
   /** Token count of the pre-compression body from /v1/messages/count_tokens (free).
    *  Absent when probe failed — event excluded from savings rollup. */
   baselineTokens?: number;
@@ -1463,11 +1480,15 @@ export async function textToImageBlocks(
   droppedCodepoints: Map<number, number>;
   /** Σ width×height — caller accumulates into `info.imagePixels` for px/token regression. */
   pixels: number;
-}> {
+} | null> {
+  // Secret guard: never create rendered artifacts of a credential. `null`
+  // tells the caller to keep the source block as native text instead.
+  const blockGuard = guardImagedText(text);
+  if (blockGuard.blocked) return null; // caller keeps the block as native text
   // Shrink before the numCols branch so gate and renderer see the same canvas width.
   // If shrinkage drops below the full width, stay single-col (avoid wasting a divider column).
   // IDS block: isolate precision tokens on their own rows (universal pure-image hex aid).
-  const renderText = appendIdsBlock(text);
+  const renderText = appendIdsBlock(blockGuard.text);
   const effectiveCols = shrinkWidth ? shrinkColsToContent(renderText, cols) : cols;
   const effectiveNumCols = effectiveCols < cols ? 1 : numCols;
   const imgs =
@@ -1560,6 +1581,10 @@ async function runHistoryCollapseAndFinalize(
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
       },
     );
+    // Mirrors the slab/reminder/tool_result lanes above: sum unconditionally,
+    // not just on the collapsedTurns>0 branch — mode=text can find hits and
+    // abort the collapse (reason='secret_kept_text') with collapsedTurns==0.
+    if (histInfo.secretHits) info.secretHits = (info.secretHits ?? 0) + histInfo.secretHits;
     if (histInfo.collapsedTurns > 0) {
       req.messages = newMessages;
       info.collapsedTurns = histInfo.collapsedTurns;
@@ -1863,8 +1888,16 @@ export async function transformRequest(
       columnNoteImg +
       reflowNoteImg +
       '\n====================== BEGIN RENDERED CONTEXT ======================\n';
+    // Secret guard: never create rendered artifacts of a credential.
+    const slabGuard = guardImagedText(imageInstructionHeader + combined);
+    if (slabGuard.hits > 0) info.secretHits = (info.secretHits ?? 0) + slabGuard.hits;
+    if (slabGuard.blocked) {
+      info.reason ??= 'secret_kept_text';
+      // fall through to the existing "slab not imaged" path — same branch the
+      // profitability gate takes when it declines (skip render, keep text).
+    }
     // IDS block on the imaged slab (same pure-image isolation as the GPT/Grok legs).
-    const combinedWithHeader = appendIdsBlock(imageInstructionHeader + combined);
+    const combinedWithHeader = appendIdsBlock(slabGuard.text);
     // Shrink the canvas to the longest actual line in what we'll *render*,
     // so the gate's prediction and the renderer's output agree at the smallest
     // legible width. The banner above sets the natural floor — no separate
@@ -1885,8 +1918,9 @@ export async function transformRequest(
         profitable: slabGateEval.profitable,
       };
     }
-    if (!isCompressionProfitable(combinedWithHeader, slabCols, undefined, numCols, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens, false, page.charsPerImage, tier)) {
-      info.reason = `not_profitable (slab=${combined.length} chars)`;
+    const slabProfitable = isCompressionProfitable(combinedWithHeader, slabCols, undefined, numCols, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens, false, page.charsPerImage, tier);
+    if (!(slabProfitable && !slabGuard.blocked)) {
+      if (!slabGuard.blocked) info.reason = `not_profitable (slab=${combined.length} chars)`;
       bumpPassthrough(info, 'not_profitable');
       // Slab not profitable but history may still be collapsable — try before returning.
       const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, tier, page);
@@ -2030,8 +2064,20 @@ export async function transformRequest(
               processedExisting.push(blk);
               continue;
             }
+            // Secret guard: peek at the hits/masked text before imaging so the
+            // factsheet (below) and telemetry see them even though the actual
+            // block/text choice is decided inside textToImageBlocks.
+            const reminderGuard = guardImagedText(reminderText);
+            if (reminderGuard.hits > 0) info.secretHits = (info.secretHits ?? 0) + reminderGuard.hits;
+            const reminderImaged = await textToImageBlocks(reminderText, o.cols, numCols, true, page);
+            if (reminderImaged === null) {
+              // Secret guard declined to image this block — keep it as native text.
+              bumpPassthrough(info, 'not_profitable');
+              processedExisting.push(blk);
+              continue;
+            }
             const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
-              await textToImageBlocks(reminderText, o.cols, numCols, true, page);
+              reminderImaged;
             (info.imagePngs ??= []).push(...rawPngs);
             (info.imageDims ??= []).push(...rawDims);
             const srcCacheControl = (blk as { cache_control?: unknown }).cache_control;
@@ -2044,13 +2090,20 @@ export async function transformRequest(
               processedExisting.push(out as ImageBlock);
               info.imageBytes += approxBlockBytes(img);
             }
-            const reminderFactSheet = factSheetText(reminderRaw);
+            // Factsheet reads the RAW (pre-reflow) text at every site — guard that
+            // text independently (hits already accounted via reminderGuard above;
+            // this call is redaction-only, same pattern as the slab's factsheet).
+            // Recoverable reuses the same guarded text: the recoverable channel's
+            // byte-exact contract holds relative to what OmniGlyph RENDERED, not
+            // the pre-guard original — a live secret must never ride telemetry.
+            const reminderRawGuarded = guardImagedText(reminderRaw).text;
+            const reminderFactSheet = factSheetText(reminderRawGuarded);
             if (reminderFactSheet) processedExisting.push({ type: 'text', text: reminderFactSheet });
             info.imagePixels = (info.imagePixels ?? 0) + pixels;
             info.reminderImgs = (info.reminderImgs ?? 0) + imgs.length;
             await recordRecoverable(info, o.emitRecoverable, {
               kind: 'reminder',
-              text: reminderRaw,
+              text: reminderRawGuarded,
               imageCount: imgs.length,
             });
             info.compressedChars += reminderRaw.length;
@@ -2065,7 +2118,10 @@ export async function transformRequest(
           processedExisting.push(...existing);
         }
 
-        const slabFactSheet = factSheetText(combinedRaw);
+        // Guard the factsheet input independently: it reads the RAW (pre-reflow)
+        // slab text, so redact-mode masks must be applied here too (hits already
+        // counted at the slab guard above; this call is redaction-only).
+        const slabFactSheet = factSheetText(guardImagedText(combinedRaw).text);
         m.content = [
           ...imageBlocks,
           ...(slabFactSheet ? [{ type: 'text' as const, text: slabFactSheet }] : []),
@@ -2114,32 +2170,50 @@ export async function transformRequest(
                   info.truncatedToolResults = (info.truncatedToolResults ?? 0) + 1;
                   info.omittedChars = (info.omittedChars ?? 0) + paged.omittedChars;
                 }
-                const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
-                  await textToImageBlocks(paged.text, o.cols, numCols, true, page);
-                (info.imagePngs ??= []).push(...rawPngs);
-                (info.imageDims ??= []).push(...rawDims);
-                for (const img of imgs) info.imageBytes += approxBlockBytes(img);
-                info.imagePixels = (info.imagePixels ?? 0) + pixels;
-                info.toolResultImgs = (info.toolResultImgs ?? 0) + imgs.length;
-                info.imageCount += imgs.length;
-                await recordRecoverable(info, o.emitRecoverable, {
-                  kind: 'tool_result',
-                  toolUseId: tr.tool_use_id,
-                  text: innerRaw,
-                  imageCount: imgs.length,
-                });
-                info.compressedChars += innerRaw.length; // original length = what text billing would be
-                info.droppedChars = (info.droppedChars ?? 0) + droppedChars;
-                for (const [cp, n] of dcp) {
-                  droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
+                // Secret guard: peek at the hits before imaging (blocking decision
+                // itself is made inside textToImageBlocks on this same `paged.text`).
+                const trGuard = guardImagedText(paged.text);
+                if (trGuard.hits > 0) info.secretHits = (info.secretHits ?? 0) + trGuard.hits;
+                const trImaged = await textToImageBlocks(paged.text, o.cols, numCols, true, page);
+                if (trImaged === null) {
+                  // Secret guard declined to image this tool_result — keep it as native text.
+                  bumpPassthrough(info, 'not_profitable');
+                  rewritten.push(blk);
+                } else {
+                  const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
+                    trImaged;
+                  (info.imagePngs ??= []).push(...rawPngs);
+                  (info.imageDims ??= []).push(...rawDims);
+                  for (const img of imgs) info.imageBytes += approxBlockBytes(img);
+                  info.imagePixels = (info.imagePixels ?? 0) + pixels;
+                  info.toolResultImgs = (info.toolResultImgs ?? 0) + imgs.length;
+                  info.imageCount += imgs.length;
+                  // Guard independently (hits already accounted via trGuard above;
+                  // redaction-only here). Recoverable reuses the same guarded text:
+                  // the recoverable channel's byte-exact contract holds relative to
+                  // what OmniGlyph RENDERED, not the pre-guard original — a live
+                  // secret must never ride telemetry.
+                  const innerRawGuarded = guardImagedText(innerRaw).text;
+                  await recordRecoverable(info, o.emitRecoverable, {
+                    kind: 'tool_result',
+                    toolUseId: tr.tool_use_id,
+                    text: innerRawGuarded,
+                    imageCount: imgs.length,
+                  });
+                  info.compressedChars += innerRaw.length; // original length = what text billing would be
+                  info.droppedChars = (info.droppedChars ?? 0) + droppedChars;
+                  for (const [cp, n] of dcp) {
+                    droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
+                  }
+                  // Factsheet reads RAW (pre-reflow) text.
+                  const trFactSheet = factSheetText(innerRawGuarded);
+                  rewritten.push({
+                    ...tr,
+                    content: trFactSheet ? [...imgs, { type: 'text' as const, text: trFactSheet }] : imgs,
+                  });
+                  changed = true;
+                  bumpBucket(info, toolResultBucket(classifyContent(inner)), innerRaw.length);
                 }
-                const trFactSheet = factSheetText(innerRaw);
-                rewritten.push({
-                  ...tr,
-                  content: trFactSheet ? [...imgs, { type: 'text' as const, text: trFactSheet }] : imgs,
-                });
-                changed = true;
-                bumpBucket(info, toolResultBucket(classifyContent(inner)), innerRaw.length);
               }
             } else if (Array.isArray(innerRaw)) {
               const newInner: Array<TextBlock | ImageBlock> = [];
@@ -2180,8 +2254,19 @@ export async function transformRequest(
                   info.truncatedToolResults = (info.truncatedToolResults ?? 0) + 1;
                   info.omittedChars = (info.omittedChars ?? 0) + paged.omittedChars;
                 }
+                // Secret guard: peek at the hits before imaging (blocking decision
+                // itself is made inside textToImageBlocks on this same `paged.text`).
+                const partGuard = guardImagedText(paged.text);
+                if (partGuard.hits > 0) info.secretHits = (info.secretHits ?? 0) + partGuard.hits;
+                const partImaged = await textToImageBlocks(paged.text, o.cols, numCols, true, page);
+                if (partImaged === null) {
+                  // Secret guard declined to image this part — keep it as native text.
+                  bumpPassthrough(info, 'not_profitable');
+                  newInner.push(ib as TextBlock | ImageBlock);
+                  continue;
+                }
                 const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
-                  await textToImageBlocks(paged.text, o.cols, numCols, true, page);
+                  partImaged;
                 (info.imagePngs ??= []).push(...rawPngs);
                 (info.imageDims ??= []).push(...rawDims);
                 const srcCacheControl = (ib as { cache_control?: unknown }).cache_control;
@@ -2194,7 +2279,13 @@ export async function transformRequest(
                   newInner.push(out as ImageBlock);
                   info.imageBytes += approxBlockBytes(img);
                 }
-                const partFactSheet = factSheetText(innerTextRaw);
+                // Guard independently (hits already accounted via partGuard above;
+                // redaction-only here). Recoverable reuses the same guarded text:
+                // the recoverable channel's byte-exact contract holds relative to
+                // what OmniGlyph RENDERED, not the pre-guard original — a live
+                // secret must never ride telemetry.
+                const innerTextRawGuarded = guardImagedText(innerTextRaw).text;
+                const partFactSheet = factSheetText(innerTextRawGuarded);
                 if (partFactSheet) newInner.push({ type: 'text', text: partFactSheet });
                 info.imagePixels = (info.imagePixels ?? 0) + pixels;
                 info.toolResultImgs = (info.toolResultImgs ?? 0) + imgs.length;
@@ -2202,7 +2293,7 @@ export async function transformRequest(
                 await recordRecoverable(info, o.emitRecoverable, {
                   kind: 'tool_result_part',
                   toolUseId: tr.tool_use_id,
-                  text: innerTextRaw,
+                  text: innerTextRawGuarded,
                   imageCount: imgs.length,
                 });
                 info.compressedChars += innerTextRaw.length;
@@ -2260,6 +2351,10 @@ export async function transformRequest(
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
       },
     );
+    // Mirrors the slab/reminder/tool_result lanes above: sum unconditionally,
+    // not just on the collapsedTurns>0 branch — mode=text can find hits and
+    // abort the collapse (reason='secret_kept_text') with collapsedTurns==0.
+    if (histInfo.secretHits) info.secretHits = (info.secretHits ?? 0) + histInfo.secretHits;
     if (histInfo.collapsedTurns > 0) {
       req.messages = newMessages;
       info.collapsedTurns = histInfo.collapsedTurns;
