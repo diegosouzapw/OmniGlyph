@@ -42,6 +42,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(node):** `waitForDrain` no longer leaks one `close` + one `error`
+  listener per backpressure cycle on the same `ServerResponse`. On long SSE
+  streams the old `Promise.race`/`events.once` pattern accumulated listeners
+  until `MaxListenersExceededWarning` fired and the proxy's heap grew without
+  bound; listeners are now managed manually and detached on whichever of
+  `drain`/`close`/`error` fires first. (thanks @zannensk)
 - **fix(transform):** keep `scope: "global"` `cache_control` valid across
   multi-image slabs. Anthropic rejects a globally-scoped block unless every
   preceding block is also globally scoped; the caller's marker used to land
