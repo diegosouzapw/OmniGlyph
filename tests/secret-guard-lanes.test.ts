@@ -284,6 +284,55 @@ describe('Anthropic history lane', () => {
   });
 });
 
+// Fix 1 (Task 4, round 2): demoteProtectedHeadText builds the "PRIOR CONTEXT
+// ONLY" tombstone straight from the protected head's RAW message content —
+// unlike latestCollapsedUserPointer (fixed above), it never ran through
+// guardImagedText. protectedPrefix>=1 (the slab-carrying opening turn) is
+// transform.ts's DEFAULT collapse path, so a live credential in the user's
+// very first message rides into the tombstone's ~300-char preview raw, in
+// EVERY mode (including redact). Filler turns 1..12 carry their own typed
+// text so the LAST-collapsed-user-turn pointer resolves to turn 12, never
+// turn 0 — isolating this test to the tombstone path, not the (already
+// fixed) pointer path.
+describe('protected-head tombstone (demoteProtectedHeadText)', () => {
+  function secretInProtectedHeadMsgs(): Message[] {
+    const msgs: Message[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: `DEPLOY_TOKEN=${SECRET} please set this up` },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'U0xBQg==' } },
+        ],
+      },
+    ];
+    for (let i = 1; i <= 12; i++) {
+      const body = `turn ${i}: ` + 'x'.repeat(2800);
+      msgs.push({ role: i % 2 === 1 ? 'assistant' : 'user', content: body });
+    }
+    msgs.push({ role: 'user', content: 'LIVE: continue' });
+    return msgs;
+  }
+  const headOpts = { keepTail: 1, minCollapsePrefix: 5, cols: 100, collapseChunk: 0, protectedPrefix: 1 } as const;
+
+  it('off (default): tombstone preview is byte-identical to today (regression guard)', async () => {
+    const { messages } = await collapseHistory(secretInProtectedHeadMsgs(), isCompressionProfitable, headOpts);
+    const head = messages[0]!;
+    const headTextBlock = (head.content as Array<Record<string, unknown>>).find(
+      (b) => b.type === 'text',
+    ) as { text: string };
+    expect(headTextBlock.text).toContain(SECRET); // guard disabled: unchanged behavior
+  });
+
+  it('redact: the raw secret never rides in the protected-head tombstone', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { messages, info } = await collapseHistory(secretInProtectedHeadMsgs(), isCompressionProfitable, headOpts);
+    expect(info.collapsedImages).toBeGreaterThan(0);
+    const dump = JSON.stringify(messages);
+    expect(dump).not.toContain(SECRET);
+    expect(dump).toContain('[REDACTED:');
+  });
+});
+
 describe('Anthropic history lane via transformRequest (secretHits aggregation)', () => {
   // Fix 2 (Task 4): HistoryCollapseInfo.secretHits was never summed into
   // TransformInfo.secretHits at either collapseHistory call site in

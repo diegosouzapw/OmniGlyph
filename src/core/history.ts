@@ -409,8 +409,17 @@ function demoteProtectedHeadText(head: Message[]): Message[] {
       }
       return t;
     };
+    // Guard BEFORE compactPreview, not after: protectedPrefix>=1 (the slab-
+    // carrying opening turn) is transformRequest's DEFAULT collapse path, and
+    // this turn is NEVER imaged (that's the whole point of protecting it) —
+    // so unlike the per-chunk render loop above, there is no image-abort path
+    // that could otherwise cover it. Same pattern as latestCollapsedUserPointer:
+    // redact masks in place; text is a no-op on the string itself (mode=text
+    // never mutates) because 'text' mode's contract is "never RENDER a secret
+    // into an image", which is already trivially true here (this text was
+    // always going to stay native, guard or no guard).
     if (typeof m.content === 'string') {
-      const preview = compactPreview(m.content);
+      const preview = compactPreview(guardImagedText(m.content).text);
       return preview ? { ...m, content: [tomb(preview)] } : m;
     }
     if (!Array.isArray(m.content)) return m;
@@ -435,7 +444,8 @@ function demoteProtectedHeadText(head: Message[]): Message[] {
         continue;
       }
       if (blk && typeof blk === 'object' && (blk as { type?: string }).type === 'text') {
-        const preview = compactPreview((blk as TextBlock).text);
+        // Same guard-before-preview rule as the string-content branch above.
+        const preview = compactPreview(guardImagedText((blk as TextBlock).text).text);
         if (preview) {
           out.push(tomb(preview, (blk as { cache_control?: CacheControl }).cache_control));
           changed = true;

@@ -82,6 +82,57 @@ describe('findSecrets — entropy fallback isolates the value of NAME=value / NA
   });
 });
 
+// The history reflow (render.ts:reflow) marks every original hard newline with
+// the U+21B5 ↵ sentinel and joins lines with NO surrounding whitespace (see
+// reflow()'s `.join(NL_SENTINEL)`). Before this fix, the entropy fallback's
+// `\S+` chunker treated ↵ as ordinary content, so an entire multi-line,
+// secret-free transcript collapsed into ONE giant chunk spanning every line —
+// which reads as high-entropy text and false-positives as a secret. Reused
+// directly from render.ts so the fixture tracks the real sentinel, not a
+// hand-typed lookalike.
+describe('findSecrets — the reflow ↵ sentinel is a token boundary, not content', () => {
+  const innocentLines = [
+    'readyState',
+    'pendingTasksQueue',
+    'activeSessionCount',
+    'cacheHitRatioValue',
+    'retryBackoffMillis',
+    'lastHeartbeatTimestamp',
+    'connectionPoolSize',
+    'workerThreadIdentifier',
+  ];
+
+  it('a secret-free multi-line text glued by ↵ (reflow output) is still 0 hits', async () => {
+    const { reflow } = await import('../src/core/render.js');
+    const plain = innocentLines.join('\n');
+    expect(findSecrets(plain)).toHaveLength(0); // sanity: no false positive pre-reflow either
+    const reflowed = reflow(plain);
+    expect(reflowed).toContain('↵'); // sanity: the sentinel actually landed
+    expect(findSecrets(reflowed!)).toHaveLength(0);
+  });
+
+  it('a real entropy secret confined to one ↵-delimited line is still caught, with a span that stops at the boundary', async () => {
+    const { reflow } = await import('../src/core/render.js');
+    const secret = 'kJ8#mQz!vR2$xN9pLw4Yt7Bc12';
+    const lines = [...innocentLines.slice(0, 3), secret, ...innocentLines.slice(3)];
+    const reflowed = reflow(lines.join('\n'))!;
+    const hits = findSecrets(reflowed);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.kind).toBe('entropy');
+    expect(reflowed.slice(hits[0]!.start, hits[0]!.end)).toBe(secret);
+  });
+
+  it('an assignment secret abutting ↵ does not bleed its VALUE span into the next line', async () => {
+    const { reflow } = await import('../src/core/render.js');
+    const lines = [innocentLines[0]!, 'DB_PASSWORD=hunter2Secret9', innocentLines[1]!];
+    const reflowed = reflow(lines.join('\n'))!;
+    const hits = findSecrets(reflowed);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.kind).toBe('assignment');
+    expect(reflowed.slice(hits[0]!.start, hits[0]!.end)).toBe('hunter2Secret9');
+  });
+});
+
 describe('findSecrets — dedup prefers the more specific kind over entropy (I2/M2)', () => {
   it('reports "assignment" (not "entropy") for a secret-named assignment, spanning the value', () => {
     const t = 'ACCESS_TOKEN=abcdefgh12345678';

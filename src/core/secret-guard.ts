@@ -24,10 +24,19 @@ const KEY_PATTERNS: readonly RegExp[] = [
   /\bAIza[0-9A-Za-z_-]{35}\b/g,           // Google API key
 ];
 const PEM_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
+// The VALUE class is an explicit allowlist that already excludes U+21B5 (↵,
+// the reflow newline sentinel — see render.ts NL_SENTINEL), so a Bearer token
+// abutting a reflowed line break can't swallow it. Unlike ASSIGNMENT below,
+// no change needed here — kept as a `\S`-free allowlist on purpose.
 const BEARER_PATTERN = /\bBearer\s+([A-Za-z0-9._~+/=-]{20,})/g;
 // Value of a secret-NAMED assignment is a secret regardless of its entropy.
+// The value class excludes ↵ (see findSecrets' entropy-fallback chunker
+// below for why): `\S` would treat the reflow sentinel as ordinary content
+// and let the captured VALUE bleed across a line boundary into the next
+// line's text whenever the secret's value directly abuts a ↵ (the common
+// case — reflow joins lines with no separating whitespace).
 const ASSIGNMENT_PATTERN =
-  /\b[A-Z0-9_]*(?:API|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|ACCESS)[A-Z0-9_]*\s*[=:]\s*(\S{8,})/g;
+  /\b[A-Z0-9_]*(?:API|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|ACCESS)[A-Z0-9_]*\s*[=:]\s*([^\s↵]{8,})/g;
 
 // Public high-entropy shapes the codebase already trusts (factsheet.ts grammar).
 // Kept as local copies: factsheet.ts does not export them, and the two modules
@@ -119,7 +128,15 @@ export function findSecrets(text: string): SecretHit[] {
   // Entropy fallback over whitespace-free chunks. A NAME=value chunk is
   // judged on its value alone (see isolateAssignmentValue) so a secret value
   // behind an innocuous name is still caught.
-  for (const m of text.matchAll(/\S+/g)) {
+  //
+  // ↵ (U+21B5) is the history reflow's hard-newline sentinel (render.ts
+  // NL_SENTINEL) — reflow() joins lines with NO surrounding whitespace, so a
+  // plain `\S+` chunker treats ↵ as ordinary content and glues an entire
+  // multi-line, secret-free transcript into ONE chunk spanning every line,
+  // which reads as high-entropy and false-positives as a secret. ↵ is a
+  // token BOUNDARY (it marks where a line ends), never token content, so it
+  // must split chunks exactly like whitespace does.
+  for (const m of text.matchAll(/[^\s↵]+/g)) {
     const chunk = m[0];
     if (chunk.includes('[REDACTED:')) continue;
     const { value, offset } = isolateAssignmentValue(chunk);
