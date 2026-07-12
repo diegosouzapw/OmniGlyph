@@ -51,6 +51,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(render):** codepoints absent from the glyph atlas (emoji, astral-plane
+  symbols) are no longer silently rendered as blank cells. Each miss is now
+  substituted with a deterministic ASCII escape — 🔥 becomes `[U+1F525]` — at
+  the same layer as tab expansion, so wrap math and canvas measurement stay
+  consistent with what is drawn, and the model reads the codepoint instead of a
+  gap. Invisibles and modifiers (C0 controls, combining diacritics, zero-width
+  chars, variation selectors) are exempt and still drop as blank cells, keeping
+  slot-string alignment and role coloring intact; `droppedChars` telemetry now
+  counts only these exempt drops. (thanks @roethlar)
 - **fix(transform):** the profitability gate no longer counts the reflow ↵
   sentinel as a visual row break. Reflow packs hard newlines into one
   soft-wrapped stream (↵ is an inline glyph the renderer never breaks on), so
