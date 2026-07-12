@@ -75,6 +75,27 @@ Hoạt động theo cả hai cách:
 
 Dashboard tại <http://127.0.0.1:47821/>: token đã tiết kiệm, từng lần chuyển đổi văn bản→hình ảnh đặt cạnh nhau, công tắc tắt khẩn cấp, chip mô hình trực tiếp. Phản hồi vẫn stream bình thường — chỉ *request* bị nén, không bao giờ là đầu ra của mô hình.
 
+# 🔌 Sử dụng với các client Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Dashboard
 
 Một dashboard cục bộ đầy đủ được đóng gói sẵn trong package — hoạt động offline, một tệp duy nhất, không có request ra bên ngoài. Sáu trang, cập nhật trực tiếp qua SSE khi request diễn ra:

@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 儀表板位於 <http://127.0.0.1:47821/>:節省的 token 數、每一次文字→圖像轉換的並排比較、終止開關、即時模型標籤。回應照常串流輸出——只有*請求*被壓縮,模型的輸出從不受影響。
 
+# 🔌 搭配 Claude 用戶端使用
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ The dashboard
 
 套件內建一個完整的本地儀表板——離線運作、單一檔案、零對外連線。共六個頁面,隨請求流動透過 SSE 即時更新:

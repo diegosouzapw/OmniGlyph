@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 Dashboard <http://127.0.0.1:47821/>-இல்: சேமிக்கப்பட்ட tokens, ஒவ்வொரு text→image மாற்றமும் அருகருகே, kill switch, live model chips. பதில்கள் இயல்பாக stream ஆகின்றன — *request* மட்டுமே சுருக்கப்படுகிறது, மாடலின் output ஒருபோதும் இல்லை.
 
+# 🔌 Claude கிளையண்டுகளுடன் பயன்படுத்துதல்
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Dashboard
 
 முழுமையான ஒரு local dashboard package-க்குள்ளேயே வருகிறது — offline, single-file, வெளிப்புற requests எதுவும் இல்லை. ஆறு pages, requests பாயும்போது SSE வழியாக live-ஆக update ஆகின்றன:

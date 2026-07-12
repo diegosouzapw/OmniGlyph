@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 לוח הבקרה בכתובת <http://127.0.0.1:47821/>: טוקנים שנחסכו, כל המרת טקסט→תמונה זו לצד זו, מתג כיבוי, שבבי מודל חיים. התגובות זורמות כרגיל — רק ה*בקשה* דחוסה, לעולם לא פלט המודל.
 
+# 🔌 שימוש עם לקוחות Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ לוח הבקרה
 
 לוח בקרה מקומי מלא מגיע בתוך החבילה — אופליין, קובץ יחיד, אפס בקשות חיצוניות. שישה עמודים, מתעדכנים בזמן אמת דרך SSE ככל שהבקשות זורמות:

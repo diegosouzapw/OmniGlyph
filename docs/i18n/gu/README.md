@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/> પર ડેશબોર્ડ: બચેલા ટોકન્સ, દરેક text→image કન્વર્ઝન side by side, kill switch, live model chips. Responses સામાન્ય રીતે stream થાય છે — ફક્ત *request* કમ્પ્રેસ થાય છે, મોડેલનું output ક્યારેય નહીં.
 
+# 🔌 Claude ક્લાયન્ટ સાથે વાપર
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ ડેશબોર્ડ
 
 પેકેજની અંદર જ એક સંપૂર્ણ લોકલ ડેશબોર્ડ આવે છે — ઓફલાઇન, single-file, ઝીરો external requests. છ પેજ, requests વહેતાં SSE પર લાઇવ અપડેટ થાય છે:

@@ -75,6 +75,27 @@ Berfungsi dua arah:
 
 Dashboard di <http://127.0.0.1:47821/>: token yang dihemat, setiap konversi teks→gambar berdampingan, kill switch, chip model langsung. Respons streaming berjalan normal — hanya *permintaan* yang dikompresi, tidak pernah output model.
 
+# 🔌 Gunakan dengan klien Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Dashboard
 
 Dashboard lokal lengkap disertakan di dalam paket — offline, single-file, tanpa permintaan eksternal. Enam halaman, diperbarui secara langsung lewat SSE seiring permintaan mengalir:

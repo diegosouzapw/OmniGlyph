@@ -86,6 +86,20 @@ describe('estimateImageCount', () => {
     const tallerCellCount = estimateImageCount(text, COLS, 1, undefined, maxHeightPx, 12);
     expect(tallerCellCount).toBeGreaterThan(defaultCount);
   });
+
+  it('treats reflow ↵ as an inline glyph, not a row break', () => {
+    // reflow() packs "a↵b↵c" onto one soft-wrapped stream so short history
+    // lines PACK instead of each costing a near-empty row. The gate must count
+    // rows the same way the renderer wraps them; counting ↵ as a break
+    // overstated pages ~6× on reflowed history and blocked history collapse.
+    // Many short lines joined by ↵ stay one visual strip → one image.
+    const reflowed = Array.from({ length: ROWS_PER_IMG * 4 }, (_, i) => `t${i}`).join('↵');
+    expect(estimateImageCount(reflowed, COLS)).toBe(1);
+    // Control: the SAME lines with real newlines each cost one row, so
+    // ROWS_PER_IMG + 1 of them spill to a second image (↵ ≠ \n).
+    const raw = Array.from({ length: ROWS_PER_IMG + 1 }, (_, i) => `t${i}`).join('\n');
+    expect(estimateImageCount(raw, COLS)).toBe(2);
+  });
 });
 
 describe('dense readable render profile', () => {

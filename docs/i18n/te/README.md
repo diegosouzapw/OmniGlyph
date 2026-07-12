@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/> వద్ద డాష్‌బోర్డ్: ఆదా చేసిన టోకెన్లు, ప్రతి టెక్స్ట్→ఇమేజ్ కన్వర్షన్ పక్కపక్కనే, కిల్ స్విచ్, లైవ్ మోడల్ చిప్స్. రెస్పాన్స్‌లు సాధారణంగానే స్ట్రీమ్ అవుతాయి — కుదించబడేది కేవలం *రిక్వెస్ట్* మాత్రమే, మోడల్ అవుట్‌పుట్ ఎప్పుడూ కాదు.
 
+# 🔌 Claude క్లయింట్‌లతో ఉపయోగం
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ డాష్‌బోర్డ్
 
 ప్యాకేజీ లోపలే ఒక పూర్తి లోకల్ డాష్‌బోర్డ్ వస్తుంది — ఆఫ్‌లైన్, సింగిల్-ఫైల్, జీరో ఎక్స్‌టర్నల్ రిక్వెస్ట్‌లు. ఆరు పేజీలు, రిక్వెస్ట్‌లు ప్రవహిస్తున్నప్పుడు SSE ద్వారా లైవ్‌గా అప్‌డేట్ అవుతాయి:

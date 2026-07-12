@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/>-এ ড্যাশবোর্ড: সাশ্রিত টোকেন, প্রতিটি টেক্সট→ইমেজ রূপান্তর পাশাপাশি, কিল সুইচ, লাইভ মডেল চিপ। রেসপন্স স্বাভাবিকভাবে স্ট্রিম হয় — শুধুমাত্র *রিকোয়েস্ট* কম্প্রেস করা হয়, মডেলের আউটপুট কখনো নয়।
 
+# 🔌 Claude ক্লায়েন্টের সাথে ব্যবহার
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ ড্যাশবোর্ড
 
 একটি সম্পূর্ণ লোকাল ড্যাশবোর্ড প্যাকেজের ভেতরেই আসে — অফলাইন, সিঙ্গেল-ফাইল, শূন্য এক্সটার্নাল রিকোয়েস্ট। ছয়টি পৃষ্ঠা, রিকোয়েস্ট প্রবাহের সাথে সাথে SSE-এর মাধ্যমে লাইভ আপডেট হয়:

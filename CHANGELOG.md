@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Docs
+
+- **docs:** add a "Use with Claude clients" section to the README (and all 41
+  translations) covering Claude Code CLI on macOS/Linux, the **Windows
+  PowerShell** variant (`$env:ANTHROPIC_BASE_URL`), and **Claude Desktop** setup.
+  (thanks @ousamabenyounes)
+
+## [Unreleased]
+
 ### Added
 
 - **feat(grok):** opt-in support for xAI **Grok** on the OpenAI-compatible wire.
@@ -30,12 +39,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Changed
 
+- **test:** pin `OMNIGLYPH_MODELS` to the built-in default scope in the
+  savings-math e2e so the file is deterministic regardless of a developer's
+  ambient shell. The GPT cases drive `gpt-5.6`; a shell that exports a narrowed
+  `OMNIGLYPH_MODELS` (excluding GPT) previously made them fail on env alone.
+  Snapshot/set/restore, same convention as `proxy-usage.test.ts`. Assertions
+  unchanged.
 - **test:** raise the Vitest per-test timeout to 30s so genuinely slow render
   e2e cases (full reflow + PNG encode) are not false-negative timeouts on
   slower/CI machines. Assertions are unchanged. (thanks @ousamabenyounes)
 
 ### Fixed
 
+- **fix(transform):** the profitability gate no longer counts the reflow ↵
+  sentinel as a visual row break. Reflow packs hard newlines into one
+  soft-wrapped stream (↵ is an inline glyph the renderer never breaks on), so
+  treating it as a break overstated image pages up to ~6× on reflowed history —
+  which flipped genuinely profitable history collapses to `not_profitable` and
+  left savings on the table. The gate now counts visual rows exactly as the
+  renderer wraps them.
 - **fix(factsheet):** capture transactional exact-token classes — email
   addresses, IBAN-like account strings, and currency amounts (`$14,360`). They
   join the protected tier-0 anchors (alongside SHAs, UUIDs, `CONST_IDS`, tickets,

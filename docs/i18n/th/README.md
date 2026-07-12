@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # ชี้ Claude Code ไป
 
 แดชบอร์ดที่ <http://127.0.0.1:47821/>: โทเคนที่ประหยัดได้ ทุกการแปลงข้อความ→ภาพแบบเทียบเคียงกัน สวิตช์ปิดฉุกเฉิน ชิปแสดงโมเดลแบบเรียลไทม์ การตอบกลับสตรีมตามปกติ — มีเพียง *คำขอ* เท่านั้นที่ถูกบีบอัด ไม่ใช่ผลลัพธ์จากโมเดล
 
+# 🔌 ใช้งานกับไคลเอนต์ Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ แดชบอร์ด
 
 แดชบอร์ดเต็มรูปแบบทำงานในเครื่องมาพร้อมกับแพ็กเกจ — ออฟไลน์ ไฟล์เดียว ไม่มีการเรียกออกไปภายนอกเลย มีทั้งหมดหกหน้า อัปเดตแบบเรียลไทม์ผ่าน SSE ตามคำขอที่ไหลเข้ามา:

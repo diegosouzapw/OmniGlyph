@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/>의 대시보드: 절약된 토큰, 나란히 비교되는 모든 텍스트→이미지 변환, 킬 스위치, 실시간 모델 칩. 응답은 정상적으로 스트리밍됩니다 — 압축되는 것은 오직 *요청*뿐이며, 모델의 출력은 결코 압축되지 않습니다.
 
+# 🔌 Claude 클라이언트에서 사용
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ 대시보드
 
 패키지 안에 완전한 로컬 대시보드가 포함되어 있습니다 — 오프라인, 단일 파일, 외부 요청 없음. 요청이 흐름에 따라 SSE를 통해 실시간으로 업데이트되는 6개의 페이지:

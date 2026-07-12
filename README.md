@@ -77,6 +77,16 @@ Part of the [**OmniRoute**](https://github.com/diegosouzapw/OmniRoute) family ·
 
 </div>
 
+![chart: characters a frontier context window holds, 2018–2026 — every vendor line tops out near the ~4M chars a 1M-token window holds as text; the same Fable 5 1M window through OmniGlyph images holds a measured ~18M chars, 4.55× the text ceiling](docs/assets/context-window-chars.png)
+
+*Eight years of context growth, in characters. Every text line tops out near
+~4M chars (a 1M-token window at ~4 chars/token); the orange point is the
+**same Fable 5 1M window** read through OmniGlyph images — ~18M chars at the
+measured 18.19 chars/vision-token, **4.55×** the text ceiling. The density and
+multiplier are measured from a live render at generation time, not hand-typed:
+regenerate with `npx tsx scripts/gen-context-chart.ts`
+([source](scripts/gen-context-chart.ts)).*
+
 ---
 
 # 📊 The numbers — measured, not estimated
@@ -123,6 +133,27 @@ Works both ways:
 - **Subscription session**: you don't pay less, but usage limits are counted in tokens — so your limits stretch **~2–3×**.
 
 Dashboard at <http://127.0.0.1:47821/>: tokens saved, every text→image conversion side by side, kill switch, live model chips. Responses stream normally — only the *request* is compressed, never the model's output.
+
+# 🔌 Use with Claude clients
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
 
 # 🖥️ The dashboard
 
