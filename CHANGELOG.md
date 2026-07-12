@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-07-12
+
+Docs-only. Syncs the npm package page with the corrected 1.3.0 documentation
+(the 1.3.0 tarball was cut from the version-bump commit, before these edits).
+No change to the compression path, billing math, or any shipped behavior.
+
+### Docs
+
+- **docs:** the Grok changelog entry now describes the net shipped profile
+  (stock 5×8 white AA + in-image IDS), not the 9×12 cell that never shipped in
+  a tagged release; the universal IDS block, the 64 → 96 fact-sheet budget, and
+  the residual-height gate are split into their own `feat(render)` entry; the
+  two `$0` eval harnesses (`eval/grok-density`, `eval/ab/guards-3arm`) are
+  logged. The README gains an **Opt-in flags** note for `OMNIGLYPH_GUARD_SECRETS`,
+  `OMNIGLYPH_KEEP_SYSTEM_TEXT`, and the fail-closed Grok opt-in.
+
 ## [1.3.0] — 2026-07-12
 
 ### Added
