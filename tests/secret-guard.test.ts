@@ -97,3 +97,54 @@ describe('findSecrets — dedup prefers the more specific kind over entropy (I2/
     expect(hits[0]!.kind).toBe('key');
   });
 });
+
+import { redactSecrets, secretGuardMode, guardImagedText } from '../src/core/secret-guard.js';
+import { afterEach, beforeEach } from 'vitest';
+
+describe('redactSecrets', () => {
+  it('masks with a prefix-preserving, kind-tagged token', () => {
+    const { text, hits } = redactSecrets('use sk-live-abcdefghijklmnop1234 now');
+    expect(hits).toBe(1);
+    expect(text).toBe('use sk-l…[REDACTED:key] now');
+  });
+  it('is idempotent and deterministic', () => {
+    const once = redactSecrets('TOKEN=abcdefgh12345678').text;
+    expect(redactSecrets(once)).toEqual({ text: once, hits: 0 });
+    expect(redactSecrets('TOKEN=abcdefgh12345678').text).toBe(once);
+  });
+  it('never leaves more than 4 original chars of any hit', () => {
+    const secret = 'kJ8#mQz!vR2$xN9pLw4Yt7Bc';
+    const { text } = redactSecrets(`x ${secret} y`);
+    expect(text).not.toContain(secret.slice(4));
+  });
+});
+
+describe('secretGuardMode', () => {
+  const saved = process.env.OMNIGLYPH_GUARD_SECRETS;
+  beforeEach(() => { delete process.env.OMNIGLYPH_GUARD_SECRETS; });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.OMNIGLYPH_GUARD_SECRETS;
+    else process.env.OMNIGLYPH_GUARD_SECRETS = saved;
+  });
+  it("defaults to 'off' and ignores junk values", () => {
+    expect(secretGuardMode()).toBe('off');
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'banana';
+    expect(secretGuardMode()).toBe('off');
+  });
+  it('honors text and redact (case-insensitive)', () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    expect(secretGuardMode()).toBe('text');
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'REDACT';
+    expect(secretGuardMode()).toBe('redact');
+  });
+  it('guardImagedText wires the three modes', () => {
+    const secret = 'API_KEY=abcdefgh12345678';
+    expect(guardImagedText(secret)).toEqual({ mode: 'off', text: secret, hits: 0, blocked: false });
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    expect(guardImagedText(secret)).toMatchObject({ mode: 'text', text: secret, blocked: true });
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const g = guardImagedText(secret);
+    expect(g.blocked).toBe(false);
+    expect(g.text).toContain('[REDACTED:assignment]');
+  });
+});

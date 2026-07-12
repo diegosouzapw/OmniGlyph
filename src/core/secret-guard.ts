@@ -160,3 +160,42 @@ export function findSecrets(text: string): SecretHit[] {
   }
   return out;
 }
+
+/** Prefix-preserving mask: keeps 4 chars for debuggability, kills the secret.
+ *  Deterministic and idempotent (masked text produces zero new hits). */
+export function redactSecrets(text: string): { text: string; hits: number } {
+  const hits = findSecrets(text);
+  if (hits.length === 0) return { text, hits: 0 };
+  let out = '';
+  let cursor = 0;
+  for (const h of hits) {
+    out += text.slice(cursor, h.start);
+    out += text.slice(h.start, Math.min(h.start + 4, h.end)) + `…[REDACTED:${h.kind}]`;
+    cursor = h.end;
+  }
+  out += text.slice(cursor);
+  return { text: out, hits: hits.length };
+}
+
+/** OMNIGLYPH_GUARD_SECRETS = off (default) | text | redact.
+ *  Same Workers-safe env access pattern as applicability.ts. */
+export function secretGuardMode(): SecretGuardMode {
+  const raw = typeof process !== 'undefined' ? process.env?.OMNIGLYPH_GUARD_SECRETS : undefined;
+  const v = (raw ?? '').trim().toLowerCase();
+  return v === 'text' || v === 'redact' ? v : 'off';
+}
+
+/** One-call contract for every imaging choke point. `blocked` means: keep
+ *  this block as native text (mode 'text' and a secret is present). */
+export function guardImagedText(text: string): {
+  mode: SecretGuardMode; text: string; hits: number; blocked: boolean;
+} {
+  const mode = secretGuardMode();
+  if (mode === 'off') return { mode, text, hits: 0, blocked: false };
+  if (mode === 'redact') {
+    const r = redactSecrets(text);
+    return { mode, text: r.text, hits: r.hits, blocked: false };
+  }
+  const hits = findSecrets(text).length;
+  return { mode, text, hits, blocked: hits > 0 };
+}
