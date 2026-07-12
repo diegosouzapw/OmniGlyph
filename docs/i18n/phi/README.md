@@ -175,6 +175,9 @@ Nire-render ng `--git` ang iyong uncommitted diff, ng `--diff <ref>` ang isang c
 
 # 🧠 FAQ
 
+**In-enable ko ito sa kalagitnaan ng session at biglang tumaas ang gamit — bakit?**
+Ang session na tumakbo nang walang OmniGlyph ay may buong prefix na naka-cache sa Anthropic bilang teksto sa 0.1× na read rate; ang unang request na may mga imahe ay magbabayad muli ng lahat ng iyon bilang bagong cache write sa 1.25× sa iisang prompt. Pinoprotektahan ito ng proxy: ang session na hindi pa nito kailanman ginawang imahe ay isinasama ang minsanang gastos na iyon sa break-even gate at lilipat lang sa mga imahe kung sulit pa rin — kung hindi, mananatiling teksto ang session at magsisimula ang tipid sa susunod mong bagong session.
+
 **End-to-end ba ang 59–70%, o sa mga request lamang na nagalaw?**
 End-to-end — ang buong bayarin. Karamihan sa mga compression tool ay nag-uulat ng savings sa hiwa lamang na nagalaw nila, na nagpapaganda sa numero. Ang aming denominator ay *bawat* request: ang mga maliit na tama namang hindi ginalaw ng gate, lahat ng cache writes at reads, at lahat ng output token (na hindi kailanman kino-compress ng proxy). Mas mataas ang compressed-only runs at binabanggit ito nang hiwalay, hindi bilang headline.
 

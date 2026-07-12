@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 Vanliga frågor
 
+**Jag slog på det mitt i en session och förbrukningen sköt i höjden — varför?**
+En session som kört utan OmniGlyph har hela sitt prefix cachat hos Anthropic som text till 0,1× läsavgift; den första begäran med bilder skulle betala om alltihop som en ny cache-skrivning till 1,25× i en enda prompt. Proxyn skyddar mot detta: en session som den aldrig gjort om till bilder får den engångskostnaden inräknad i break-even-grinden och byter till bilder bara om det fortfarande lönar sig — annars förblir sessionen text och besparingen börjar med din nästa nya session.
+
 **Är det 59–70 % från ände till ände, eller bara på de förfrågningar det påverkade?**
 Från ände till ände — hela räkningen. De flesta komprimeringsverktyg redovisar besparingar bara på den del de faktiskt rörde, vilket smickrar siffran. Vår nämnare är *varje* förfrågan: de små som spärren korrekt lämnade orörda, alla cache-skrivningar och -läsningar, och alla utdata-tokens (som proxyn aldrig komprimerar). Enbart-komprimerat ger ett högre tal och anges separat, aldrig som huvudsiffra.
 

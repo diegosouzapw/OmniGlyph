@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 FAQ
 
+**Jeg slo det på midt i en økt og forbruket skjøt i været — hvorfor?**
+En økt som kjørte uten OmniGlyph har hele prefikset sitt cachet hos Anthropic som tekst til 0,1× lesetakst; den første forespørselen med bilder ville betalt alt dette på nytt som en fersk cache-skriving til 1,25× i én enkelt prompt. Proxyen beskytter mot dette: en økt den aldri har gjort om til bilder får denne engangskostnaden regnet inn i break-even-porten og bytter til bilder bare hvis det fortsatt lønner seg — ellers forblir økten tekst, og besparelsen begynner med din neste nye økt.
+
 **Er 59–70 % ende-til-ende, eller bare på forespørslene den rørte ved?**
 Ende til ende — hele regningen. De fleste komprimeringsverktøy rapporterer besparelser bare på biten de rørte ved, noe som smigrer tallet. Vår nevner er *hver eneste* forespørsel: de små som porten med rette lot være urørt, alle cache-skrivinger og -lesinger, og alle utdata-tokens (som proxyen aldri komprimerer). Tallet for kun-komprimert er høyere og oppgis separat, aldri som hovedtallet.
 

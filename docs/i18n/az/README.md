@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 Tez-tez verilən suallar
 
+**Sessiyanın ortasında aktivləşdirdim və istifadə sıçradı — niyə?**
+OmniGlyph olmadan işləyən sessiyanın bütün prefiksi Anthropic-də mətn kimi 0,1× oxuma tarifi ilə keşlənib; şəkilli ilk sorğu bunların hamısını tək bir promptda 1,25× ilə yeni keş yazısı kimi yenidən ödətdirərdi. Proksi bundan qoruyur: heç vaxt şəkilə çevirmədiyi sessiyanın bu birdəfəlik xərcini zərərsizlik qapısına daxil edir və yalnız hələ də sərfəli olduqda şəkillərə keçir — əks halda sessiya mətn olaraq qalır və qənaət növbəti yeni sessiyanızdan başlayır.
+
 **59–70% uçdan-uca rəqəmdir, yoxsa yalnız toxunduğu sorğularda?**
 Uçdan-uca — bütün hesab. Əksər sıxılma alətləri qənaəti yalnız toxunduqları hissədə bildirir, bu da rəqəmi şişirdir. Bizim məxrəcimiz *hər* sorğudur: qapının düzgün toxunmadan buraxdığı kiçik sorğular, bütün keş yazma və oxumaları, və bütün çıxış tokenləri (proksi bunları heç vaxt sıxmır). Yalnız-sıxılmış rəqəm daha yüksək çıxır və ayrıca qeyd olunur, heç vaxt başlıq kimi yox.
 

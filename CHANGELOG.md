@@ -93,6 +93,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(proxy):** enabling the proxy mid-session no longer "instant drains" the
+  caller's budget. A session that ran without OmniGlyph holds its whole prefix
+  cached by Anthropic as text at the 0.1× read rate; the first imaged request
+  re-paid all of it as a fresh 1.25× cache write in one prompt. The
+  profitability gate already modeled that burn (`priorWarmTokens × (CC − CR)`)
+  but nothing fed it in production. The proxy now estimates the warm text
+  prefix (chars up to the caller's last `cache_control` marker) for any session
+  it has never imaged and passes it to the gate, so the flip only happens when
+  imaging still wins; sessions OmniGlyph already images keep compressing with
+  no penalty. New FAQ entry (README + the 41 translations) explains the
+  mid-session behavior. (thanks @Idle0dreamer)
 - **fix(transform):** preserve the exact Claude Code OAuth identity ("You are
   Claude Code, Anthropic's official CLI for Claude.") as the first, separate
   top-level system text block. Subscription OAuth traffic is classified as

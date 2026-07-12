@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 Câu hỏi thường gặp (FAQ)
 
+**Tôi bật giữa phiên và mức dùng tăng vọt — tại sao?**
+Một phiên chạy không có OmniGlyph có toàn bộ tiền tố được Anthropic cache dưới dạng văn bản với mức giá đọc 0,1×; yêu cầu đầu tiên có hình ảnh sẽ phải trả lại toàn bộ phần đó như một lần ghi cache mới ở mức 1,25× trong một prompt duy nhất. Proxy bảo vệ điều này: phiên mà nó chưa từng chuyển thành hình ảnh sẽ được tính chi phí một lần đó vào cổng hòa vốn và chỉ chuyển sang hình ảnh khi vẫn còn lợi — nếu không phiên vẫn là văn bản, và khoản tiết kiệm bắt đầu từ phiên mới tiếp theo của bạn.
+
 **Con số 59–70% là đầu-cuối, hay chỉ tính trên các request đã được xử lý?**
 Đầu-cuối — toàn bộ hóa đơn. Hầu hết các công cụ nén khác chỉ báo cáo mức tiết kiệm trên phần mà chúng đã xử lý, điều này làm con số trông đẹp hơn thực tế. Mẫu số của chúng tôi là *mọi* request: cả những request nhỏ mà gate đã đúng đắn để nguyên không đụng tới, mọi lần ghi và đọc cache, và mọi token đầu ra (mà proxy không bao giờ nén). Con số chỉ tính trên phần đã nén thì cao hơn và được nêu riêng, không bao giờ dùng làm con số chính.
 

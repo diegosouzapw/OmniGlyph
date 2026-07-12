@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 UKK
 
+**Otin sen käyttöön kesken istunnon ja kulutus pomppasi — miksi?**
+Ilman OmniGlyphiä ajetun istunnon koko etuliite on Anthropicin välimuistissa tekstinä 0,1×-lukuhinnalla; ensimmäinen kuvallinen pyyntö maksattaisi sen kaiken uudelleen tuoreena välimuistikirjoituksena 1,25×-hinnalla yhdessä ainoassa kehotteessa. Proxy suojaa tältä: istunto, jota se ei ole koskaan kuvittanut, saa tämän kertakustannuksen mukaan kannattavuusporttiin, ja kuviin siirrytään vain jos se yhä kannattaa — muuten istunto pysyy tekstinä ja säästöt alkavat seuraavasta uudesta istunnostasi.
+
 **Onko 59–70 % koko putken läpi, vai vain niissä pyynnöissä, joihin se kosketti?**
 Koko putken läpi — koko lasku. Useimmat pakkaustyökalut raportoivat säästöt vain siitä siivusta, johon ne koskivat, mikä kaunistelee lukua. Meidän nimittäjämme on *jokainen* pyyntö: pienet, jotka portti oikein jätti koskematta, kaikki välimuistikirjoitukset ja -luvut, sekä kaikki tulostetokenit (joita proxy ei koskaan pakkaa). Pelkästään pakattujen pyyntöjen luku on korkeampi ja se ilmoitetaan erikseen, ei koskaan otsikossa.
 

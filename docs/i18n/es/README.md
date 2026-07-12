@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 FAQ
 
+**Lo activé a mitad de una sesión y mi consumo se disparó, ¿por qué?**
+Una sesión que corrió sin OmniGlyph tiene todo su prefijo cacheado por Anthropic como texto a la tarifa de lectura de 0,1×; la primera petición con imágenes volvería a pagar todo eso como una escritura de caché nueva a 1,25× en un solo prompt. El proxy protege contra esto: una sesión que nunca ha convertido a imágenes alimenta ese coste único al gate de break-even y solo cambia a imágenes cuando aún compensa — de lo contrario la sesión sigue como texto y el ahorro empieza con tu próxima sesión nueva.
+
 **¿El 59–70% es de punta a punta, o solo en los requests que tocó?**
 De punta a punta — la factura completa. La mayoría de las herramientas de compresión reportan ahorros solo sobre la porción que tocaron, lo que favorece el número. Nuestro denominador es *cada* request: los pequeños que el gate correctamente dejó intactos, todas las escrituras y lecturas de cache, y todos los tokens de salida (que el proxy nunca comprime). El ahorro solo-comprimido da un número más alto y se cita por separado, nunca como titular.
 

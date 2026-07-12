@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 FAQ
 
+**Saya mengaktifkannya di tengah sesi dan pemakaian melonjak — kenapa?**
+Sesi yang berjalan tanpa OmniGlyph memiliki seluruh prefiksnya di-cache oleh Anthropic sebagai teks dengan tarif baca 0,1×; permintaan pertama dengan gambar akan membayar ulang semuanya sebagai penulisan cache baru dengan tarif 1,25× dalam satu prompt. Proxy melindungi dari ini: sesi yang belum pernah diubahnya menjadi gambar memasukkan biaya sekali itu ke gerbang titik impas dan hanya beralih ke gambar jika masih menguntungkan — jika tidak, sesi tetap teks dan penghematan dimulai pada sesi baru berikutnya.
+
 **Apakah 59–70% itu end-to-end, atau hanya pada permintaan yang tersentuh?**
 End-to-end — total tagihan. Sebagian besar tool kompresi melaporkan penghematan hanya pada bagian yang mereka sentuh, yang membuat angkanya terlihat lebih bagus. Penyebut kami adalah *setiap* permintaan: yang kecil yang secara benar dibiarkan oleh gate, semua penulisan dan pembacaan cache, dan semua token output (yang tidak pernah dikompresi oleh proxy). Hasil hanya-yang-dikompresi lebih tinggi dan dikutip terpisah, tidak pernah sebagai angka utama.
 
