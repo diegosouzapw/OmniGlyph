@@ -38,6 +38,10 @@ export interface TrackEvent {
   outgoing_text_chars?: number;
   /** Local o200k decomposition of the original OpenAI Responses request. */
   responses_composition?: NonNullable<NonNullable<ProxyEvent['info']>['responsesComposition']>;
+  /** Live credentials the secret guard found in text bound for a rendered
+   *  artifact this request. Absent when the guard is off or found nothing
+   *  — see OMNIGLYPH_GUARD_SECRETS. Count-only; never the matched text. */
+  secret_hits?: number;
   static_chars?: number;
   dynamic_chars?: number;
   dynamic_block_count?: number;
@@ -217,6 +221,9 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
     }
     if (info.responsesComposition) {
       out.responses_composition = info.responsesComposition;
+    }
+    if (info.secretHits !== undefined && info.secretHits > 0) {
+      out.secret_hits = info.secretHits;
     }
     if (info.staticChars !== undefined) out.static_chars = info.staticChars;
     if (info.dynamicChars !== undefined) out.dynamic_chars = info.dynamicChars;
