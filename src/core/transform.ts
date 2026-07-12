@@ -932,7 +932,18 @@ function relocateAnchorToHistoryImage(messages: Message[] | undefined, anchorOrd
   if (!slabAnchor) return; // nothing to relocate → never add a marker
 
   historyImg.cache_control = slabAnchor.cache_control;
-  delete slabAnchor.cache_control;
+  // Moving a scope:"global" anchor would leave the (now unmarked) slab pages
+  // BEFORE a globally-scoped block — the invalid prefix Anthropic 400s. Global
+  // anchors are copied, not moved; plain ephemeral keeps pure relocation.
+  if (!isGlobalScopeCacheControl(slabAnchor.cache_control)) {
+    delete slabAnchor.cache_control;
+  }
+}
+
+/** Caller marker carries Anthropic's org-wide scope — subject to the
+ *  "every preceding block must also be globally scoped" prefix rule. */
+function isGlobalScopeCacheControl(cc: unknown): boolean {
+  return typeof cc === 'object' && cc !== null && (cc as { scope?: unknown }).scope === 'global';
 }
 
 /**
@@ -1835,8 +1846,15 @@ export async function transformRequest(
       droppedCodepoints.set(cp, (droppedCodepoints.get(cp) ?? 0) + n);
     }
     const imageBlock = makeImageBlock(b64, i === images.length - 1);
+    // scope:"global" is only valid when every preceding block is also globally
+    // scoped (Anthropic prefix rule) — a trailing-only marker on a multi-page
+    // slab 400s the whole request, so the caller's global marker must cover
+    // EVERY page. Plain ephemeral keeps the cheaper trailing-only placement.
+    const markThisPage =
+      systemStaticCacheControl !== undefined
+      && (i === images.length - 1 || isGlobalScopeCacheControl(systemStaticCacheControl));
     imageBlocks.push(
-      i === images.length - 1 && systemStaticCacheControl !== undefined
+      markThisPage
         ? { ...imageBlock, cache_control: systemStaticCacheControl }
         : imageBlock,
     );
