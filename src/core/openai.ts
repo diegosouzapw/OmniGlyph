@@ -107,6 +107,15 @@ export function openAIVisionTokens(model: string, w: number, h: number): number 
   return c.base + c.perTile * (Math.ceil(W / 512) * Math.ceil(H / 512));
 }
 
+/** True when the request is actually served by a Claude model. Wire shape is
+ *  not provider: Claude Code speaks Anthropic Messages while some models are
+ *  not Anthropic's, so gates and cost math must be model-based, not
+ *  endpoint-based. */
+export function isClaudeModel(model: string | null | undefined): boolean {
+  const m = (model ?? '').toLowerCase();
+  return m.startsWith('claude') || m.includes('anthropic');
+}
+
 /** True for xAI Grok models (served on the OpenAI-compatible wire). */
 export function isGrokModel(model: string | null | undefined): boolean {
   return (model ?? '').toLowerCase().startsWith('grok-');
