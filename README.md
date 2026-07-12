@@ -77,12 +77,12 @@ Part of the [**OmniRoute**](https://github.com/diegosouzapw/OmniRoute) family ·
 
 </div>
 
-![chart: characters a frontier context window holds, 2018–2026 — every vendor line tops out near the ~4M chars a 1M-token window holds as text; the same Fable 5 1M window through OmniGlyph images holds a measured ~18M chars, 4.55× the text ceiling](docs/assets/context-window-chars.png)
+![chart: characters a frontier context window holds, 2018–2026 — every vendor line tops out near the ~4M chars a 1M-token window holds as text; the same Fable 5 1M window through OmniGlyph images holds a measured ~18M chars, 4.54× the text ceiling](docs/assets/context-window-chars.png)
 
 *Eight years of context growth, in characters. Every text line tops out near
 ~4M chars (a 1M-token window at ~4 chars/token); the orange point is the
 **same Fable 5 1M window** read through OmniGlyph images — ~18M chars at the
-measured 18.19 chars/vision-token, **4.55×** the text ceiling. The density and
+measured 18.16 chars/vision-token, **4.54×** the text ceiling. The density and
 multiplier are measured from a live render at generation time, not hand-typed:
 regenerate with `npx tsx scripts/gen-context-chart.ts`
 ([source](scripts/gen-context-chart.ts)).*
