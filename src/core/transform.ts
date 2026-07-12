@@ -1127,19 +1127,23 @@ function lineRows(line: string, cols: number): number {
   return Math.max(1, Math.ceil(line.length / cols));
 }
 
-/** Visual row count after soft-wrap at `cols`. Both `\n` and the ↵ sentinel
- *  end a row; ↵ occupies a cell on the line it terminates. */
+/** Visual row count after soft-wrap at `cols`.
+ *
+ *  Only hard `\n` starts a new row. The reflow ↵ sentinel is an inline glyph
+ *  (see reflow/wrapLines in render.ts: it never forces a row break), so packing
+ *  many original newlines into one soft-wrapped stream must NOT inflate the row
+ *  count. Treating ↵ as a break overstated image pages ~6× on reflowed history
+ *  and flipped profitable collapses to not_profitable. */
 function countVisualRows(text: string, cols: number): number {
   let rows = 0;
   let lineStart = 0;
   const len = text.length;
   for (let i = 0; i <= len; i++) {
     const cc = i < len ? text.charCodeAt(i) : -1;
-    const isSentinel = cc === 0x21b5 /* ↵ */;
-    if (i === len || cc === 10 /* \n */ || isSentinel) {
-      // ↵ renders as a glyph on the line it ends — count it in the length.
-      const lineLen = (isSentinel ? i + 1 : i) - lineStart;
-      rows += Math.max(1, Math.ceil(lineLen / cols));
+    if (i === len || cc === 10 /* \n */) {
+      const lineLen = i - lineStart;
+      // Empty line (consecutive \n) still costs one visual row.
+      rows += lineLen === 0 ? 1 : Math.ceil(lineLen / Math.max(1, cols));
       lineStart = i + 1;
     }
   }
