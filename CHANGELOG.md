@@ -4,15 +4,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
-### Docs
-
-- **docs:** add a "Use with Claude clients" section to the README (and all 41
-  translations) covering Claude Code CLI on macOS/Linux, the **Windows
-  PowerShell** variant (`$env:ANTHROPIC_BASE_URL`), and **Claude Desktop** setup.
-  (thanks @ousamabenyounes)
-
-## [Unreleased]
-
 ### Added
 
 - **feat(grok):** opt-in support for xAI **Grok** on the OpenAI-compatible wire.
@@ -87,6 +78,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   image pixels — while the savings baseline credited only the stripped-schema
   delta. The imaged tool doc is now heading + schema only; the rendered-context
   framing no longer claims the image holds "full tool" docs. (thanks @rldyourmnd)
+
+### Docs
+
+- **docs:** add a "Use with Claude clients" section to the README (and all 41
+  translations) covering Claude Code CLI on macOS/Linux, the **Windows
+  PowerShell** variant (`$env:ANTHROPIC_BASE_URL`), and **Claude Desktop** setup.
+  (thanks @ousamabenyounes)
 
 ## [1.2.0] — 2026-07-08
 
