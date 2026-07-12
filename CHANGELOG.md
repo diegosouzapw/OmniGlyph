@@ -15,6 +15,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Added
 
+- **feat(grok):** opt-in support for xAI **Grok** on the OpenAI-compatible wire.
+  Grok renders at an effective 9×12 cell (denser than the 5×8 default) with the
+  verbatim fact-sheet, is priced by a measured ~1000 tokens/megapixel model and
+  xAI cache/output rates, and stays **fail-closed**: even in `OMNIGLYPH_MODELS`
+  it is text-only until an operator explicitly acks the risk via
+  `OMNIGLYPH_UNVERIFIED_MODELS=grok-4.5` — pending OmniGlyph's own reading
+  receipt. The OpenAI-wire profile resolver is now provider-neutral and accepts
+  the `OMNIGLYPH_MODEL_PROFILES` env (legacy `OMNIGLYPH_GPT_PROFILES` still
+  works).
 - **feat(node):** the Node proxy's OpenAI leg falls back to the **Codex ChatGPT
   login** (`~/.codex/auth.json`, override with `OMNIGLYPH_CODEX_AUTH_FILE`) when
   `OPENAI_API_KEY` is unset. An explicit `OPENAI_API_KEY` still wins; only the

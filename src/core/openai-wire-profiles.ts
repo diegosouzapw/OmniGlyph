@@ -7,14 +7,19 @@
  * developers.openai.com images-vision guide ("Model sizing behavior" +
  * "Calculating costs" tables) — see docs/ROADMAP.md Phase 1 (D1-D5).
  *
- * Retune without a code change via the OMNIGLYPH_MODEL_PROFILES env var (JSON map
- * of model-id PREFIX -> partial profile; longest matching prefix wins, checked
- * BEFORE the built-in table). Partial fields fall back to the built-in match, so
- * you can override just one knob (alias: OMNIGLYPH_GPT_PROFILES):
+ * Retune without a code change via the OMNIGLYPH_MODEL_PROFILES env var (JSON
+ * map of model-id PREFIX -> partial profile; longest matching prefix wins,
+ * checked BEFORE the built-in table). Partial fields fall back to the built-in
+ * match, so you can override just one knob:
  *
  *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":200,"maxHeightPx":2400}}'
  *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
+ *
+ * The legacy OMNIGLYPH_GPT_PROFILES name is still accepted (falls back when
+ * OMNIGLYPH_MODEL_PROFILES is unset) so existing deployments keep working.
  */
+
+import type { RenderStyle } from './render.js';
 
 /**
  * OpenAI-wire strip heights, DECOUPLED from render.ts's Anthropic geometry.
@@ -46,6 +51,10 @@ export interface ModelProfile {
    *  budget) exists only on gpt-5.4+ flagships — sending it elsewhere is out of
    *  contract (audit D5). Everything else gets `high`. */
   detail: 'original' | 'high';
+  /** Optional per-model render style (glyph cell padding, grid, marker). Absent
+   *  for GPT/o-series (they render at the default 5×8 cell); set only for models
+   *  that measured better at a denser cell (e.g. Grok's effective 9×12). */
+  style?: RenderStyle;
 }
 
 /** Default downscale-safe strip width (768px). Exported as the global cols default. */
@@ -138,6 +147,21 @@ const BUILTIN_RULES: ProfileRule[] = [
     test: (m) => /^o[13]/.test(m),
     profile: { vision: { regime: 'tile', base: 75, perTile: 150 }, stripCols: C, maxHeightPx: H, detail: 'high' },
   },
+  // Grok (Responses path), opt-in only. Live climb 2026-07-09 on grok-4.5: 5×8
+  // and 7×10 confabulate exact IDs; effective 9×12 (Spleen 5×8 + 4px spacing) is
+  // the densest arm that reached 4/4 exact, 0 confab. The verbatim fact-sheet
+  // rides beside the images as defense in depth. Vision numbers here are a
+  // conservative placeholder — visionTokensForModel prices Grok by pixels.
+  {
+    test: (m) => /^grok-/.test(m),
+    profile: {
+      vision: { regime: 'tile', base: 85, perTile: 170 },
+      stripCols: 84,
+      maxHeightPx: H,
+      detail: 'high',
+      style: { cellWBonus: 4, cellHBonus: 4 },
+    },
+  },
 ];
 
 function resolveBuiltin(m: string): ModelProfile {
@@ -145,7 +169,7 @@ function resolveBuiltin(m: string): ModelProfile {
   return DEFAULT_MODEL_PROFILE;
 }
 
-// --- env override (OMNIGLYPH_MODEL_PROFILES) ---------------------------------
+// --- env override (OMNIGLYPH_GPT_PROFILES) ----------------------------------
 // Parsed lazily and memoized on the raw env string so tests can mutate
 // process.env and have it re-read, without re-parsing on every hot-path call.
 
@@ -188,13 +212,15 @@ function parseEnvProfiles(raw: string): Map<string, ModelProfile> {
       stripCols: posInt(p.stripCols, base.stripCols),
       maxHeightPx: posInt(p.maxHeightPx, base.maxHeightPx),
       detail: validDetail(p.detail, base.detail),
+      style: p.style ?? base.style,
     });
   }
   return out;
 }
 
 function envProfiles(): Map<string, ModelProfile> {
-  const raw = (typeof process !== 'undefined' && process.env && process.env.OMNIGLYPH_GPT_PROFILES) || '';
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  const raw = (env && (env.OMNIGLYPH_MODEL_PROFILES || env.OMNIGLYPH_GPT_PROFILES)) || '';
   if (raw !== envRaw) {
     envRaw = raw;
     envMap = parseEnvProfiles(raw);

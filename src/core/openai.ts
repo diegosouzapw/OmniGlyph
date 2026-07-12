@@ -12,6 +12,7 @@ import {
   shrinkColsToContent,
   PAD_X,
   CELL_W,
+  CELL_H,
   type RenderedImage,
 } from './render.js';
 import {
@@ -100,6 +101,26 @@ export function openAIVisionTokens(model: string, w: number, h: number): number 
   if (Math.max(W, H) > 2048) { const r = 2048 / Math.max(W, H); W = Math.floor(W * r); H = Math.floor(H * r); }
   if (Math.min(W, H) > 768) { const r = 768 / Math.min(W, H); W = Math.floor(W * r); H = Math.floor(H * r); }
   return c.base + c.perTile * (Math.ceil(W / 512) * Math.ceil(H / 512));
+}
+
+/** True for xAI Grok models (served on the OpenAI-compatible wire). */
+export function isGrokModel(model: string | null | undefined): boolean {
+  return (model ?? '').toLowerCase().startsWith('grok-');
+}
+
+/** Measured 2026-07-09 on grok-4.5: image-token delta ≈ 1000 per megapixel
+ *  across several page sizes (768×336 → 268, 764×980 → 748, …). */
+export const GROK_TOKENS_PER_MEGAPIXEL = 1000;
+
+/** Per-image vision-token cost for the model actually serving the request.
+ *  Grok bills by measured tokens/MPix; GPT/o-series use the OpenAI tile/patch
+ *  formula. Model-based, not endpoint-based. */
+export function visionTokensForModel(model: string, w: number, h: number): number {
+  if (isGrokModel(model)) {
+    const pixels = Math.max(0, w) * Math.max(0, h);
+    return Math.max(1, Math.ceil((pixels / 1_000_000) * GROK_TOKENS_PER_MEGAPIXEL));
+  }
+  return openAIVisionTokens(model, w, h);
 }
 
 type OpenAIRole = 'system' | 'developer' | 'user' | 'assistant' | 'tool' | string;
@@ -474,16 +495,36 @@ function droppedCodepointsTop(droppedCodepoints: Map<number, number>): Record<st
   return out;
 }
 
-/** Shared gate: compute image vs text token cost and decide profitability. */
-function evalOpenAIGate(
+/** Shared gate: compute image vs text token cost and decide profitability.
+ *  Derives the strip width and per-image row capacity from the model's
+ *  RESOLVED render style (cellWBonus/cellHBonus), not the fixed base 5×8
+ *  cell — a style override (e.g. Grok's effective 9×12) would otherwise
+ *  leave the gate under-costing the render it's actually gating, letting a
+ *  net-loss slab through as "profitable". GPT has no style override, so its
+ *  effective cell equals the base cell and this is a no-op for it. Exported
+ *  for tests. */
+export function evalOpenAIGate(
   model: string,
   renderedText: string,
   cols: number,
   charsPerToken: number,
 ): { imageTokens: number; textTokens: number; profitable: boolean } {
-  const stripW = 2 * PAD_X + cols * CELL_W;
-  const estImages = estimateImageCount(renderedText, cols, 1);
-  const perStrip = openAIVisionTokens(model, stripW, resolveModelProfile(model).maxHeightPx);
+  const profile = resolveModelProfile(model);
+  const style = profile.style;
+  const effectiveCellW = CELL_W + (style?.cellWBonus ?? 0);
+  const effectiveCellH = CELL_H + (style?.cellHBonus ?? 0);
+  const stripW = 2 * PAD_X + cols * effectiveCellW;
+  // Page COUNT and per-strip PRICE must use the SAME height: the model's wire
+  // page height (profile.maxHeightPx), which is also the height render.ts
+  // actually paginates at on this leg. Counting pages at estimateImageCount's
+  // 728px Anthropic-band default while pricing each strip at the 2048px wire
+  // height over-counted pages ~2.83× — harmless-looking for GPT's tile pricing
+  // but, for Grok's linear tok/MPix price, it over-costed images ~2.8× and
+  // wrongly declined genuinely-saving slabs. Receipt: grok-billing.test.ts
+  // ("page count must match the actual render height") shows the estimate at
+  // profile.maxHeightPx matches the real rendered page count.
+  const estImages = estimateImageCount(renderedText, cols, 1, undefined, profile.maxHeightPx, effectiveCellH);
+  const perStrip = visionTokensForModel(model, stripW, profile.maxHeightPx);
   const imageTokens = estImages * perStrip;
   const textTokens = renderedText.length / charsPerToken;
   return { imageTokens, textTokens, profitable: imageTokens < textTokens };
@@ -522,7 +563,7 @@ function gptTextTokens(text: string): number {
  *  what GPT actually bills as input for the slab OmniGlyph imaged. */
 function gptImageTokens(model: string, images: RenderedImage[]): number {
   let n = 0;
-  for (const img of images) n += openAIVisionTokens(model, img.width, img.height);
+  for (const img of images) n += visionTokensForModel(model, img.width, img.height);
   return n;
 }
 
@@ -687,7 +728,12 @@ export async function transformOpenAIChatCompletions(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, {}, resolveModelProfile(req.model).maxHeightPx);
+  const images = await renderTextToPngs(
+    renderedText,
+    cols,
+    resolveModelProfile(req.model).style ?? {},
+    resolveModelProfile(req.model).maxHeightPx,
+  );
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };
@@ -749,6 +795,7 @@ export async function transformOpenAIChatCompletions(
       reflow: o.reflow,
       cols: o.gptHistory?.cols ?? resolveModelProfile(req.model).stripCols,
       maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveModelProfile(req.model).maxHeightPx,
+      style: resolveModelProfile(req.model).style,
     });
     foldGptHistory(info, req.model, plan);
     const allImages = [...plan.images, ...plan.imagesAfter];
@@ -894,7 +941,12 @@ export async function transformOpenAIResponses(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, {}, resolveModelProfile(req.model).maxHeightPx);
+  const images = await renderTextToPngs(
+    renderedText,
+    cols,
+    resolveModelProfile(req.model).style ?? {},
+    resolveModelProfile(req.model).maxHeightPx,
+  );
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };
@@ -987,6 +1039,7 @@ export async function transformOpenAIResponses(
       reflow: o.reflow,
       cols: o.gptHistory?.cols ?? resolveModelProfile(req.model).stripCols,
       maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveModelProfile(req.model).maxHeightPx,
+      style: resolveModelProfile(req.model).style,
     });
     foldGptHistory(info, req.model, plan);
     const allImages = [...plan.images, ...plan.imagesAfter];

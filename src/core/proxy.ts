@@ -5,7 +5,12 @@
 
 import { transformRequest, type TransformOptions, type TransformInfo } from './transform.js';
 import { transformOpenAIChatCompletions, transformOpenAIResponses } from './openai.js';
-import { isAnthropicMessagesPath, isOmniGlyphSupportedGptModel, isOmniGlyphSupportedModel } from './applicability.js';
+import {
+  isAnthropicMessagesPath,
+  isModelImageable,
+  isOmniGlyphSupportedGptModel,
+  isOmniGlyphSupportedModel,
+} from './applicability.js';
 import {
   buildBaselineCountTokensBody,
   buildCacheablePrefixCountTokensBody,
@@ -832,9 +837,14 @@ export function createProxy(config: ProxyConfig = {}) {
         const modelOk = isMessages
           ? isOmniGlyphSupportedModel(model)
           : isOmniGlyphSupportedGptModel(model);
-        // Unsupported model → a true passthrough: no break-even compression
-        // (a text-only model may not accept injected image blocks at all).
-        const effectiveOpts = modelOk
+        // Supported but unverified (e.g. Grok without an operator ack): stays
+        // text-only, fail-closed, until OMNIGLYPH_UNVERIFIED_MODELS explicitly
+        // acks the risk (or OmniGlyph's own reading receipt clears the base).
+        const imageOk = modelOk && isModelImageable(model);
+        // Unsupported/unverified model → a true passthrough: no break-even
+        // compression (a text-only model may not accept injected image blocks
+        // at all, and an unverified one hasn't proven it can read them back).
+        const effectiveOpts = imageOk
           ? transformOpts
           : { ...transformOpts, compress: false };
         const r = isMessages
@@ -843,6 +853,7 @@ export function createProxy(config: ProxyConfig = {}) {
             ? await transformOpenAIChatCompletions(bodyIn, effectiveOpts)
             : await transformOpenAIResponses(bodyIn, effectiveOpts);
         if (!modelOk) r.info.reason = 'unsupported_model';
+        else if (!imageOk) r.info.reason = 'model_unverified';
         bodyOut = r.body as unknown as BodyInit; // TS narrows Uint8Array away from BodyInit
         info = r.info;
         reqBodyBytes = r.body;
