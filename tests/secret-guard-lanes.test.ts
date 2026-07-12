@@ -8,6 +8,7 @@ import {
   planResponsesPairCollapse,
   type HistoryTurn,
 } from '../src/core/openai-history.js';
+import { createProxy, type ProxyEvent } from '../src/core/proxy.js';
 
 const SECRET = 'sk-live-abcdefghijklmnop1234';
 const enc = new TextEncoder();
@@ -255,6 +256,26 @@ describe('Anthropic history lane', () => {
     // (masked) string — the collapsed history image is pixels, and every text
     // block riding alongside it (factsheet, recency pointer) must be clean too.
     expect(JSON.stringify(messages)).not.toContain(SECRET);
+    // Task 4 known gap (task-4-report.md): this fixture's secret lives in an
+    // interior ASSISTANT turn (not the last collapsed user turn, not the
+    // protected head), so it is imaged away regardless of guard mode — "no
+    // plaintext secret in messages" alone can't distinguish "detected AND
+    // masked before render" from a regression that counts the hit but skips
+    // the chunkGuard.text swap (history.ts ~line 652): the render input would
+    // then be byte-identical to an unguarded run. collapseHistory has no
+    // text/emitRecoverable seam onto the per-chunk render source (that's why
+    // the brief's original `renderedText.toContain('[REDACTED:')` pseudocode
+    // doesn't apply here — see the report's documented deviation), so prove
+    // mutation via the channel that DOES exist: the emitted PNG BYTE COUNT
+    // for the secret-bearing chunk can only change if the pre-render text
+    // itself changed length, which only redaction does (the mask is never
+    // the same length as the secret it replaces). This never inspects pixel
+    // content — only the byte-length metadata already on `info`.
+    delete process.env.OMNIGLYPH_GUARD_SECRETS;
+    const unguarded = await collapseHistory(secretHistoryMsgs(), isCompressionProfitable, historyCollapseOpts);
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    expect(info.collapsedPngs.length).toBe(unguarded.info.collapsedPngs.length);
+    expect(info.collapsedPngs[0]!.length).not.toBe(unguarded.info.collapsedPngs[0]!.length);
   });
 
   // Fix 1 (Task 4): latestCollapsedUserPointer builds a synthetic text block
@@ -533,5 +554,169 @@ describe('OpenAI history lane — planResponsesPairCollapse (Responses)', () => 
     const dump = plan.imageSources.join('\n') + plan.text;
     expect(dump).not.toContain(SECRET);
     expect(dump).toContain('[REDACTED:');
+  });
+});
+
+// ── Task 6: amplification, traffic-invariance, and telemetry-hygiene ───────
+// e2e regressions across all lanes wired in Tasks 1-5. Per the task brief:
+// any failure here is a real bug in a prior task (fix the CODE minimally,
+// never the assert).
+
+// PR #21 (secret guard) + PR #28 (imaging) interplay: turning text into a
+// rendered artifact duplicates it into a second place — the dashboard-only
+// render-source telemetry (info.imageSourceText/imageSourceTexts) — beyond
+// the image pixels themselves. That duplication is exactly what the flag
+// exists to close. Uses a real Stripe-shaped key (KEY_PATTERNS' `sk-` class),
+// same value as the top-of-file SECRET constant, per the brief's fixture.
+const STRIPE_ASSIGNMENT = `STRIPE_API_KEY=${SECRET}`;
+
+function stripeSlabReq(): Uint8Array {
+  return enc.encode(JSON.stringify({
+    model: 'claude-fable-5',
+    system: ` ${STRIPE_ASSIGNMENT} ` + 'Operating rules for this session. '.repeat(6000),
+    // The client's own native turn — never imaged in this fixture (no
+    // reminders/tool_results) — is the ONE place the raw secret is allowed
+    // to ride; everything else must be clean in redact mode.
+    messages: [{ role: 'user', content: `hi ${SECRET}` }],
+  }));
+}
+
+describe('amplification (PR #21 + #28 interplay): imaging duplicates raw secrets by default', () => {
+  it('off (default): the raw assignment rides into the dashboard-only render-source telemetry — pins WHY the flag exists', async () => {
+    const { info } = await transformRequest(stripeSlabReq());
+    expect(info.compressed).toBe(true);
+    // info.imageSourceText ("Dashboard-only; NOT persisted to JSONL" per
+    // transform.ts) is a verbatim copy of the pre-render text when the guard
+    // is off — this is the documented amplification, not a bug: the redact
+    // case below (and the telemetry-hygiene suite further down) prove it
+    // stops happening once the guard is engaged.
+    expect(info.imageSourceText ?? '').toContain(STRIPE_ASSIGNMENT);
+  });
+
+  it('redact: no image-source text and no non-native body text block carries the raw key', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { body, info } = await transformRequest(stripeSlabReq());
+    expect(info.compressed).toBe(true);
+    expect(info.secretHits).toBeGreaterThan(0);
+
+    // (a) neither the Anthropic singular field nor any OpenAI-shaped plural
+    // entry (defensive — always empty for this Anthropic lane) carries it.
+    expect(info.imageSourceText ?? '').not.toContain(SECRET);
+    for (const t of info.imageSourceTexts ?? []) expect(t ?? '').not.toContain(SECRET);
+
+    // (b) every text block in the transformed body is clean EXCEPT the
+    // client's own native turn (never imaged, never mutated by the guard).
+    const out = JSON.parse(dec.decode(body)) as { messages: Array<{ content: unknown }> };
+    const nativeText = `hi ${SECRET}`;
+    let sawNative = false;
+    for (const m of out.messages) {
+      if (!Array.isArray(m.content)) continue;
+      for (const b of m.content as Array<{ type?: string; text?: string }>) {
+        if (b.type !== 'text') continue;
+        if (b.text === nativeText) { sawNative = true; continue; }
+        expect(b.text).not.toContain(SECRET);
+      }
+    }
+    expect(sawNative).toBe(true); // the native carve-out itself must be exercised
+  });
+});
+
+// Traffic invariance: the guard changes what OmniGlyph RENDERS, never what
+// the client asked to send. fakeUpstream/driveAndCapture copied from the
+// style in tests/grok-gate.test.ts (itself borrowed from
+// tests/savings-math-e2e.test.ts) — the count_tokens stub matters because the
+// real proxy probes it for Anthropic /v1/messages requests.
+describe('traffic invariance: the guard must never mutate what the client sent upstream', () => {
+  function fakeAnthropicUpstream() {
+    const main: { url: string; body: string }[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (input: Request | string | URL, init?: RequestInit) => {
+      const req = input instanceof Request ? input : new Request(String(input), init);
+      const path = new URL(req.url).pathname;
+      if (path.endsWith('/count_tokens')) {
+        return new Response(JSON.stringify({ input_tokens: 9999 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      main.push({ url: req.url, body: await req.clone().text() });
+      return new Response(
+        JSON.stringify({
+          id: 'm1',
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'ok' }],
+          model: 'claude-fable-5',
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 5, output_tokens: 2 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as typeof fetch;
+    return { main, restore: () => { globalThis.fetch = real; } };
+  }
+
+  async function driveThroughProxy(body: string): Promise<{ event: ProxyEvent; out: string }> {
+    const cap = fakeAnthropicUpstream();
+    let event: ProxyEvent | undefined;
+    const proxy = createProxy({
+      upstream: 'http://anthropic.test',
+      apiKey: 'sk-ant',
+      openAIUpstream: 'https://openai.test',
+      openAIApiKey: 'sk-oai',
+      transform: {}, // realistic gate — same as savings-math-e2e/grok-gate
+      onRequest: (e) => { event = e; },
+    });
+    const res = await proxy(
+      new Request('http://localhost/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      }),
+    );
+    await res.text();
+    await new Promise((r) => setTimeout(r, 30)); // let onRequest fire
+    cap.restore();
+    return { event: event!, out: cap.main[0]?.body ?? '' };
+  }
+
+  const trafficBody = JSON.stringify({
+    model: 'claude-fable-5',
+    system: ` ${STRIPE_ASSIGNMENT} ` + 'Operating rules for this session. '.repeat(6000),
+    messages: [{ role: 'user', content: `hi ${SECRET}` }],
+  });
+
+  it.each(['off', 'text', 'redact'] as const)(
+    'mode=%s: the body forwarded to the upstream still carries the raw secret byte-for-byte',
+    async (mode) => {
+      if (mode === 'off') delete process.env.OMNIGLYPH_GUARD_SECRETS;
+      else process.env.OMNIGLYPH_GUARD_SECRETS = mode;
+      const { out } = await driveThroughProxy(trafficBody);
+      expect(out).toContain(SECRET);
+    },
+  );
+});
+
+// Telemetry hygiene: JSON.stringify(info) must never carry the raw secret
+// once the guard is actually engaged (text/redact). "off" is deliberately NOT
+// asserted here — the amplification suite above pins info.imageSourceText
+// containing the raw assignment in off mode as EXPECTED (verified
+// empirically: the slab lane's off-mode info DOES contain the secret via
+// that dashboard-only field, by design). Asserting "off never leaks" here
+// would directly contradict that pinned behavior on the very same object;
+// text/redact are the modes this guarantee is actually about.
+describe('telemetry hygiene: JSON.stringify(info) never carries the raw secret once the guard is engaged', () => {
+  it.each(['text', 'redact'] as const)('slab (Anthropic), mode=%s', async (mode) => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = mode;
+    const { info } = await transformRequest(slabReq());
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(JSON.stringify(info)).not.toContain(SECRET);
+  });
+
+  it.each(['text', 'redact'] as const)('slab (OpenAI Responses), mode=%s', async (mode) => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = mode;
+    const r = await responsesFixtureWithSecret();
+    expect(r.info.secretHits).toBeGreaterThan(0);
+    expect(JSON.stringify(r.info)).not.toContain(SECRET);
   });
 });
