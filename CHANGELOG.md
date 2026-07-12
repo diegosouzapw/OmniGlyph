@@ -51,6 +51,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(transform):** keep `scope: "global"` `cache_control` valid across
+  multi-image slabs. Anthropic rejects a globally-scoped block unless every
+  preceding block is also globally scoped; the caller's marker used to land
+  only on the LAST rendered page (and the history-anchor relocation then moved
+  it off the slab entirely), so any multi-page slab 400'd the whole request.
+  A global marker now covers every slab page and is copied — not moved — onto
+  the history anchor. Plain ephemeral markers keep the existing single,
+  trailing placement. (thanks @jasminaladdn)
 - **fix(transform):** the profitability gate no longer counts the reflow ↵
   sentinel as a visual row break. Reflow packs hard newlines into one
   soft-wrapped stream (↵ is an inline glyph the renderer never breaks on), so
