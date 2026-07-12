@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 FAQ
 
+**Włączyłem w trakcie sesji i zużycie skoczyło — dlaczego?**
+Sesja działająca bez OmniGlyph ma cały prefiks zbuforowany przez Anthropic jako tekst po stawce odczytu 0,1×; pierwsze żądanie z obrazami zapłaciłoby za to wszystko ponownie jako świeży zapis cache po 1,25× w jednym promptcie. Proxy chroni przed tym: sesja, której nigdy nie zobrazował, wlicza ten jednorazowy koszt do bramki opłacalności i przełącza się na obrazy tylko wtedy, gdy nadal się to opłaca — w przeciwnym razie sesja pozostaje tekstem, a oszczędności zaczynają się od następnej nowej sesji.
+
 **Czy 59–70% to wynik end-to-end, czy tylko dla zapytań, których dotknęła konwersja?**
 End-to-end — cały rachunek. Większość narzędzi kompresujących raportuje oszczędności tylko na fragmencie, którego dotknęły, co upiększa liczbę. Naszym mianownikiem jest *każde* zapytanie: te małe, które bramka słusznie zostawiła nietknięte, wszystkie zapisy i odczyty cache oraz wszystkie tokeny wyjściowe (których proxy nigdy nie kompresuje). Wynik liczony tylko dla skompresowanych zapytań jest wyższy i podawany osobno, nigdy jako nagłówek.
 

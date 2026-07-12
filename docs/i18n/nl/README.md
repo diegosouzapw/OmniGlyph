@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 FAQ
 
+**Ik zette het midden in een sessie aan en mijn verbruik schoot omhoog — waarom?**
+Een sessie die zonder OmniGlyph draaide heeft haar hele prefix bij Anthropic als tekst gecachet tegen het 0,1×-leestarief; het eerste verzoek met afbeeldingen zou dat alles opnieuw betalen als een verse cache-write tegen 1,25× in één prompt. De proxy beschermt hiertegen: een sessie die hij nooit heeft verbeeld voert die eenmalige kosten in de break-even-gate in en schakelt alleen over op afbeeldingen als het nog steeds loont — anders blijft de sessie tekst en begint de besparing bij je volgende nieuwe sessie.
+
 **Is de 59–70% end-to-end, of alleen op de verzoeken die zijn aangepast?**
 End-to-end — de volledige rekening. De meeste compressietools rapporteren besparingen alleen over het deel dat ze hebben aangepast, wat het cijfer vleit. Onze noemer is *elk* verzoek: de kleine verzoeken die de poort terecht ongemoeid liet, alle cache-writes en -reads, en alle outputtokens (die de proxy nooit comprimeert). Alleen-gecomprimeerd scoort hoger en wordt apart vermeld, nooit als hoofdcijfer.
 

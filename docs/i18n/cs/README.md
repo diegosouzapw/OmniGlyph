@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 Časté dotazy
 
+**Zapnul jsem to uprostřed sezení a spotřeba vyletěla — proč?**
+Sezení běžící bez OmniGlyph má celý prefix uložený u Anthropic v cache jako text za čtecí sazbu 0,1×; první požadavek s obrázky by to vše znovu zaplatil jako nový zápis do cache za 1,25× v jediném promptu. Proxy před tím chrání: sezení, které nikdy nepřevedla na obrázky, započítá tento jednorázový náklad do break-even brány a na obrázky přepne, jen pokud se to stále vyplatí — jinak sezení zůstává textem a úspory začínají příštím novým sezením.
+
 **Je těch 59–70 % z konce do konce, nebo jen na requestech, kterých se to týkalo?**
 Z konce do konce — celý účet. Většina kompresních nástrojů reportuje úspory jen na části, které se dotkly, což číslo přikrášlí. Náš jmenovatel je *každý* request: malé, které gate správně nechal netknuté, všechny zápisy a čtení cache a všechny výstupní tokeny (které proxy nikdy nekomprimuje). Číslo jen za komprimované requesty vychází vyšší a uvádí se odděleně, nikdy jako hlavní tvrzení.
 

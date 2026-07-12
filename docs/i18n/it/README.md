@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 FAQ
 
+**L'ho attivato a metà sessione e il consumo è schizzato — perché?**
+Una sessione partita senza OmniGlyph ha l'intero prefisso in cache presso Anthropic come testo alla tariffa di lettura 0,1×; la prima richiesta con immagini ripagherebbe tutto come una nuova scrittura di cache a 1,25× in un solo prompt. Il proxy protegge da questo: una sessione mai convertita in immagini alimenta quel costo una tantum nel gate di break-even e passa alle immagini solo se conviene ancora — altrimenti la sessione resta testo e il risparmio inizia dalla prossima sessione nuova.
+
 **Il 59–70% è end-to-end, o solo sulle richieste toccate?**
 End-to-end — l'intero conto. La maggior parte degli strumenti di compressione riporta il risparmio solo sulla porzione che hanno toccato, il che gonfia il numero. Il nostro denominatore è *ogni* richiesta: quelle piccole che il gate ha correttamente lasciato intatte, tutte le scritture e letture di cache, e tutti i token di output (che il proxy non comprime mai). Il valore solo-compresso è più alto e viene citato separatamente, mai come titolo.
 

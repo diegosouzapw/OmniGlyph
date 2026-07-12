@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 Soalan Lazim
 
+**Saya mengaktifkannya di tengah sesi dan penggunaan melonjak — kenapa?**
+Sesi yang berjalan tanpa OmniGlyph mempunyai keseluruhan prefiksnya di-cache oleh Anthropic sebagai teks pada kadar baca 0.1×; permintaan pertama dengan imej akan membayar semula semuanya sebagai penulisan cache baharu pada 1.25× dalam satu prompt. Proksi melindungi daripada ini: sesi yang tidak pernah ditukarnya kepada imej memasukkan kos sekali itu ke pintu pulang modal dan hanya bertukar kepada imej jika masih berbaloi — jika tidak, sesi kekal sebagai teks dan penjimatan bermula dengan sesi baharu anda yang seterusnya.
+
 **Adakah 59–70% itu hujung ke hujung, atau hanya pada permintaan yang disentuhnya?**
 Hujung ke hujung — keseluruhan bil. Kebanyakan alat pemampatan melaporkan penjimatan hanya pada bahagian yang disentuhnya, yang menggemukkan angka tersebut. Penyebut kami ialah *setiap* permintaan: yang kecil yang get betul-betul tidak sentuh, semua penulisan dan bacaan cache, dan semua token output (yang proksi tidak pernah mampatkan). Nisbah mampatan-sahaja lebih tinggi dan dipetik secara berasingan, tidak pernah sebagai tajuk utama.
 

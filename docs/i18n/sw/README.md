@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 Maswali Yanayoulizwa Mara kwa Mara
 
+**Niliiwasha katikati ya kikao na matumizi yakapanda ghafla — kwa nini?**
+Kikao kilichoendeshwa bila OmniGlyph kina kiambishi chake chote kikiwa kimehifadhiwa na Anthropic kama maandishi kwa kiwango cha usomaji cha 0.1×; ombi la kwanza lenye picha lingelipa yote hayo upya kama uandishi mpya wa akiba kwa 1.25× katika ombi moja tu. Proksi hulinda dhidi ya hili: kikao ambacho hakijawahi kubadilishwa kuwa picha huingiza gharama hiyo ya mara moja kwenye lango la usawa wa faida, na hubadilika kwenda picha tu ikiwa bado kuna faida — vinginevyo kikao hubaki maandishi, na akiba huanza na kikao chako kipya kijacho.
+
 **Je, 59–70% ni mwanzo hadi mwisho, au ni kwa maombi yaliyoguswa tu?**
 Mwanzo hadi mwisho — bili nzima. Zana nyingi za ubanaji huripoti akiba kwa sehemu iliyoguswa tu, jambo linalopamba nambari. Kigawanyo chetu ni *kila* ombi: yale madogo ambayo lango liliyaacha bila kuguswa kwa usahihi, uandishi na usomaji wote wa kache, na token zote za matokeo (ambazo proxy haziziibani kamwe). Akiba ya sehemu iliyobanwa pekee huwa kubwa zaidi na hutajwa kando, kamwe si kama kichwa cha habari.
 

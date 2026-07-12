@@ -175,6 +175,9 @@ A `--git` a nem commitolt diffjét rendereli, a `--diff <ref>` egy commit-tartom
 
 # 🧠 GYIK
 
+**Egy munkamenet közepén kapcsoltam be, és a fogyasztás megugrott — miért?**
+Egy OmniGlyph nélkül futó munkamenet teljes prefixét az Anthropic szövegként tárolja a 0,1×-es olvasási díjszabással; az első képes kérés mindezt újra kifizetné friss cache-írásként 1,25×-ös áron, egyetlen promptban. A proxy véd ez ellen: az általa soha nem képesített munkamenet ezt az egyszeri költséget beszámítja a megtérülési kapuba, és csak akkor vált képekre, ha még mindig megéri — különben a munkamenet szöveg marad, és a megtakarítás a következő új munkamenettel kezdődik.
+
 **Az 59–70% végponttól végpontig értendő, vagy csak azokra a kérésekre, amelyeket érintett?**
 Végponttól végpontig — a teljes számla. A legtöbb tömörítő eszköz csak azon a szeleten mért megtakarítást jelenti, amelyet ténylegesen érintett, ami hízelgőbbé teszi a számot. A mi nevezőnk *minden* kérés: a kicsik, amelyeket a kapu helyesen érintetlenül hagyott, minden cache-írás és -olvasás, és minden kimeneti token (amit a proxy soha nem tömörít). A csak-tömörített arány magasabb, és külön van feltüntetve, sosem főcímként.
 

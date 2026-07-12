@@ -702,6 +702,35 @@ export function parseGatewayHeaders(spec: string | undefined): Record<string, st
   return out;
 }
 
+/** Session identity for the warm-prefix guard: the first user message pins a
+ *  Claude Code conversation across turns (its text never changes as the
+ *  session grows). Cheap prefix key — no hashing on the hot path. */
+function sessionKeyOf(bodyIn: Uint8Array): string | null {
+  try {
+    const obj = JSON.parse(new TextDecoder().decode(bodyIn)) as {
+      model?: unknown; messages?: Array<{ role?: unknown; content?: unknown }>;
+    };
+    const first = (obj.messages ?? []).find((m) => m?.role === 'user');
+    if (!first) return null;
+    const c = typeof first.content === 'string' ? first.content : JSON.stringify(first.content);
+    return `${String(obj.model)}|${c.length}|${c.slice(0, 160)}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Estimate the text tokens Anthropic already holds cached for this request:
+ *  everything up to the caller's LAST cache_control marker, at the ~4 chars/
+ *  token convention. Uses the truncated JSON body's byte length, which counts
+ *  JSON syntax too — a deliberate slight overestimate, so the flip gate errs
+ *  toward "do no harm". 0 when the caller never marked anything (nothing was
+ *  cached as text, so there is no prefix to re-pay). */
+function estimateWarmPrefixTokens(bodyIn: Uint8Array): number {
+  const truncated = buildCacheablePrefixCountTokensBody(bodyIn);
+  if (!truncated) return 0;
+  return Math.ceil(truncated.byteLength / 4);
+}
+
 /** Build the proxy fetch handler. */
 export function createProxy(config: ProxyConfig = {}) {
   const routes = resolveUpstreams(config);
@@ -714,6 +743,23 @@ export function createProxy(config: ProxyConfig = {}) {
   const applyGatewayHeaders = (h: Headers): Headers => {
     for (const [k, v] of Object.entries(gatewayHeaders)) h.set(k, v);
     return h;
+  };
+  // Sessions whose cached prefix is OURS (we compressed them at least once).
+  // Everything else with caller cache_control markers is assumed warm-as-TEXT:
+  // flipping it to images re-pays the whole prefix as a 1.25x cache write in
+  // one prompt ("instant drain" on a mid-session enable), so the profitability
+  // gate gets the burn via priorWarmTokens. In-memory only: after a proxy
+  // restart, previously-imaged sessions read as warm text and fail closed to
+  // passthrough — lost savings, never a surprise re-pay. LRU-capped.
+  const imagedSessions = new Map<string, true>();
+  const IMAGED_SESSIONS_CAP = 1024;
+  const markImaged = (key: string | null): void => {
+    if (key === null) return;
+    if (imagedSessions.size >= IMAGED_SESSIONS_CAP && !imagedSessions.has(key)) {
+      const oldest = imagedSessions.keys().next().value;
+      if (oldest !== undefined) imagedSessions.delete(oldest);
+    }
+    imagedSessions.set(key, true);
   };
 
   return async function handle(req: Request): Promise<Response> {
@@ -850,14 +896,29 @@ export function createProxy(config: ProxyConfig = {}) {
         // Unsupported/unverified model → a true passthrough: no break-even
         // compression (a text-only model may not accept injected image blocks
         // at all, and an unverified one hasn't proven it can read them back).
-        const effectiveOpts = imageOk
+        let effectiveOpts = imageOk
           ? transformOpts
           : { ...transformOpts, compress: false };
+        // Mid-session enable guard (Anthropic wire only — cache_control is a
+        // Messages concept): a session we have never imaged, arriving with
+        // caller markers, holds its prefix cached as TEXT. Feed the gate the
+        // one-prompt re-pay burn so it only flips when imaging still wins.
+        // An explicit config priorWarmTokens wins over the estimate.
+        const sessionKey = isMessages && messagesAnthropic ? sessionKeyOf(bodyIn) : null;
+        if (
+          isMessages && messagesAnthropic
+          && effectiveOpts?.priorWarmTokens === undefined
+          && (sessionKey === null || !imagedSessions.has(sessionKey))
+        ) {
+          const warm = estimateWarmPrefixTokens(bodyIn);
+          if (warm > 0) effectiveOpts = { ...effectiveOpts, priorWarmTokens: warm };
+        }
         const r = isMessages
           ? await transformRequest(bodyIn, effectiveOpts)
           : isOpenAIChat
             ? await transformOpenAIChatCompletions(bodyIn, effectiveOpts)
             : await transformOpenAIResponses(bodyIn, effectiveOpts);
+        if (r.info.compressed) markImaged(sessionKey);
         if (!modelOk) r.info.reason = 'unsupported_model';
         else if (!imageOk) r.info.reason = 'model_unverified';
         bodyOut = r.body as unknown as BodyInit; // TS narrows Uint8Array away from BodyInit

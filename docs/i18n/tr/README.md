@@ -175,6 +175,9 @@ OmniGlyph-export-<hash>/
 
 # 🧠 SSS
 
+**Oturumun ortasında etkinleştirdim ve kullanımım fırladı — neden?**
+OmniGlyph olmadan çalışan bir oturumun tüm ön eki Anthropic tarafından 0,1× okuma tarifesiyle metin olarak önbelleğe alınmıştır; görüntülü ilk istek bunların tamamını tek bir promptta 1,25× ile yeni bir önbellek yazımı olarak yeniden ödetirdi. Proxy buna karşı korur: hiç görüntüye çevirmediği bir oturumda bu tek seferlik maliyeti başabaş kapısına ekler ve yalnızca hâlâ kazançlıysa görüntülere geçer — aksi halde oturum metin olarak kalır ve tasarruf bir sonraki yeni oturumla başlar.
+
 **%59–70 uçtan uca mı, yoksa yalnızca dokunduğu isteklerde mi?**
 Uçtan uca — faturanın tamamı. Çoğu sıkıştırma aracı, yalnızca dokunduğu dilimdeki tasarrufu raporlar; bu da rakamı olduğundan iyi gösterir. Bizim paydamız *her* istek: kapının doğru şekilde dokunmadan bıraktığı küçük istekler, tüm cache yazma ve okumaları ve tüm çıktı tokenları (proxy bunları asla sıkıştırmaz). Yalnızca-sıkıştırılan rakamı daha yüksek çıkar ve ayrı olarak belirtilir, asla manşet olarak değil.
 
