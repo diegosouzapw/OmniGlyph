@@ -1549,6 +1549,10 @@ async function runHistoryCollapseAndFinalize(
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
       },
     );
+    // Mirrors the slab/reminder/tool_result lanes above: sum unconditionally,
+    // not just on the collapsedTurns>0 branch — mode=text can find hits and
+    // abort the collapse (reason='secret_kept_text') with collapsedTurns==0.
+    if (histInfo.secretHits) info.secretHits = (info.secretHits ?? 0) + histInfo.secretHits;
     if (histInfo.collapsedTurns > 0) {
       req.messages = newMessages;
       info.collapsedTurns = histInfo.collapsedTurns;
@@ -2285,6 +2289,10 @@ export async function transformRequest(
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
       },
     );
+    // Mirrors the slab/reminder/tool_result lanes above: sum unconditionally,
+    // not just on the collapsedTurns>0 branch — mode=text can find hits and
+    // abort the collapse (reason='secret_kept_text') with collapsedTurns==0.
+    if (histInfo.secretHits) info.secretHits = (info.secretHits ?? 0) + histInfo.secretHits;
     if (histInfo.collapsedTurns > 0) {
       req.messages = newMessages;
       info.collapsedTurns = histInfo.collapsedTurns;

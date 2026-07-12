@@ -204,10 +204,9 @@ describe('recoverable channel under the guard (info.recoverable[].text)', () => 
 // reflow" fixture (keepTail:0, minCollapsePrefix:5, collapseChunk:0 — reflow
 // packs the strip so the profitability gate accepts it). The secret rides in
 // turn 3 (an ASSISTANT turn), never in the LAST collapsed user turn (turn 10,
-// plain "q10") — latestCollapsedUserPointer reads raw message content by
-// design (it is the verbatim carrier for the one turn that isn't imaged at
-// full fidelity) and is out of this task's scope, so the fixture must not
-// depend on it being guarded.
+// plain "q10") — this fixture exercises the per-chunk render guard, not the
+// synthetic pointer. The pointer's OWN guarding (when the secret rides in the
+// LAST collapsed user turn instead) is covered separately below.
 function secretHistoryMsgs(): Message[] {
   const msgs: Message[] = [];
   for (let i = 0; i < 12; i++) {
@@ -250,5 +249,65 @@ describe('Anthropic history lane', () => {
     // (masked) string — the collapsed history image is pixels, and every text
     // block riding alongside it (factsheet, recency pointer) must be clean too.
     expect(JSON.stringify(messages)).not.toContain(SECRET);
+  });
+
+  // Fix 1 (Task 4): latestCollapsedUserPointer builds a synthetic text block
+  // straight from raw message content. When the secret rides in the LAST
+  // collapsed user turn — the one turn the pointer quotes — it must not
+  // reappear as plaintext in a block OmniGlyph itself created.
+  function secretInLastUserTurnMsgs(): Message[] {
+    const msgs: Message[] = [];
+    for (let i = 0; i < 12; i++) {
+      if (i === 10) {
+        msgs.push({ role: 'user', content: `q${i} ${SECRET}` });
+      } else if (i % 2 === 0) {
+        msgs.push({ role: 'user', content: `q${i}` });
+      } else {
+        msgs.push({ role: 'assistant', content: `a${i}` });
+      }
+    }
+    return msgs;
+  }
+
+  it('redact: secret in the LAST collapsed user turn is masked in the synthetic pointer too', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { messages, info } = await collapseHistory(
+      secretInLastUserTurnMsgs(), isCompressionProfitable, historyCollapseOpts,
+    );
+    expect(info.collapsedImages).toBeGreaterThan(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    const dump = JSON.stringify(messages);
+    expect(dump).not.toContain(SECRET);
+    // The span is short enough to ride in the pointer's preview — assert the
+    // mask actually made it through, not just the secret's absence.
+    expect(dump).toContain('[REDACTED:');
+  });
+});
+
+describe('Anthropic history lane via transformRequest (secretHits aggregation)', () => {
+  // Fix 2 (Task 4): HistoryCollapseInfo.secretHits was never summed into
+  // TransformInfo.secretHits at either collapseHistory call site in
+  // transform.ts (unlike the slab/reminder/tool_result lanes, which do).
+  // 15 turns / keepTail=4 / minCollapsePrefix=10 mirrors history.test.ts's
+  // "collapses 10 closed turns after the protected slab message" fixture;
+  // the secret rides in an interior ASSISTANT turn so only the aggregation
+  // wiring is under test here, not the pointer (covered above).
+  it('redact: info.secretHits aggregates the history lane\'s hits via transformRequest', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const msgs: Message[] = [];
+    for (let i = 0; i < 15; i++) {
+      const body = i === 3
+        ? `turn ${i}: DEPLOY_TOKEN=${SECRET} ` + 'x'.repeat(3500)
+        : `turn ${i}: ` + 'x'.repeat(3500);
+      msgs.push({ role: i % 2 === 0 ? 'user' : 'assistant', content: body });
+    }
+    const body = enc.encode(JSON.stringify({
+      model: 'claude-3-5-sonnet',
+      system: 'x'.repeat(80_000),
+      messages: msgs,
+    }));
+    const { info } = await transformRequest(body);
+    expect(info.historyReason).toBe('collapsed');
+    expect(info.secretHits).toBeGreaterThan(0);
   });
 });

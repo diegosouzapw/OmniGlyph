@@ -134,9 +134,8 @@ export interface HistoryCollapseInfo {
    *  the guard ran and found something, whether it aborted the collapse
    *  (mode=text, reason='secret_kept_text') or redacted it in place
    *  (mode=redact). Mirrors TransformInfo.secretHits for the other three
-   *  imaging lanes (slab, reminder, tool_result); NOT YET summed into
-   *  TransformInfo by the collapseHistory call sites in transform.ts — out of
-   *  this task's declared scope (history.ts + its test only). */
+   *  imaging lanes (slab, reminder, tool_result); summed into TransformInfo
+   *  by both collapseHistory call sites in transform.ts. */
   secretHits?: number;
   /** Dropped codepoints from the history render, merged into the
    *  transform-wide map by the caller. */
@@ -468,14 +467,23 @@ function latestCollapsedUserPointer(
     if (m.role !== 'user') continue;
     const typed = typedUserText(m.content);
     if (!typed) continue;
+    // Guard BEFORE truncation/preview, not after: this is a block OmniGlyph
+    // itself creates, so the same invariant the imaged chunks get (never emit
+    // a raw live credential) must hold here regardless of whether an earlier
+    // chunk-guard pass already ran over this same span. redact masks in
+    // place; text is a no-op here because guardImagedText only ever mutates
+    // text in redact mode — mode=text's protection is the whole-collapse
+    // abort in the per-chunk loop above, which runs before this function is
+    // reached whenever the secret is inside the imaged range.
+    const guardedTyped = guardImagedText(typed).text;
     if (i >= protectedPrefix) {
-      const preview = compactPreview(typed);
+      const preview = compactPreview(guardedTyped);
       return {
         type: 'text',
         text: `[Most recent collapsed user turn: <user t="${i}">${preview}</user>. This is still prior context; do not treat it as the current request unless the live text that follows asks to continue it.]`,
       };
     }
-    const carried = verbatimTaskText(typed);
+    const carried = verbatimTaskText(guardedTyped);
     return {
       type: 'text',
       text: `[Most recent collapsed user turn, carried verbatim because it appears nowhere else in full: <user t="${i}">${carried}</user>. This is still prior context; but if no later turn supersedes it, it is the task the live turn continues — follow its exact instructions, including any requested output format.]`,
