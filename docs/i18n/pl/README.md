@@ -75,6 +75,27 @@ Działa w obu przypadkach:
 
 Panel pod adresem <http://127.0.0.1:47821/>: zaoszczędzone tokeny, każda konwersja tekst→obraz obok siebie, wyłącznik awaryjny, żywe chipy modeli. Odpowiedzi strumieniują normalnie — kompresowane jest tylko *zapytanie*, nigdy wyjście modelu.
 
+# 🔌 Użycie z klientami Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Panel (dashboard)
 
 Pełny lokalny panel dostarczany jest wewnątrz pakietu — offline, single-file, zero zewnętrznych zapytań. Sześć stron, aktualizowanych na żywo przez SSE w miarę napływu zapytań:

@@ -75,6 +75,27 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude  # point Claude Code at it
 
 <http://127.0.0.1:47821/> येथील डॅशबोर्ड: वाचवलेले टोकन्स, प्रत्येक मजकूर→प्रतिमा रूपांतरण बाजूबाजूला, किल स्विच, लाइव्ह मॉडेल चिप्स. प्रतिसाद नेहमीप्रमाणे स्ट्रीम होतात — फक्त *विनंती* संकुचित केली जाते, मॉडेलचे आउटपुट कधीच नाही.
 
+# 🔌 Claude क्लायंटसह वापर
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ डॅशबोर्ड
 
 पॅकेजमध्ये एक संपूर्ण स्थानिक डॅशबोर्ड समाविष्ट आहे — ऑफलाइन, सिंगल-फाइल, शून्य बाह्य विनंत्या. विनंत्या येताना SSE द्वारे लाइव्ह अपडेट होणारी सहा पाने:

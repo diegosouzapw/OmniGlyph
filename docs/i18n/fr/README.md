@@ -75,6 +75,27 @@ Fonctionne dans les deux cas :
 
 Tableau de bord sur <http://127.0.0.1:47821/> : tokens économisés, chaque conversion texte→image côte à côte, interrupteur d'urgence, puces de modèles en direct. Les réponses sont diffusées normalement — seule la *requête* est compressée, jamais la sortie du modèle.
 
+# 🔌 Utilisation avec les clients Claude
+
+Start the proxy in one terminal, then point the client at it.
+
+**Claude Code CLI (macOS/Linux):**
+
+```bash
+npx omniglyph
+ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+```
+
+**Claude Code CLI (Windows PowerShell):**
+
+```powershell
+npx omniglyph
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:47821"
+claude
+```
+
+**Claude Desktop** uses the same `ANTHROPIC_BASE_URL` environment variable for its bundled Claude Code runtime — start `omniglyph` first, then launch Claude Desktop from an environment where `ANTHROPIC_BASE_URL` is set to `http://127.0.0.1:47821`.
+
 # 🖥️ Le tableau de bord
 
 Un tableau de bord local complet est fourni dans le package — hors ligne, fichier unique, aucune requête externe. Six pages, mises à jour en direct via SSE au fil des requêtes :
