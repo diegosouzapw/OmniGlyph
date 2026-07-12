@@ -42,6 +42,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(transform):** preserve the exact Claude Code OAuth identity ("You are
+  Claude Code, Anthropic's official CLI for Claude.") as the first, separate
+  top-level system text block. Subscription OAuth traffic is classified as
+  Claude Code only while that identity stays a standalone text block — imaging
+  it into the static slab pushed requests out of the Claude Code lane (measured
+  as a generic 429 on enterprise OAuth). The identity is now excluded from the
+  imaged slab and re-emitted ahead of the billing line in the system tail; the
+  rest of the system prompt compresses as before. (thanks @mkhalid-s)
 - **fix(proxy):** gate Messages transforms by model family. `/v1/messages` is
   only a wire schema — Claude Code can point it at a non-Anthropic model — but
   the proxy applied Claude's renderer and Anthropic's `count_tokens` baseline
