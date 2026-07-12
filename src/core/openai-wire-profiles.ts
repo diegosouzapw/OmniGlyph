@@ -1,5 +1,5 @@
 /**
- * Per-model GPT rendering + vision-cost profiles.
+ * Per-model OpenAI-wire rendering + vision-cost profiles.
  *
  * One place to retune when a new model ships with different image tokenization,
  * a different downscale threshold (max safe portrait-strip width), or a different
@@ -7,35 +7,35 @@
  * developers.openai.com images-vision guide ("Model sizing behavior" +
  * "Calculating costs" tables) — see docs/ROADMAP.md Phase 1 (D1-D5).
  *
- * Retune without a code change via the OMNIGLYPH_GPT_PROFILES env var (JSON map of
- * model-id PREFIX -> partial profile; longest matching prefix wins, checked
+ * Retune without a code change via the OMNIGLYPH_MODEL_PROFILES env var (JSON map
+ * of model-id PREFIX -> partial profile; longest matching prefix wins, checked
  * BEFORE the built-in table). Partial fields fall back to the built-in match, so
- * you can override just one knob:
+ * you can override just one knob (alias: OMNIGLYPH_GPT_PROFILES):
  *
- *   OMNIGLYPH_GPT_PROFILES='{"gpt-5.6":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":200,"maxHeightPx":2400}}'
- *   OMNIGLYPH_GPT_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
+ *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":200,"maxHeightPx":2400}}'
+ *   OMNIGLYPH_MODEL_PROFILES='{"gpt-5.6":{"stripCols":176}}'   # widen only
  */
 
 /**
- * GPT strip heights, DECOUPLED from render.ts's Anthropic geometry. OpenAI's
- * tile regime resizes to fit 2048×2048 then shortest side → 768; the patch
- * regime shrinks only past the patch budget / 2048 px dimension cap.
+ * OpenAI-wire strip heights, DECOUPLED from render.ts's Anthropic geometry.
+ * OpenAI's tile regime resizes to fit 2048×2048 then shortest side → 768; the
+ * patch regime shrinks only past the patch budget / 2048 px dimension cap.
  * 2048 px aligns EXACTLY with both billing grids (4×512 tiles; 64×32 patches),
  * so tile/flagship pages get 15 free rows vs the old 1932. Cap-1536 patch
  * models page at 1920 (60×32 = 1440 patches) to keep slack under the budget
  * instead of sitting exactly on it.
  */
-export const GPT_MAX_HEIGHT_PX = 2048;
+export const WIRE_MAX_HEIGHT_PX = 2048;
 const H_CAP1536 = 1920;
 
 /** Image-token cost model (mirrors OpenAI's mandatory pre-tokenize resize). */
-export type GptVisionCost =
+export type VisionCost =
   | { regime: 'tile'; base: number; perTile: number }
   | { regime: 'patch'; multiplier: number; patchCap: number };
 
-export interface GptModelProfile {
+export interface ModelProfile {
   /** How OpenAI bills the rendered images as input tokens. */
-  vision: GptVisionCost;
+  vision: VisionCost;
   /** Max portrait-strip width in COLUMNS before the API downscales (destroying
    *  5px glyphs). 152 cols x 5px + 8px pad = 768px = OpenAI's shortest-side floor. */
   stripCols: number;
@@ -49,16 +49,16 @@ export interface GptModelProfile {
 }
 
 /** Default downscale-safe strip width (768px). Exported as the global cols default. */
-export const DEFAULT_GPT_STRIP_COLS = 152;
+export const DEFAULT_STRIP_COLS = 152;
 
-const C = DEFAULT_GPT_STRIP_COLS;
-const H = GPT_MAX_HEIGHT_PX;
+const C = DEFAULT_STRIP_COLS;
+const H = WIRE_MAX_HEIGHT_PX;
 
 /**
  * Conservative fallback for unrecognized models: tile 85/170 over-states cost,
  * which biases the gate toward pass-through (safe). Matches gpt-4o/4.1/4.5.
  */
-export const DEFAULT_GPT_PROFILE: GptModelProfile = {
+export const DEFAULT_MODEL_PROFILE: ModelProfile = {
   vision: { regime: 'tile', base: 85, perTile: 170 },
   stripCols: C,
   maxHeightPx: H,
@@ -67,7 +67,7 @@ export const DEFAULT_GPT_PROFILE: GptModelProfile = {
 
 interface ProfileRule {
   test: (m: string) => boolean;
-  profile: GptModelProfile;
+  profile: ModelProfile;
 }
 
 /** True for the patch-billed mini/nano family (o4-mini has its own 1.72 rule). */
@@ -140,19 +140,19 @@ const BUILTIN_RULES: ProfileRule[] = [
   },
 ];
 
-function resolveBuiltin(m: string): GptModelProfile {
+function resolveBuiltin(m: string): ModelProfile {
   for (const rule of BUILTIN_RULES) if (rule.test(m)) return rule.profile;
-  return DEFAULT_GPT_PROFILE;
+  return DEFAULT_MODEL_PROFILE;
 }
 
-// --- env override (OMNIGLYPH_GPT_PROFILES) -----------------------------------
+// --- env override (OMNIGLYPH_MODEL_PROFILES) ---------------------------------
 // Parsed lazily and memoized on the raw env string so tests can mutate
 // process.env and have it re-read, without re-parsing on every hot-path call.
 
 let envRaw: string | null = null;
-let envMap: Map<string, GptModelProfile> = new Map();
+let envMap: Map<string, ModelProfile> = new Map();
 
-function isValidVision(v: unknown): v is GptVisionCost {
+function isValidVision(v: unknown): v is VisionCost {
   if (!v || typeof v !== 'object') return false;
   const o = v as Record<string, unknown>;
   if (o.regime === 'tile') return Number.isFinite(o.base) && Number.isFinite(o.perTile);
@@ -168,8 +168,8 @@ function validDetail(v: unknown, fallback: 'original' | 'high'): 'original' | 'h
   return v === 'original' || v === 'high' ? v : fallback;
 }
 
-function parseEnvProfiles(raw: string): Map<string, GptModelProfile> {
-  const out = new Map<string, GptModelProfile>();
+function parseEnvProfiles(raw: string): Map<string, ModelProfile> {
+  const out = new Map<string, ModelProfile>();
   if (!raw) return out;
   let obj: unknown;
   try {
@@ -182,7 +182,7 @@ function parseEnvProfiles(raw: string): Map<string, GptModelProfile> {
     if (!v || typeof v !== 'object') continue;
     const key = k.toLowerCase();
     const base = resolveBuiltin(key); // partial fields fall back to the built-in match
-    const p = v as Partial<GptModelProfile>;
+    const p = v as Partial<ModelProfile>;
     out.set(key, {
       vision: isValidVision(p.vision) ? p.vision : base.vision,
       stripCols: posInt(p.stripCols, base.stripCols),
@@ -193,7 +193,7 @@ function parseEnvProfiles(raw: string): Map<string, GptModelProfile> {
   return out;
 }
 
-function envProfiles(): Map<string, GptModelProfile> {
+function envProfiles(): Map<string, ModelProfile> {
   const raw = (typeof process !== 'undefined' && process.env && process.env.OMNIGLYPH_GPT_PROFILES) || '';
   if (raw !== envRaw) {
     envRaw = raw;
@@ -205,13 +205,13 @@ function envProfiles(): Map<string, GptModelProfile> {
 /**
  * Resolve the full rendering + vision-cost profile for a model id. Env overrides
  * (longest matching prefix) win over the built-in table; unknown models get the
- * conservative `DEFAULT_GPT_PROFILE`.
+ * conservative `DEFAULT_MODEL_PROFILE`.
  */
-export function resolveGptProfile(model: string | null | undefined): GptModelProfile {
+export function resolveModelProfile(model: string | null | undefined): ModelProfile {
   const m = (model ?? '').toLowerCase();
   const env = envProfiles();
   if (env.size > 0) {
-    let best: GptModelProfile | undefined;
+    let best: ModelProfile | undefined;
     let bestLen = -1;
     for (const [k, p] of env) {
       if (m.startsWith(k) && k.length > bestLen) {

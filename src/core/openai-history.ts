@@ -22,7 +22,7 @@
  */
 
 import { renderTextToPngs, reflow, neutralizeSentinel, type RenderedImage } from './render.js';
-import { GPT_MAX_HEIGHT_PX } from './gpt-model-profiles.js';
+import { WIRE_MAX_HEIGHT_PX } from './openai-wire-profiles.js';
 import { countTokens as o200kCountTokens } from 'gpt-tokenizer/encoding/o200k_base';
 
 /** Portrait-strip width for GPT history images. Mirrors GPT_STRIP_COLS in
@@ -104,7 +104,7 @@ export const GPT_HISTORY_DEFAULTS: GptHistoryOptions = {
   sectionTokens: 2000,
   // GPT path: OpenAI's resize bounds (2048-bbox / 768 short side) permit the tall
   // strip — do NOT re-link to render.ts MAX_HEIGHT_PX (Anthropic's 1568/1.15 MP clamp).
-  maxHeightPx: GPT_MAX_HEIGHT_PX,
+  maxHeightPx: WIRE_MAX_HEIGHT_PX,
   maxImages: GPT_HISTORY_MAX_IMAGES,
   reflow: true,
 };

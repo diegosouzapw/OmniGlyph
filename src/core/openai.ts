@@ -15,10 +15,10 @@ import {
   type RenderedImage,
 } from './render.js';
 import {
-  resolveGptProfile,
-  DEFAULT_GPT_STRIP_COLS,
-  type GptVisionCost,
-} from './gpt-model-profiles.js';
+  resolveModelProfile,
+  DEFAULT_STRIP_COLS,
+  type VisionCost,
+} from './openai-wire-profiles.js';
 import { bytesToBase64 } from './png.js';
 import {
   compactSlabWhitespace,
@@ -39,14 +39,14 @@ import { HISTORY_SYNTHETIC_INTRO, HISTORY_SYNTHETIC_OUTRO } from './history.js';
 import { factSheetText } from './factsheet.js';
 import { countTokens as o200kCountTokens } from 'gpt-tokenizer/encoding/o200k_base';
 
-// Per-model GPT rendering + vision-cost profiles (portrait-strip width, image-token
-// cost model, max image height) live in ./gpt-model-profiles.ts so a new model is a
-// one-line / one-env-var retune. resolveVisionCost stays a thin wrapper so every caller
-// (gate, slab, history, dashboard) shares the single source of truth.
-type VisionCost = GptVisionCost;
+// Per-model OpenAI-wire rendering + vision-cost profiles (portrait-strip width,
+// image-token cost model, max image height) live in ./openai-wire-profiles.ts so a
+// new model is a one-line / one-env-var retune. resolveVisionCost stays a thin
+// wrapper so every caller (gate, slab, history, dashboard) shares the single
+// source of truth.
 
 export function resolveVisionCost(model: string): VisionCost {
-  return resolveGptProfile(model).vision;
+  return resolveModelProfile(model).vision;
 }
 
 // Sharp framing around the collapsed-history image. The transcript flattens BOTH
@@ -198,7 +198,7 @@ const DEFAULTS: OpenAIResolvedOptions = {
   compress: true,
   compressTools: true,
   minCompressChars: 2000,
-  cols: DEFAULT_GPT_STRIP_COLS,
+  cols: DEFAULT_STRIP_COLS,
   multiCol: 1,
   charsPerToken: 4, // conservative OpenAI default; override after telemetry
   reflow: true,
@@ -483,7 +483,7 @@ function evalOpenAIGate(
 ): { imageTokens: number; textTokens: number; profitable: boolean } {
   const stripW = 2 * PAD_X + cols * CELL_W;
   const estImages = estimateImageCount(renderedText, cols, 1);
-  const perStrip = openAIVisionTokens(model, stripW, resolveGptProfile(model).maxHeightPx);
+  const perStrip = openAIVisionTokens(model, stripW, resolveModelProfile(model).maxHeightPx);
   const imageTokens = estImages * perStrip;
   const textTokens = renderedText.length / charsPerToken;
   return { imageTokens, textTokens, profitable: imageTokens < textTokens };
@@ -670,7 +670,7 @@ export async function transformOpenAIChatCompletions(
     : '';
   const header = CHAT_HEADER.replace('\n====', reflowNote + '\n====');
   const renderedText = header + combined;
-  const cols = Math.min(shrinkColsToContent(renderedText, o.cols), resolveGptProfile(req.model).stripCols);
+  const cols = Math.min(shrinkColsToContent(renderedText, o.cols), resolveModelProfile(req.model).stripCols);
 
   const gate = evalOpenAIGate(req.model, renderedText, cols, o.charsPerToken);
   info.gateEval = {
@@ -687,7 +687,7 @@ export async function transformOpenAIChatCompletions(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, {}, resolveGptProfile(req.model).maxHeightPx);
+  const images = await renderTextToPngs(renderedText, cols, {}, resolveModelProfile(req.model).maxHeightPx);
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };
@@ -697,7 +697,7 @@ export async function transformOpenAIChatCompletions(
   const topDropped = droppedCodepointsTop(droppedCodepoints);
   if (topDropped) info.droppedCodepointsTop = topDropped;
 
-  const imageParts: OpenAIImagePart[] = images.map((img) => openAIImagePart(img, resolveGptProfile(req.model).detail));
+  const imageParts: OpenAIImagePart[] = images.map((img) => openAIImagePart(img, resolveModelProfile(req.model).detail));
   info.imageCount = images.length;
   // GPT savings basis: vision tokens the images actually cost vs the text tokens
   // the same content would have cost unproxied. req.tools is still the original
@@ -747,8 +747,8 @@ export async function transformOpenAIChatCompletions(
     const plan = await planGptCollapse(turns, firstUserIdx + 1, profitable, {
       ...o.gptHistory,
       reflow: o.reflow,
-      cols: o.gptHistory?.cols ?? resolveGptProfile(req.model).stripCols,
-      maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveGptProfile(req.model).maxHeightPx,
+      cols: o.gptHistory?.cols ?? resolveModelProfile(req.model).stripCols,
+      maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveModelProfile(req.model).maxHeightPx,
     });
     foldGptHistory(info, req.model, plan);
     const allImages = [...plan.images, ...plan.imagesAfter];
@@ -756,10 +756,10 @@ export async function transformOpenAIChatCompletions(
       // [intro][before-images][pinned request as TEXT][after-images][outro] —
       // chronological, with the live ask legible (not OCR-only) in its real slot.
       const content: OpenAIContentPart[] = [{ type: 'text', text: HISTORY_TRANSCRIPT_INTRO }];
-      for (const img of plan.images) content.push(openAIImagePart(img, resolveGptProfile(req.model).detail));
+      for (const img of plan.images) content.push(openAIImagePart(img, resolveModelProfile(req.model).detail));
       if (plan.pinText !== undefined) {
         content.push({ type: 'text', text: pinnedRequestBlock(plan.pinText) });
-        for (const img of plan.imagesAfter) content.push(openAIImagePart(img, resolveGptProfile(req.model).detail));
+        for (const img of plan.imagesAfter) content.push(openAIImagePart(img, resolveModelProfile(req.model).detail));
       }
       // Verbatim fact-sheet for the imaged transcript (exact ids survive OCR loss).
       const histFactSheet = factSheetText(plan.text);
@@ -877,7 +877,7 @@ export async function transformOpenAIResponses(
     : '';
   const header = RESPONSES_HEADER.replace('\n====', reflowNote + '\n====');
   const renderedText = header + combined;
-  const cols = Math.min(shrinkColsToContent(renderedText, o.cols), resolveGptProfile(req.model).stripCols);
+  const cols = Math.min(shrinkColsToContent(renderedText, o.cols), resolveModelProfile(req.model).stripCols);
 
   const gate = evalOpenAIGate(req.model, renderedText, cols, o.charsPerToken);
   info.gateEval = {
@@ -894,7 +894,7 @@ export async function transformOpenAIResponses(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, {}, resolveGptProfile(req.model).maxHeightPx);
+  const images = await renderTextToPngs(renderedText, cols, {}, resolveModelProfile(req.model).maxHeightPx);
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };
@@ -918,7 +918,7 @@ export async function transformOpenAIResponses(
   info.imagePngs = images.map((img) => img.png);
   info.imageDims = images.map((img) => ({ width: img.width, height: img.height }));
 
-  const imagePartsResp: ResponsesInputImagePart[] = images.map((img) => responsesImagePart(img, resolveGptProfile(req.model).detail));
+  const imagePartsResp: ResponsesInputImagePart[] = images.map((img) => responsesImagePart(img, resolveModelProfile(req.model).detail));
   const endMarker: ResponsesInputTextPart = { type: 'input_text', text: '[End of rendered GPT system/tool context.]' };
   // Verbatim fact-sheet (see src/core/factsheet.ts): exact tokens that survive OCR loss.
   const slabFactSheet = factSheetText(combinedRaw);
@@ -985,8 +985,8 @@ export async function transformOpenAIResponses(
     const plan = await planGptCollapse(turns, firstUserIdx + 1, profitable, {
       ...o.gptHistory,
       reflow: o.reflow,
-      cols: o.gptHistory?.cols ?? resolveGptProfile(req.model).stripCols,
-      maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveGptProfile(req.model).maxHeightPx,
+      cols: o.gptHistory?.cols ?? resolveModelProfile(req.model).stripCols,
+      maxHeightPx: o.gptHistory?.maxHeightPx ?? resolveModelProfile(req.model).maxHeightPx,
     });
     foldGptHistory(info, req.model, plan);
     const allImages = [...plan.images, ...plan.imagesAfter];
@@ -996,10 +996,10 @@ export async function transformOpenAIResponses(
       const content: ResponsesContentPart[] = [
         { type: 'input_text', text: HISTORY_TRANSCRIPT_INTRO },
       ];
-      for (const img of plan.images) content.push(responsesImagePart(img, resolveGptProfile(req.model).detail));
+      for (const img of plan.images) content.push(responsesImagePart(img, resolveModelProfile(req.model).detail));
       if (plan.pinText !== undefined) {
         content.push({ type: 'input_text', text: pinnedRequestBlock(plan.pinText) });
-        for (const img of plan.imagesAfter) content.push(responsesImagePart(img, resolveGptProfile(req.model).detail));
+        for (const img of plan.imagesAfter) content.push(responsesImagePart(img, resolveModelProfile(req.model).detail));
       }
       // Verbatim fact-sheet for the imaged transcript (exact ids survive OCR loss).
       const histFactSheet = factSheetText(plan.text);
