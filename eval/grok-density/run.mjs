@@ -2,8 +2,10 @@
 // tokens back? See README.md.
 //
 // This validates the exact production config a `grok-*` request renders as:
-// the profile from resolveModelProfile('grok-4.5') (dense effective 9×12 cell,
-// 84-col strip, 1-bit, fact-sheet rides beside the image in the real transform).
+// the profile from resolveModelProfile('grok-4.5') (stock Spleen 5×8 cell,
+// white AA, no grid, 152-col strip, 512px pages) plus the in-image IDS block
+// (appendIdsBlock) that production appends to every imaged render text; the
+// fact-sheet still rides beside the image in the real transform.
 // It does NOT change any default — Grok stays fail-closed in
 // UNVERIFIED_MODEL_BASES until a LIVE run here clears the bar.
 //
@@ -21,6 +23,7 @@ import { dirname, join } from 'node:path';
 import { renderTextToPngs } from '../../dist/core/render.js';
 import { resolveModelProfile } from '../../dist/core/openai-wire-profiles.js';
 import { visionTokensForModel } from '../../dist/core/openai.js';
+import { appendIdsBlock } from '../../dist/core/factsheet.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -88,7 +91,7 @@ async function callModel(model, dataUrls, question) {
       signal: controller.signal,
     });
   } catch (err) {
-    throw new Error(`fetch failed: ${err && err.message ? err.message : err}`);
+    throw new Error(`fetch failed: ${err && err.message ? err.message : err}`, { cause: err });
   } finally {
     clearTimeout(timer);
   }
@@ -127,9 +130,12 @@ console.log(`profile (as shipped): stripCols=${PROFILE.stripCols} maxHeightPx=${
 console.log(`text baseline ≈ ${TEXT_TOKENS} tok (chars/4)`);
 
 // Render the fixture EXACTLY as a production grok request would: profile strip
-// width, profile style (dense 9×12), profile max page height. Single portrait
-// strip, no multi-col packing — matches the Responses transform.
-const imgs = await renderTextToPngs(SESSION, PROFILE.stripCols, PROFILE.style ?? {}, PROFILE.maxHeightPx);
+// width, profile style (white-AA 5×8), profile max page height, and the IDS
+// block appended to the render text (production applies appendIdsBlock on
+// every imaged path). Single portrait strip, no multi-col packing — matches
+// the Responses transform.
+const RENDER_TEXT = appendIdsBlock(SESSION);
+const imgs = await renderTextToPngs(RENDER_TEXT, PROFILE.stripCols, PROFILE.style ?? {}, PROFILE.maxHeightPx);
 const pages = imgs.map((im) => ({ png: im.png, width: im.width, height: im.height }));
 const imageTokens = pages.reduce((n, p) => n + visionTokensForModel(MODEL, p.width, p.height), 0);
 const savingsPct = Math.round((1 - imageTokens / TEXT_TOKENS) * 100);
@@ -156,7 +162,7 @@ if (live) {
   const dataUrls = pages.map((p) => 'data:image/png;base64,' + Buffer.from(p.png).toString('base64'));
   const m = { exactCorrect: 0, exactTotal: 0, confab: 0, abstain: 0, refused: 0, gistOk: false, guardOk: false, answers: [] };
   for (const q of QUESTIONS) {
-    let text = '', ms = 0, status = null;
+    let text, ms, status;
     try {
       ({ text, ms, status } = await callModel(MODEL, dataUrls, q.q));
     } catch (err) {

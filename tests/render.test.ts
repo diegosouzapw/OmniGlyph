@@ -1568,6 +1568,30 @@ describe('transform', () => {
     expect(info.unknownStaticTags).toBeUndefined();
   });
 
+  it('does not flag nested skill-catalogue tags (name/description/location/skill)', async () => {
+    // Nested under <available_skills>; static for a session, churn still observed.
+    const sys =
+      'claude.md\n'.repeat(400) +
+      '<available_skills>\n' +
+      '<skill>\n' +
+      '<name>demo-skill</name>\n' +
+      '<description>Do the demo thing</description>\n' +
+      '<location>~/.claude/skills/demo/SKILL.md</location>\n' +
+      '</skill>\n' +
+      '</available_skills>\n' +
+      '<available_references>\nref-a\n</available_references>\n' +
+      '<env>\nWorking directory: /tmp\n</env>';
+    const body = new TextEncoder().encode(
+      JSON.stringify({
+        model: 'claude',
+        messages: [{ role: 'user', content: 'hi' }],
+        system: sys,
+      }),
+    );
+    const { info } = await transformRequest(body);
+    expect(info.unknownStaticTags).toBeUndefined();
+  });
+
   it('omits unknownStaticTags when the static slab has no tag-shaped blocks', async () => {
     const sys = 'claude.md\n'.repeat(400) + '<env>\nWorking directory: /tmp\n</env>';
     const body = new TextEncoder().encode(
@@ -2427,5 +2451,146 @@ describe('colorByRole (structure-through slot string)', () => {
     // PNG IHDR colorType byte: sig(8) + len(4) + "IHDR"(4) + ihdr[9] = offset 25.
     expect(colored.png[25]).toBe(2); // 2 = truecolor RGB
     expect(plain.png[25]).toBe(0); // 0 = grayscale
+  });
+});
+
+// --- pure-image OCR aids (Grok repack knobs) --------------------------------
+// inkDilate / invert / paperGray / colorByClass / classTick. Pixel-level
+// verification: our PNG encoder always writes filter=None, so row (y) pixel (x)
+// lives at inflated[y * (w*ch + 1) + 1 + x*ch].
+describe('render style knobs: inkDilate / invert / paperGray / colorByClass / classTick', () => {
+  async function decode(png: Uint8Array): Promise<{ w: number; h: number; ch: number; data: Buffer }> {
+    const zlib = await import('node:zlib');
+    const w = (png[16]! << 24) | (png[17]! << 16) | (png[18]! << 8) | png[19]!;
+    const h = (png[20]! << 24) | (png[21]! << 16) | (png[22]! << 8) | png[23]!;
+    const colorType = png[25]!;
+    const ch = colorType === 2 ? 3 : 1;
+    let pos = 8;
+    const idats: Buffer[] = [];
+    while (pos < png.length) {
+      const len = (png[pos]! << 24) | (png[pos + 1]! << 16) | (png[pos + 2]! << 8) | png[pos + 3]!;
+      const type = String.fromCharCode(png[pos + 4]!, png[pos + 5]!, png[pos + 6]!, png[pos + 7]!);
+      const dataStart = pos + 8;
+      if (type === 'IDAT') idats.push(Buffer.from(png.subarray(dataStart, dataStart + len)));
+      if (type === 'IEND') break;
+      pos = dataStart + len + 4;
+    }
+    return { w, h, ch, data: zlib.inflateSync(Buffer.concat(idats)) };
+  }
+  const px = (d: { w: number; ch: number; data: Buffer }, x: number, y: number, c = 0): number =>
+    d.data[y * (d.w * d.ch + 1) + 1 + x * d.ch + c]!;
+  const inkCount = (d: { w: number; h: number; ch: number; data: Buffer }): number => {
+    let n = 0;
+    for (let y = 0; y < d.h; y++) for (let x = 0; x < d.w; x++) if (px(d, x, y) < 128) n++;
+    return n;
+  };
+
+  it('default renders black-on-white; invert:false keeps white-on-black at identical dims', async () => {
+    const def = await renderChunkToPng('HELLO', 20);
+    const raw = await renderChunkToPng('HELLO', 20, { invert: false });
+    expect(raw.width).toBe(def.width);
+    expect(raw.height).toBe(def.height);
+    const dDef = await decode(def.png);
+    const dRaw = await decode(raw.png);
+    expect(px(dDef, 0, 0)).toBe(255); // background white
+    expect(px(dRaw, 0, 0)).toBe(0);   // background stays pre-invert black
+  });
+
+  it('paperGray remaps the background below pure white while ink stays near-black', async () => {
+    const img = await renderChunkToPng('HELLO', 20, { paperGray: 240 });
+    const d = await decode(img.png);
+    expect(px(d, 0, 0)).toBe(240); // paper
+    let darkest = 255;
+    for (let y = 0; y < d.h; y++) for (let x = 0; x < d.w; x++) darkest = Math.min(darkest, px(d, x, y));
+    expect(darkest).toBe(0); // ink unchanged
+  });
+
+  it('inkDilate thickens glyphs at fixed cell pitch (more ink, same dims)', async () => {
+    const plain = await renderChunkToPng('HELLO', 20);
+    const dilated = await renderChunkToPng('HELLO', 20, { inkDilate: 1 });
+    expect(dilated.width).toBe(plain.width);
+    expect(dilated.height).toBe(plain.height);
+    const nPlain = inkCount(await decode(plain.png));
+    const nDilated = inkCount(await decode(dilated.png));
+    expect(nDilated).toBeGreaterThan(nPlain);
+  });
+
+  it("inkDilateAxis 'y' adds less ink than 'both' (no horizontal neighbor merging)", async () => {
+    const both = inkCount(await decode((await renderChunkToPng('HELLO', 20, { inkDilate: 1 })).png));
+    const yOnly = inkCount(await decode((await renderChunkToPng('HELLO', 20, { inkDilate: 1, inkDilateAxis: 'y' })).png));
+    const plain = inkCount(await decode((await renderChunkToPng('HELLO', 20)).png));
+    expect(yOnly).toBeGreaterThan(plain);
+    expect(yOnly).toBeLessThan(both);
+  });
+
+  it('colorByClass tints digits/UPPER/lower in distinct palette hues (RGB output)', async () => {
+    const img = await renderChunkToPng('0Oo', 20, { colorByClass: true });
+    const d = await decode(img.png);
+    expect(d.ch).toBe(3); // truecolor
+    // Collect the dominant ink color per glyph cell (cells at cols 0,1,2).
+    const cellColor = (cell: number): [number, number, number] => {
+      for (let y = 4; y < d.h - 4; y++) {
+        for (let x = 4 + cell * CELL_W; x < 4 + (cell + 1) * CELL_W; x++) {
+          const r = px(d, x, y, 0), g = px(d, x, y, 1), b = px(d, x, y, 2);
+          if (r < 200 || g < 200 || b < 200) return [r, g, b];
+        }
+      }
+      throw new Error(`no ink found in cell ${cell}`);
+    };
+    const digit = cellColor(0); // '0' → blue-ish
+    const upper = cellColor(1); // 'O' → red-ish
+    const lower = cellColor(2); // 'o' → green-ish
+    expect(digit[2]).toBeGreaterThan(digit[0]); // blue channel dominates red
+    expect(upper[0]).toBeGreaterThan(upper[2]); // red dominates blue
+    expect(lower[1]).toBeGreaterThan(lower[0]); // green dominates red
+  });
+
+  it('colorByClass wins over colorCycle when both are set', async () => {
+    const img = await renderChunkToPng('000', 20, { colorByClass: true, colorCycle: true });
+    const d = await decode(img.png);
+    // Under colorCycle the three '0's would cycle three hues; under colorByClass
+    // all three are digit-blue. Sample one inked pixel per cell.
+    const colors: string[] = [];
+    for (let cell = 0; cell < 3; cell++) {
+      for (let y = 4; y < d.h - 4 && colors.length === cell; y++) {
+        for (let x = 4 + cell * CELL_W; x < 4 + (cell + 1) * CELL_W; x++) {
+          const r = px(d, x, y, 0), g = px(d, x, y, 1), b = px(d, x, y, 2);
+          if (r < 200 || g < 200 || b < 200) { colors.push(`${r},${g},${b}`); break; }
+        }
+      }
+    }
+    expect(colors.length).toBe(3);
+    expect(new Set(colors).size).toBe(1); // one class → one hue
+  });
+
+  it('classTick marks a digit at bottom-left and an UPPER at top-right of the cell', async () => {
+    // '.' has no BL/TR ink of its own in the margin rows we probe.
+    const img = await renderChunkToPng('7A', 20, { classTick: true });
+    const d = await decode(img.png);
+    // digit '7' → bottom-left pixel of cell 0: (PAD_X + 0, PAD_Y + CELL_H - 1)
+    expect(px(d, 4, 4 + CELL_H - 1)).toBeLessThan(128);
+    // UPPER 'A' → top-right pixel of cell 1: (PAD_X + CELL_W*2 - 1, PAD_Y)
+    expect(px(d, 4 + 2 * CELL_W - 1, 4)).toBeLessThan(128);
+  });
+});
+
+describe('IDS block on the imaged Anthropic slab', () => {
+  it('appends IDS rows to the rendered slab text (imageSourceText carries them)', async () => {
+    const sys =
+      'claude.md\n'.repeat(400) +
+      'cache key a3f9c1e0b7d2 lives in src/core/anthropic-vision.ts port 47821\n';
+    const body = new TextEncoder().encode(
+      JSON.stringify({
+        model: 'claude',
+        messages: [{ role: 'user', content: 'hi' }],
+        system: sys,
+      }),
+    );
+    const { info } = await transformRequest(body);
+    expect(info.compressed).toBe(true);
+    const imaged = info.imageSourceText ?? '';
+    expect(imaged).toContain('\nIDS\n');
+    expect(imaged).toContain('hex a3f9c1e0b7d2');
+    expect(imaged).toContain('port 47821');
   });
 });

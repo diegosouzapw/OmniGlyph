@@ -188,6 +188,8 @@ describe('serveFragment', () => {
       expect(on).toContain('GPT 5.5</button>');
       // GPT 5.6 renders to the left of GPT 5.5.
       expect(on.indexOf('GPT 5.6')).toBeLessThan(on.indexOf('GPT 5.5'));
+      expect(getAllowedModelBases()).toContain('claude-fable-5');
+      expect(getAllowedModelBases()).not.toContain('grok-4.5');
       expect(getAllowedModelBases()).toContain('gpt-5.6');
       expect(getAllowedModelBases()).not.toContain('gpt-5.5');
 

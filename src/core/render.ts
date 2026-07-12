@@ -95,6 +95,32 @@ export interface RenderStyle {
   /** Tint only the structural <user>/<assistant> boundary tags (body stays black)
    *  so speakers are scannable without recoloring content. Forces RGB. Composes with aa. */
   colorByRole?: boolean;
+  /** Morphological ink dilate radius in pixels (pre-invert). Thickens glyphs without
+   *  changing cell pitch — pure-image OCR aid at fixed 5×8 density. 0/unset = off. */
+  inkDilate?: number;
+  /** Dilate axis: 'both' (default), 'x', or 'y'. Prefer 'y' at 5×8 so neighbors do not merge. */
+  inkDilateAxis?: 'both' | 'x' | 'y';
+  /** Post-blit polarity. Default true = black ink on white (production). false keeps
+   *  white ink on black (pre-invert canvas). Fixed cell pitch. */
+  invert?: boolean;
+  /**
+   * Tint ink by character class (digit / UPPER / lower / other) for OCR disambiguation
+   * of confusable pairs like 0/O/o. Forces RGB. Composes with aa. Mutually exclusive
+   * intent with colorCycle (if both set, colorByClass wins).
+   */
+  colorByClass?: boolean;
+  /**
+   * Paint a 1px class micro-mark in the cell margin after each glyph blit:
+   * digit → bottom-left, UPPER → top-right, lower/other → none.
+   * Separates 0/O/o without changing cell pitch. Works with gray or RGB output.
+   */
+  classTick?: boolean;
+  /**
+   * Post-invert paper gray (0–255). Default 255 = pure white. Mid-light values
+   * (e.g. 230–240) reduce glare and lift faint grid rules without changing cell pitch.
+   * Applied after invert; ink stays near-black via linear remap onto the paper.
+   */
+  paperGray?: number;
 }
 
 // --- column-aware wrapping -------------------------------------------------
@@ -175,6 +201,62 @@ export const ROLE_PALETTE: [number, number, number][] = [
 ];
 const ROLE_SLOT_USER = 1;
 const ROLE_SLOT_ASSISTANT = 2;
+
+/** colorByClass palette, indexed by slot-1: digit / UPPER / lower / other. */
+export const CLASS_PALETTE: [number, number, number][] = [
+  [20, 40, 160],   // 1: digit 0-9 — blue (0 ≠ O/o)
+  [150, 20, 20],   // 2: UPPER A-Z — red (O ≠ 0/o)
+  [20, 110, 40],   // 3: lower a-z — green (o ≠ 0/O)
+  [20, 20, 20],    // 4: other / punctuation — near-black
+];
+const CLASS_SLOT_DIGIT = 1;
+const CLASS_SLOT_UPPER = 2;
+const CLASS_SLOT_LOWER = 3;
+const CLASS_SLOT_OTHER = 4;
+
+function classSlotForCodepoint(cp: number): number {
+  if (cp >= 0x30 && cp <= 0x39) return CLASS_SLOT_DIGIT; // 0-9
+  if (cp >= 0x41 && cp <= 0x5a) return CLASS_SLOT_UPPER; // A-Z
+  if (cp >= 0x61 && cp <= 0x7a) return CLASS_SLOT_LOWER; // a-z
+  return CLASS_SLOT_OTHER;
+}
+
+/** 1px class micro-marks in cell margins (pre-invert ink = 255). */
+function paintClassTick(
+  fb: Uint8Array,
+  fbW: number,
+  fbH: number,
+  baseX: number,
+  baseY: number,
+  cellW: number,
+  cellH: number,
+  codepoint: number,
+  colorMask: Uint8Array | null,
+  colorSlot: number,
+): void {
+  const slot = classSlotForCodepoint(codepoint);
+  // digit → BL, UPPER → TR; lower/other unmarked
+  let ox: number;
+  let oy: number;
+  if (slot === CLASS_SLOT_DIGIT) {
+    ox = 0;
+    oy = Math.max(0, cellH - 1);
+  } else if (slot === CLASS_SLOT_UPPER) {
+    ox = Math.max(0, cellW - 1);
+    oy = 0;
+  } else {
+    return;
+  }
+  const px = baseX + ox;
+  const py = baseY + oy;
+  if (px < 0 || py < 0 || px >= fbW || py >= fbH) return;
+  const idx = py * fbW + px;
+  // only mark background so we don't erase glyph strokes
+  if (fb[idx]! === 0) {
+    fb[idx] = 255;
+    if (colorMask && colorSlot > 0) colorMask[idx] = colorSlot;
+  }
+}
 
 /**
  * Slot markers for the parallel "slot string" — the structure-through mechanism
@@ -469,6 +551,44 @@ function blitGlyphScaled(
   return wide ? 2 * scaleX : scaleX;
 }
 
+/** Dilate ink on the pre-invert framebuffer (nonzero = ink). Radius is pixel
+ *  passes; keeps width/height fixed so 5×8 packing is unchanged.
+ *  axis: 'both' (4-connected), 'x' (horizontal only), 'y' (vertical only).
+ *  Vertical-only thickens strokes without merging neighboring 5px-wide glyphs. */
+function dilateInk(
+  fb: Uint8Array,
+  fbW: number,
+  fbH: number,
+  radius: number,
+  axis: 'both' | 'x' | 'y' = 'both',
+): void {
+  const r = Math.max(0, Math.floor(radius));
+  if (r <= 0) return;
+  const doX = axis === 'both' || axis === 'x';
+  const doY = axis === 'both' || axis === 'y';
+  let src = fb;
+  for (let pass = 0; pass < r; pass++) {
+    const out = new Uint8Array(src.length);
+    out.set(src);
+    for (let y = 0; y < fbH; y++) {
+      for (let x = 0; x < fbW; x++) {
+        const i = y * fbW + x;
+        if (src[i]! > 0) continue;
+        if (
+          (doX && x > 0 && src[i - 1]! > 0) ||
+          (doX && x + 1 < fbW && src[i + 1]! > 0) ||
+          (doY && y > 0 && src[i - fbW]! > 0) ||
+          (doY && y + 1 < fbH && src[i + fbW]! > 0)
+        ) {
+          out[i] = 255;
+        }
+      }
+    }
+    src = out;
+  }
+  if (src !== fb) fb.set(src);
+}
+
 const GRID_INK = 25; // pre-invert → 230 post-invert; distinct from gutter divider (64 → 191)
 
 /** Draw faint grid rules onto background pixels only (glyph ink wins). Zero pixel-cost to image size. */
@@ -555,10 +675,11 @@ export async function renderChunkToPng(
   const markerMask: Uint8Array | null =
     style.markerRed ? new Uint8Array(width * height) : null;
   // colorMask: stores colorSlot per inked pixel (0 = background) for colorCycle / colorByRole RGB output.
-  const useColorCycle = style.colorCycle === true;
-  const useColorByRole = style.colorByRole === true;
+  const useColorByClass = style.colorByClass === true;
+  const useColorCycle = style.colorCycle === true && !useColorByClass;
+  const useColorByRole = style.colorByRole === true && !useColorByClass;
   const colorMask: Uint8Array | null =
-    (useColorCycle || useColorByRole) ? new Uint8Array(width * height) : null;
+    (useColorCycle || useColorByRole || useColorByClass) ? new Uint8Array(width * height) : null;
 
   let droppedChars = 0;
   const droppedCodepoints = new Map<number, number>();
@@ -576,9 +697,11 @@ export async function renderChunkToPng(
       const codepoint = ch.codePointAt(0)!;
       const baseX = PAD_X + col * cellW;
       const isMarker = codepoint === NL_SENTINEL_CP;
-      const colorSlot = useColorByRole
-        ? (slotRow ? slotForMarkCp(slotRow[charIdx]?.codePointAt(0)) : 0) // 0 = body (black); only tags carry a role hue
-        : (glyphIndex % GLYPH_PALETTE.length) + 1; // 0 reserved for background in colorMask
+      const colorSlot = useColorByClass
+        ? classSlotForCodepoint(codepoint)
+        : useColorByRole
+          ? (slotRow ? slotForMarkCp(slotRow[charIdx]?.codePointAt(0)) : 0) // 0 = body (black); only tags carry a role hue
+          : (glyphIndex % GLYPH_PALETTE.length) + 1; // 0 reserved for background in colorMask
       let advance: number;
       if (isMarker && markerScale > 1) {
         advance = blitGlyphScaled(fb, markerMask, width, height, baseX, baseY, codepoint, markerScale);
@@ -625,6 +748,9 @@ export async function renderChunkToPng(
           }
         }
       }
+      if (style.classTick === true && advance > 0) {
+        paintClassTick(fb, width, height, baseX, baseY, cellW, cellH, codepoint, colorMask, colorSlot);
+      }
       glyphIndex++;
       charIdx++;
       if (advance === 0) {
@@ -641,24 +767,45 @@ export async function renderChunkToPng(
     drawGrid(fb, width, height, fitLines.length, Math.max(0, Math.floor(style.gridCols ?? 0)), cellH, cellW, atlasH);
   }
 
-  // Invert to black-on-white (matches Python proxy).
-  for (let i = 0; i < fb.length; i++) fb[i] = 255 - fb[i]!;
+  // Optional ink dilate (pre-invert): thickens glyphs without changing cell pitch.
+  const dilate = Math.max(0, Math.floor(style.inkDilate ?? 0));
+  if (dilate > 0) {
+    const axis = style.inkDilateAxis === 'x' || style.inkDilateAxis === 'y' ? style.inkDilateAxis : 'both';
+    dilateInk(fb, width, height, dilate, axis);
+  }
+
+  // Invert to black-on-white unless style.invert === false (white-on-black).
+  if (style.invert !== false) {
+    for (let i = 0; i < fb.length; i++) fb[i] = 255 - fb[i]!;
+  }
+
+  // Optional mid-light paper: remap pure white (255) toward paperGray while keeping
+  // black ink at 0. Linear: g' = paper * g / 255. No cell-pitch change.
+  const paper = Math.max(0, Math.min(255, Math.floor(style.paperGray ?? 255)));
+  if (paper < 255) {
+    for (let i = 0; i < fb.length; i++) {
+      const g = fb[i]!;
+      fb[i] = Math.round((paper * g) / 255);
+    }
+  }
 
   let png: Uint8Array;
   if (colorMask) {
-    // colorCycle / colorByRole: AA-blend each inked pixel onto white in its palette color. markerRed ignored.
-    const palette = useColorByRole ? ROLE_PALETTE : GLYPH_PALETTE;
+    // colorCycle / colorByRole / colorByClass: AA-blend ink onto paper in palette color. markerRed ignored.
+    const palette = useColorByClass ? CLASS_PALETTE : useColorByRole ? ROLE_PALETTE : GLYPH_PALETTE;
     const rgb = new Uint8Array(width * height * 3);
     for (let i = 0; i < fb.length; i++) {
-      const g = fb[i]!; // post-invert: 0 = ink, 255 = background
+      const g = fb[i]!; // post-invert (+ optional paper): 0 = ink, paper = background
       const slot = colorMask[i]!;
       if (slot > 0) {
-        const coverage = 255 - g; // pre-invert coverage
+        // coverage relative to paper so AA fringes stay correct on mid-light bg
+        const coverage = paper <= 0 ? 0 : Math.round(((paper - g) * 255) / paper);
+        const cov = Math.max(0, Math.min(255, coverage));
         const [pr, pg, pb] = palette[(slot - 1) % palette.length]!;
-        // Alpha-blend: channel = 255 - coverage*(255-palette)/255
-        rgb[i * 3]     = Math.round(255 - coverage * (255 - pr!) / 255);
-        rgb[i * 3 + 1] = Math.round(255 - coverage * (255 - pg!) / 255);
-        rgb[i * 3 + 2] = Math.round(255 - coverage * (255 - pb!) / 255);
+        // Alpha-blend ink color onto paper: channel = paper - cov*(paper-palette)/255
+        rgb[i * 3]     = Math.round(paper - (cov * (paper - pr!)) / 255);
+        rgb[i * 3 + 1] = Math.round(paper - (cov * (paper - pg!)) / 255);
+        rgb[i * 3 + 2] = Math.round(paper - (cov * (paper - pb!)) / 255);
       } else {
         rgb[i * 3]     = g;
         rgb[i * 3 + 1] = g;

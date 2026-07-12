@@ -1,11 +1,12 @@
 # Grok image-recall receipt
 
-**Question:** OmniGlyph ships an opt-in Grok profile (dense effective 9×12 cell,
-84-col strip, 1-bit, with the verbatim fact-sheet beside the image). Grok is
-kept **fail-closed** — it stays in `UNVERIFIED_MODEL_BASES`
-(`src/core/applicability.ts`) and is never imaged unless an operator
-acknowledges the risk — until **our own** measurement shows it reads exact
-tokens back. Upstream's evidence was n=1 synthetic; this harness produces ours.
+**Question:** OmniGlyph ships an opt-in Grok profile (stock Spleen 5×8 cell on
+white AA, no grid, 152-col strip, 512px pages, with the in-image IDS block and
+the verbatim fact-sheet beside the image). Grok is kept **fail-closed** — it
+stays in `UNVERIFIED_MODEL_BASES` (`src/core/applicability.ts`) and is never
+imaged unless an operator acknowledges the risk — until **our own** measurement
+shows it reads exact tokens back. Upstream's evidence is synthetic (white 5×8 +
+IDS block: 7/7 with 4/4 exact on grok-4.5); this harness produces ours.
 
 This does **not** change any default. It only produces the receipt that can flip
 Grok to verified.
@@ -15,9 +16,11 @@ Grok to verified.
 Renders one synthetic session transcript — with embedded precision-critical
 tokens (12-char hex, a camelCase identifier, a file path, a CLI flag, a port) —
 **exactly as a production `grok-*` request would**: the geometry from
-`resolveModelProfile('grok-4.5')` (the shipped profile), a single portrait
-strip, the profile's page height. Then it asks the model a fixed battery and
-scores it:
+`resolveModelProfile('grok-4.5')` (the shipped profile), the in-image IDS block
+(`appendIdsBlock`, applied to every imaged render text in production), a single
+portrait strip, the profile's page height. Dry-run receipt for the fixture:
+1 page at 768×416 → 320 image tokens vs ≈1168 text tokens (chars÷4), ≈73%
+saved. Then it asks the model a fixed battery and scores it:
 
 - **4 exact-recall** questions (hex, camelCase, path, port).
 - **1 gist** question (the decided retry budget).
@@ -29,8 +32,8 @@ scores it:
 **exact 4/4 · 0 confabulations · gist ok · guard ok · positive savings.**
 
 Same bar as the model gate everywhere else. `grok-4.5` cleared this upstream on
-an n=1 synthetic fixture; re-clearing it here is what removes `grok` from
-`UNVERIFIED_MODEL_BASES`.
+synthetic fixtures (white 5×8 + IDS block); re-clearing it here is what removes
+`grok` from `UNVERIFIED_MODEL_BASES`.
 
 ## Run
 

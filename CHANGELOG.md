@@ -39,6 +39,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Changed
 
+- **feat(grok):** repack the opt-in Grok render profile from the dense
+  effective 9×12 cell to **stock Spleen 5×8 on white AA** — no grid, 152-col
+  strip (768px short-side floor), short 512px pages. Upstream re-measured
+  pure-image on grok-4.5: the dense cell confabulates exact IDs, while white
+  5×8 + an in-image **IDS block** is the stable exact-recall recipe. That IDS
+  block (`appendIdsBlock`: hex/uuid/camel/path/port tokens, one per rendered
+  row, max 16, deterministic) now rides inside **every** imaged path — the
+  Anthropic slab, tool results, collapsed history, and both OpenAI-wire slab
+  and history legs — as defense in depth beside the text fact-sheet. The
+  fact-sheet budget grows 64 → 96 tokens and `factSheetText` pages past the
+  262 KiB scan bound so late identifiers still surface. The OpenAI-wire
+  profitability gate now bills the **last page at its residual height** (not a
+  full strip) and uses the real **o200k** count as its default text baseline
+  (`grok-billing.test.ts` renders real PNGs and matches the gate token for
+  token). New render knobs (`inkDilate`/`inkDilateAxis`, `invert`,
+  `colorByClass`, `classTick`, `paperGray`) stay off in production and are
+  retunable per model via `OMNIGLYPH_MODEL_PROFILES`. Grok itself remains
+  **fail-closed** (`OMNIGLYPH_UNVERIFIED_MODELS` ack still required) pending
+  OmniGlyph's own reading receipt in `eval/grok-density`.
 - **test:** pin `OMNIGLYPH_MODELS` to the built-in default scope in the
   savings-math e2e so the file is deterministic regardless of a developer's
   ambient shell. The GPT cases drive `gpt-5.6`; a shell that exports a narrowed

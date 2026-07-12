@@ -1136,3 +1136,28 @@ describe('collapseHistory — opening task carried verbatim from the demoted hea
     expect(pointer.text).toContain('Reply as: balance=<n>, count=<m>, final=<n+m>.'); // tail kept
   });
 });
+
+describe('IDS block rides inside the collapsed history image', () => {
+  const profitable = isCompressionProfitable;
+
+  it('renders extra isolated ID rows when the collapsed turns carry precision tokens', async () => {
+    // Differential fixture: identical char lengths, one conversation carries
+    // eight extractable 12-char hex ids, the other same-length inert words.
+    // appendIdsBlock adds ≥ 9 rendered rows ('IDS' + 8 id lines) to the chunk.
+    const mk = (tok: (i: number) => string): Message[] => {
+      const msgs: Message[] = [];
+      for (let i = 0; i < 8; i++) {
+        msgs.push(usr(`please check value ${i} now ` + 'pad '.repeat(700)));
+        msgs.push(asst(`the stored value ${i} is ${tok(i)} confirmed`));
+      }
+      return msgs;
+    };
+    const opts = { keepTail: 0, minCollapsePrefix: 5, collapseChunk: 0 } as const;
+    const withIds = await collapseHistory(mk((i) => `a3f9c1e0b7d${i}`), profitable, opts);
+    const without = await collapseHistory(mk(() => 'zqwrtypsdfgh'), profitable, opts);
+    expect(withIds.info.collapsedImages).toBeGreaterThan(0);
+    expect(without.info.collapsedImages).toBeGreaterThan(0);
+    // Same source length; the id-bearing history must render more pixels.
+    expect(withIds.info.collapsedImagePixels).toBeGreaterThan(without.info.collapsedImagePixels);
+  });
+});

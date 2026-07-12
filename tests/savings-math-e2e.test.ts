@@ -162,10 +162,24 @@ describe('savings math — GPT, cross-checked against the real o200k tokenizer',
   });
 
   it('DECLINES A LOSER: refuses to image content where imaging would cost more than the real text', async () => {
-    // 2000-char slab: ~374 real tokens, but it would render to a ~1400-token image.
-    const sys = slab(2_000);
+    // Dense BPE-friendly slab: a long alphabet run costs very few o200k text
+    // tokens (~1.6k for 41.6k chars) but still fills ~2 vision pages (~2.1k
+    // image tokens) — a genuine loser. (The old 2k prose fixture no longer
+    // exercises the decline path: with the o200k baseline + residual last
+    // page, its real image cost is below its real text cost — declining it
+    // would have been the bug. A newline-heavy variant is marginal here
+    // because reflow's ↵ sentinels inflate the o200k side; the single-run
+    // fixture declines with a wide margin.)
+    const sys = 'abcdefghijklmnopqrstuvwxyz'.repeat(1_600);
     const realTok = o200k(sys);
-    const { event, out } = await driveAndCapture('/v1/chat/completions', gptBody(2_000));
+    const body = JSON.stringify({
+      model: 'gpt-5.6',
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: 'hello' },
+      ],
+    });
+    const { event, out } = await driveAndCapture('/v1/chat/completions', body);
     expect(event.info?.compressed).toBe(false);
     expect(event.info?.gateEval?.profitable).toBe(false);
     // The would-be image cost genuinely exceeds the real text cost → declining is correct.

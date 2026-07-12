@@ -4,6 +4,7 @@ import {
   extractFactSheetEntries,
   extractFactSheetEntriesAllPages,
   factSheetText,
+  appendIdsBlock,
   MAX_TOKENS,
 } from '../src/core/factsheet.js';
 
@@ -20,9 +21,9 @@ describe('camelCase identifier protection (LEGIBILITY-AUDIT residual misses)', (
   });
 
   it('never lets camelCase (tier 1) evict tier-0 SHAs', () => {
-    // 70 distinct lowercase-hex SHAs (tier 0) — more than the 64 budget on their own.
-    const shas = Array.from({ length: 70 }, (_, i) => `deadbeef${i.toString(16).padStart(4, '0')}`);
-    const camels = Array.from({ length: 70 }, (_, i) => `fooBarBaz${i}`);
+    // 120 distinct lowercase-hex SHAs (tier 0) — more than the 96 budget on their own.
+    const shas = Array.from({ length: 120 }, (_, i) => `deadbeef${i.toString(16).padStart(4, '0')}`);
+    const camels = Array.from({ length: 120 }, (_, i) => `fooBarBaz${String(i).padStart(3, '0')}`);
     const kept = extractFactSheetTokens([...shas, ...camels].join(' '));
     expect(kept.length).toBe(MAX_TOKENS);
     // The whole budget is tier-0 SHAs; no camelCase displaced one.
@@ -31,7 +32,9 @@ describe('camelCase identifier protection (LEGIBILITY-AUDIT residual misses)', (
   });
 
   it('caps and orders camelCase deterministically past the budget', () => {
-    const camels = Array.from({ length: 100 }, (_, i) => `alphaBetaGamma${i}`);
+    // Zero-padded suffixes: same length ⇒ no token is a substring of another,
+    // so the substring collapse keeps all 120 and only the budget caps them.
+    const camels = Array.from({ length: 120 }, (_, i) => `alphaBetaGamma${String(i).padStart(3, '0')}`);
     const a = extractFactSheetTokens(camels.join(' '));
     const b = extractFactSheetTokens([...camels].reverse().join(' '));
     expect(a.length).toBe(MAX_TOKENS);
@@ -96,11 +99,12 @@ describe('factsheet extraction', () => {
 
   it('caps the token budget', () => {
     const many = Array.from({ length: 200 }, (_, i) => `/dir${i}/file${i}.ts`).join(' ');
-    expect(extractFactSheetTokens(many).length).toBeLessThanOrEqual(64);
+    expect(MAX_TOKENS).toBe(96);
+    expect(extractFactSheetTokens(many).length).toBeLessThanOrEqual(96);
   });
 
   it('protects short high-consequence tokens from eviction by long URLs', () => {
-    // 80 long doc-URLs (well over the 64-token budget) plus a short commit SHA and a port —
+    // 80 long doc-URLs (well over the 96-token budget) plus a short commit SHA and a port —
     // the exact shape that silently dropped the SHA a coding agent needed off the image.
     const urls = Array.from({ length: 80 }, (_, i) =>
       `https://platform.claude.com/docs/en/build-with-claude/page-${String(i).padStart(2, '0')}-guide.md`);
@@ -108,8 +112,17 @@ describe('factsheet extraction', () => {
     const toks = extractFactSheetTokens(text);
     expect(toks).toContain('9d121ac');
     expect(toks).toContain('47821');
-    expect(toks.length).toBeLessThanOrEqual(64);
+    expect(toks.length).toBeLessThanOrEqual(96);
     expect(toks.filter((t) => t.startsWith('http')).length).toBeLessThanOrEqual(8);
+  });
+
+  it('pages factSheetText past MAX_SCAN so late identifiers still surface', () => {
+    // A unique tier-0 hex placed well beyond the 262,144-char single-pass scan
+    // bound: the un-paged extractor never sees it; paged factSheetText must.
+    const lateHex = 'f00dfaceb17'; // hex with digits, 11 chars
+    const text = 'filler words only here '.repeat(13_000) + ` commit ${lateHex} done`;
+    expect(text.length).toBeGreaterThan(262_144);
+    expect(factSheetText(text)).toContain(lateHex);
   });
 });
 
@@ -168,5 +181,45 @@ describe('ticket-style codes and occurrence counts', () => {
     const hit = kept.find((e) => e.token === 'TICK-42');
     expect(hit).toBeDefined();
     expect(hit!.count).toBe(5);
+  });
+});
+
+describe('appendIdsBlock (pure-image IDS rows for all models)', () => {
+  it('appends an IDS block with hex, camel, path, and port labels', () => {
+    const text = [
+      'Done. The token cache key is a3f9c1e0b7d2. I renamed the field to tokenLedgerShard',
+      'and moved the tier math into src/core/anthropic-vision.ts. Proxy stays on port 47821.',
+    ].join(' ');
+    const out = appendIdsBlock(text);
+    expect(out).toContain('\nIDS\n');
+    expect(out).toContain('hex a3f9c1e0b7d2');
+    expect(out).toContain('camel tokenLedgerShard');
+    expect(out).toContain('path src/core/anthropic-vision.ts');
+    expect(out).toContain('port 47821');
+    // original body preserved
+    expect(out.startsWith(text.trimEnd()) || out.includes('token cache key is a3f9c1e0b7d2')).toBe(true);
+  });
+
+  it('is idempotent — does not double-append', () => {
+    const text = 'key a3f9c1e0b7d2 path src/core/x.ts port 47821';
+    const once = appendIdsBlock(text);
+    expect(appendIdsBlock(once)).toBe(once);
+  });
+
+  it('is deterministic for cache stability', () => {
+    const text = 'hex a3f9c1e0b7d2 camel tokenLedgerShard path src/a/b.ts port 47821';
+    expect(appendIdsBlock(text)).toBe(appendIdsBlock(text));
+  });
+
+  it('returns the original text when nothing notable is present', () => {
+    expect(appendIdsBlock('the quick brown fox')).toBe('the quick brown fox');
+  });
+
+  it('caps the block at maxIds isolated rows, tier-0 first', () => {
+    const hexes = Array.from({ length: 20 }, (_, i) => `deadbeef${i.toString(16).padStart(4, '0')}`);
+    const out = appendIdsBlock(hexes.join(' '));
+    const idsLines = out.slice(out.indexOf('\nIDS\n') + 5).trimEnd().split('\n');
+    expect(idsLines.length).toBe(16);
+    expect(idsLines.every((l) => l.startsWith('hex deadbeef'))).toBe(true);
   });
 });

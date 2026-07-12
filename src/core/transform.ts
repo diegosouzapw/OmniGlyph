@@ -31,7 +31,7 @@ import {
   DENSE_CONTENT_CHARS_PER_IMAGE,
   DENSE_RENDER_STYLE,
 } from './render.js';
-import { factSheetText } from './factsheet.js';
+import { appendIdsBlock, factSheetText } from './factsheet.js';
 import { stripSchemaDescriptions, schemaHasStructure } from './schema-strip.js';
 import { bytesToBase64 } from './png.js';
 import { collapseHistory, HISTORY_SYNTHETIC_INTRO } from './history.js';
@@ -699,6 +699,12 @@ const DYNAMIC_BLOCK_TAGS = [
 const KNOWN_STATIC_TAGS = [
   // Claude Code
   'types',
+  // Nested under <available_skills> (static for a session; churn still observed)
+  'skill',
+  'name',
+  'description',
+  'location',
+  'available_references',
   // opencode (codex system prompts have no tag-shaped blocks)
   'example',
   'available_skills',
@@ -1134,7 +1140,7 @@ function lineRows(line: string, cols: number): number {
  *  many original newlines into one soft-wrapped stream must NOT inflate the row
  *  count. Treating ↵ as a break overstated image pages ~6× on reflowed history
  *  and flipped profitable collapses to not_profitable. */
-function countVisualRows(text: string, cols: number): number {
+export function countVisualRows(text: string, cols: number): number {
   let rows = 0;
   let lineStart = 0;
   const len = text.length;
@@ -1397,15 +1403,17 @@ export async function textToImageBlocks(
 }> {
   // Shrink before the numCols branch so gate and renderer see the same canvas width.
   // If shrinkage drops below the full width, stay single-col (avoid wasting a divider column).
-  const effectiveCols = shrinkWidth ? shrinkColsToContent(text, cols) : cols;
+  // IDS block: isolate precision tokens on their own rows (universal pure-image hex aid).
+  const renderText = appendIdsBlock(text);
+  const effectiveCols = shrinkWidth ? shrinkColsToContent(renderText, cols) : cols;
   const effectiveNumCols = effectiveCols < cols ? 1 : numCols;
   const imgs =
     effectiveNumCols > 1
-      ? await renderTextToPngsMultiCol(text, effectiveCols, effectiveNumCols)
+      ? await renderTextToPngsMultiCol(renderText, effectiveCols, effectiveNumCols)
       // Single-col dense: shrink the page-cols base to content so the renderer matches
       // the gate (denseGateGeometry uses page.cols, priced via shrinkColsToContent).
       // Was hard-coded to DENSE_CONTENT_COLS, which threw away the shrink the gate assumed.
-      : await renderTextToPngsCached(text, shrinkColsToContent(text, page.cols), page.charsPerImage, DENSE_RENDER_STYLE, page.maxHeightPx);
+      : await renderTextToPngsCached(renderText, shrinkColsToContent(renderText, page.cols), page.charsPerImage, DENSE_RENDER_STYLE, page.maxHeightPx);
   let droppedChars = 0;
   let pixels = 0;
   const droppedCodepoints = new Map<number, number>();
@@ -1775,7 +1783,8 @@ export async function transformRequest(
     columnNoteImg +
     reflowNoteImg +
     '\n====================== BEGIN RENDERED CONTEXT ======================\n';
-  const combinedWithHeader = imageInstructionHeader + combined;
+  // IDS block on the imaged slab (same pure-image isolation as the GPT/Grok legs).
+  const combinedWithHeader = appendIdsBlock(imageInstructionHeader + combined);
   // Shrink the canvas to the longest actual line in what we'll *render*,
   // so the gate's prediction and the renderer's output agree at the smallest
   // legible width. The banner above sets the natural floor — no separate
