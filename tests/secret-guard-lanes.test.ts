@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { transformRequest } from '../src/core/transform.js';
+import { transformRequest, isCompressionProfitable } from '../src/core/transform.js';
+import { collapseHistory } from '../src/core/history.js';
+import type { Message } from '../src/core/types.js';
 
 const SECRET = 'sk-live-abcdefghijklmnop1234';
 const enc = new TextEncoder();
@@ -195,5 +197,58 @@ describe('recoverable channel under the guard (info.recoverable[].text)', () => 
     const { info } = await transformRequest(toolResultStringReq(), { emitRecoverable: true });
     expect(info.recoverable?.length ?? 0).toBeGreaterThan(0);
     expect(info.recoverable![0]!.text).toBe(`${SECRET} ${BIG_TAIL}`);
+  });
+});
+
+// 12 micro-turns, same shape as history.test.ts's "packs micro histories via
+// reflow" fixture (keepTail:0, minCollapsePrefix:5, collapseChunk:0 — reflow
+// packs the strip so the profitability gate accepts it). The secret rides in
+// turn 3 (an ASSISTANT turn), never in the LAST collapsed user turn (turn 10,
+// plain "q10") — latestCollapsedUserPointer reads raw message content by
+// design (it is the verbatim carrier for the one turn that isn't imaged at
+// full fidelity) and is out of this task's scope, so the fixture must not
+// depend on it being guarded.
+function secretHistoryMsgs(): Message[] {
+  const msgs: Message[] = [];
+  for (let i = 0; i < 12; i++) {
+    if (i === 3) {
+      msgs.push({ role: 'assistant', content: `a${i} DEPLOY_TOKEN=${SECRET}` });
+    } else if (i % 2 === 0) {
+      msgs.push({ role: 'user', content: `q${i}` });
+    } else {
+      msgs.push({ role: 'assistant', content: `a${i}` });
+    }
+  }
+  return msgs;
+}
+const historyCollapseOpts = { keepTail: 0, minCollapsePrefix: 5, collapseChunk: 0 } as const;
+
+describe('Anthropic history lane', () => {
+  it('off (default): collapses exactly as before the guard existed, secretHits absent', async () => {
+    const { info } = await collapseHistory(secretHistoryMsgs(), isCompressionProfitable, historyCollapseOpts);
+    expect(info.reason).toBeUndefined();
+    expect(info.collapsedImages).toBeGreaterThan(0);
+    expect(info.secretHits ?? 0).toBe(0);
+  });
+
+  it('text: a secret-bearing history does not collapse into images', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'text';
+    const fixture = secretHistoryMsgs();
+    const { messages, info } = await collapseHistory(fixture, isCompressionProfitable, historyCollapseOpts);
+    expect(info.reason).toBe('secret_kept_text');
+    expect(info.collapsedImages).toBe(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    expect(messages).toBe(fixture); // unchanged reference — history stays native text
+  });
+
+  it('redact: history still collapses; the secret never rides in the returned messages as plaintext', async () => {
+    process.env.OMNIGLYPH_GUARD_SECRETS = 'redact';
+    const { messages, info } = await collapseHistory(secretHistoryMsgs(), isCompressionProfitable, historyCollapseOpts);
+    expect(info.collapsedImages).toBeGreaterThan(0);
+    expect(info.secretHits).toBeGreaterThan(0);
+    // The secret only ever reached the renderer/factsheet through the guarded
+    // (masked) string — the collapsed history image is pixels, and every text
+    // block riding alongside it (factsheet, recency pointer) must be clean too.
+    expect(JSON.stringify(messages)).not.toContain(SECRET);
   });
 });

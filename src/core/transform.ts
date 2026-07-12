@@ -679,7 +679,8 @@ export interface TransformInfo {
     | 'not_profitable'
     | 'too_many_images'
     | 'render_empty'
-    | 'collapsed';
+    | 'collapsed'
+    | 'secret_kept_text';
   /** Token count of the pre-compression body from /v1/messages/count_tokens (free).
    *  Absent when probe failed — event excluded from savings rollup. */
   baselineTokens?: number;
