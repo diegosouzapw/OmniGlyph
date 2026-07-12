@@ -15,6 +15,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Added
 
+- **feat(transform):** new `compressSystem` option (default `true`, behavior
+  unchanged). With `false`, the session config is never imaged: the system
+  field passes through byte-identical, tool docs stay in `tools[]` unstubbed,
+  the first user message keeps its layout, and head `<system-reminder>`
+  blocks survive history collapse verbatim — while tool_results and collapsed
+  history still image. On the Node host, `OMNIGLYPH_KEEP_SYSTEM_TEXT=1` (or
+  `{"keepSystemText": true}` in the config file) turns the mode on. Guard for
+  Anthropic's reasoning_extraction refusal classifier, which fires on
+  system-prompt-shaped content rendered inside user-message images (measured
+  upstream: 2.6% refusals on reminder-imaged requests vs 0% uncompressed).
+  (thanks @adrade2)
 - **feat(grok):** opt-in support for xAI **Grok** on the OpenAI-compatible wire.
   Grok renders at an effective 9×12 cell (denser than the 5×8 default) with the
   verbatim fact-sheet, is priced by a measured ~1000 tokens/megapixel model and

@@ -99,6 +99,15 @@ function applyConfigFileDefaults(): void {
     const models = normalizeModelsConfig(cfg.models);
     if (models !== undefined) process.env.OMNIGLYPH_MODELS = models;
   }
+  if (
+    process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT === undefined &&
+    typeof (cfg as { keepSystemText?: unknown }).keepSystemText === 'boolean'
+  ) {
+    process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT = (cfg as { keepSystemText: boolean })
+      .keepSystemText
+      ? '1'
+      : '0';
+  }
 }
 
 export function parseCli(argv: string[]): RuntimeConfig {
@@ -922,6 +931,15 @@ async function main(): Promise<void> {
       // still logging real usage + count_tokens baselines to its own OMNIGLYPH_LOG.
       // (The dashboard kill switch does the same thing at runtime.)
       if (forcePassthrough || !dashboard.getCompressionEnabled()) return { compress: false };
+      // OMNIGLYPH_KEEP_SYSTEM_TEXT: session config (system prompt, tool docs,
+      // <system-reminder> init blocks) stays native text; only tool_results
+      // and collapsed history image. Guards against Anthropic's
+      // reasoning_extraction refusal classifier, which fires on system-
+      // prompt-shaped content rendered inside user-message images (2.6% of
+      // reminder-imaged requests vs 0% uncompressed, events.jsonl 2026-07-11).
+      if (/^(1|true|on|yes)$/i.test(process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT ?? '')) {
+        return { compressSystem: false, compressTools: false, compressReminders: false };
+      }
       // Active path: use DEFAULTS in transform.ts for break-even gating.
       return {};
     },
