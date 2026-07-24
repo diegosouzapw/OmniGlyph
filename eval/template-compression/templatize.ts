@@ -5,13 +5,14 @@
 // asserts — skeleton + row values reconstruct each original line exactly, and
 // blocks stay in original position (contiguous runs only, so nothing reorders).
 
-// For public API, SENTINEL is empty (skeletonize returns skeletons without visible markers).
-// Internally, we use an invisible marker for split/join operations.
-export const SENTINEL = '';
+// SENTINEL is an in-band record-separator marker. skeletonize replaces every
+// digit run with it, so the skeleton does double duty: it groups lines by
+// identical variable LAYOUT (same marker positions AND count), and it splits
+// cleanly for reconstruction. Grouping on a marker-less skeleton would merge
+// lines whose digits sit in different places (e.g. `a1b1c` and `ab4c4` both
+// reduce to `abc`) and corrupt reconstruction — the marker keeps layouts distinct.
+export const SENTINEL = '\x1E';
 export const MIN_RUN = 3;
-
-// Internal marker using record separator character (invisible in normal use)
-const INTERNAL_MARKER = '\x1E';
 
 export interface SkeletonResult {
   skeleton: string;
@@ -27,16 +28,6 @@ export function skeletonize(line: string): SkeletonResult {
   return { skeleton, values };
 }
 
-// Convert skeleton from public format (no markers) to internal format (with markers)
-function internalizeSkeletonize(line: string): { skeleton: string; values: string[] } {
-  const values: string[] = [];
-  const skeleton = line.replace(/[0-9]+/g, (m) => {
-    values.push(m);
-    return INTERNAL_MARKER;
-  });
-  return { skeleton, values };
-}
-
 export type Segment =
   | { kind: 'raw'; lines: string[] }
   | { kind: 'group'; skeleton: string; rows: string[][] };
@@ -46,7 +37,7 @@ export interface TemplateMapping {
 }
 
 function skeletonToTemplate(skeleton: string): string {
-  return skeleton.split(INTERNAL_MARKER).join('{}');
+  return skeleton.split(SENTINEL).join('{}');
 }
 
 export function templatize(text: string): { text: string; mapping: TemplateMapping } {
@@ -54,21 +45,21 @@ export function templatize(text: string): { text: string; mapping: TemplateMappi
   const segments: Segment[] = [];
   let i = 0;
   while (i < lines.length) {
-    const { skeleton: publicSkeleton, values } = skeletonize(lines[i]!);
+    const { skeleton, values } = skeletonize(lines[i]!);
     // A run is templatable only if the skeleton actually has a variable slot.
     if (values.length > 0) {
       let j = i + 1;
       const rows: string[][] = [values];
       while (j < lines.length) {
         const next = skeletonize(lines[j]!);
-        if (next.skeleton !== publicSkeleton || next.values.length === 0) break;
+        // Marker-bearing skeleton: identical string ⇒ identical variable layout,
+        // so every grouped row has the same slot count and positions (lossless).
+        if (next.skeleton !== skeleton) break;
         rows.push(next.values);
         j++;
       }
       if (rows.length >= MIN_RUN) {
-        // Store internal skeleton (with markers) in mapping
-        const { skeleton: internalSkeleton } = internalizeSkeletonize(lines[i]!);
-        segments.push({ kind: 'group', skeleton: internalSkeleton, rows });
+        segments.push({ kind: 'group', skeleton, rows });
         i = j;
         continue;
       }
@@ -99,7 +90,7 @@ export function reconstruct(mapping: TemplateMapping): string {
       out.push(seg.lines.join('\n'));
       continue;
     }
-    const parts = seg.skeleton.split(INTERNAL_MARKER);
+    const parts = seg.skeleton.split(SENTINEL);
     for (const row of seg.rows) {
       let line = parts[0]!;
       for (let k = 0; k < row.length; k++) line += row[k]! + parts[k + 1]!;

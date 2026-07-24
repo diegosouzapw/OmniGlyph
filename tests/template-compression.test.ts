@@ -4,7 +4,7 @@ import { templatize, reconstruct, skeletonize } from '../eval/template-compressi
 describe('templatize', () => {
   it('skeletonizes digit runs and captures values in order', () => {
     expect(skeletonize('worker-7 request 4832 failed after 30 sec')).toEqual({
-      skeleton: 'worker- request  failed after  sec',
+      skeleton: 'worker-\x1E request \x1E failed after \x1E sec',
       values: ['7', '4832', '30'],
     });
   });
@@ -54,5 +54,13 @@ describe('templatize', () => {
     ].join('\n');
     expect(reconstruct(templatize(raw).mapping)).toBe(raw);
     expect(templatize(raw).text).toContain('Template: {} apples');
+  });
+
+  it('stays lossless when digit positions differ across same-letter lines', () => {
+    // 'a1b1c'/'a2b2c'/'a3b3c' share the layout 'a{}b{}c'; 'ab4c4' has the same
+    // letters but a DIFFERENT digit layout ('ab{}c{}'). Grouping on a marker-less
+    // skeleton would merge it and corrupt the round-trip — the marker prevents that.
+    const raw = ['a1b1c', 'a2b2c', 'a3b3c', 'ab4c4'].join('\n');
+    expect(reconstruct(templatize(raw).mapping)).toBe(raw);
   });
 });
