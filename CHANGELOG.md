@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
+  The stock bitmap `K` was `H` with a single crossbar pixel removed (Hamming 1) —
+  the worst confusable pair in the atlas, so an imaged `K` could be read back as
+  `H`. `gen-atlas.ts` now repaints `K` to a diagonal-legged cell (Hamming ≥ 6
+  from every other ASCII glyph), regenerating both the 1-bit and grayscale
+  atlases; a confusability guard in `tests/render.test.ts` fails closed if any
+  alphanumeric pair ever regresses to ≤ 1 px apart. (thanks @dhruvraajeev)
+
 ## [1.3.1] — 2026-07-12
 
 Docs-only. Syncs the npm package page with the corrected 1.3.0 documentation
