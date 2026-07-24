@@ -116,7 +116,7 @@ Expected: FAIL — `Cannot find module '../eval/template-compression/templatize.
 // asserts — skeleton + row values reconstruct each original line exactly, and
 // blocks stay in original position (contiguous runs only, so nothing reorders).
 
-export const SENTINEL = '';
+export const SENTINEL = '\x1E'; // real in-band marker — NOT '' (see fix commit 5c58d26)
 export const MIN_RUN = 3;
 
 export interface SkeletonResult {
