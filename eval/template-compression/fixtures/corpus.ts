@@ -6,11 +6,17 @@ export interface Sample {
   queries: Query[];
 }
 
-const workerLog = Array.from({ length: 40 }, (_, k) =>
+// Repetitive samples are large ON PURPOSE. Image billing is page/tile-quantized:
+// templating cuts characters, but that only cuts TOKENS once the shorter text
+// saves whole rendered pages. A 40-line log fits one page in both arms → 0%
+// measured reduction even though the templated text is far shorter. Realistic
+// verbose dumps (logs, big test runs) are hundreds of lines, so the corpus uses
+// that scale — where the raw arm spills to multiple pages and the win is real.
+const workerLog = Array.from({ length: 800 }, (_, k) =>
   `worker-${(k % 8) + 1} request ${4800 + k} failed after ${30 * ((k % 3) + 1)} sec`,
 ).join('\n');
 
-const gitLog = Array.from({ length: 24 }, (_, k) =>
+const gitLog = Array.from({ length: 800 }, (_, k) =>
   `commit ${1000 + k} by dev${(k % 4) + 1} at 2026-07-${String((k % 28) + 1).padStart(2, '0')} +0300`,
 ).join('\n');
 
@@ -32,7 +38,7 @@ export const CORPUS: Sample[] = [
   {
     id: 'best-test-runner',
     tier: 'best',
-    text: Array.from({ length: 30 }, (_, k) =>
+    text: Array.from({ length: 800 }, (_, k) =>
       `test_case_${k} ... ok (${5 + (k % 9)} ms)`,
     ).join('\n'),
     queries: [
@@ -53,12 +59,13 @@ export const CORPUS: Sample[] = [
     tier: 'typical',
     text: [
       'total 48',
-      ...Array.from({ length: 12 }, (_, k) =>
-        `-rw-r--r-- 1 user user ${100 + k * 7} Jul ${10 + k} file_${k}.ts`,
+      ...Array.from({ length: 800 }, (_, k) =>
+        `-rw-r--r-- 1 user user ${1000 + k * 7} file_${k}.ts`,
       ),
     ].join('\n'),
     queries: [
-      { id: 'q-size-file5', q: 'What is the byte size of file_5.ts?', exact: '135' },
+      // file_5 → 1000 + 5*7 = 1035 (unique: no file_1035 in range, no other size 1035).
+      { id: 'q-size-file5', q: 'What is the byte size of file_5.ts?', exact: '1035' },
     ],
   },
   {
