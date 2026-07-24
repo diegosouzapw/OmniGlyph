@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { renderTextToImages } from '../../dist/core/library.js';
+import { renderTextToImages } from '../../src/core/library.js';
 import { scoreAnswer } from '../../benchmarks/density-frontier/score.js';
 import { templatize } from './templatize.js';
 import type { Query } from './fixtures/corpus.js';

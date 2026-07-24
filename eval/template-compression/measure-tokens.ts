@@ -1,5 +1,8 @@
-import { renderTextToImages } from '../../dist/core/library.js';
-import { visionTokensForModel } from '../../dist/core/openai.js';
+// Import from src (not dist): this harness runs via tsx, and the vitest tests
+// that exercise it must resolve without a prior `pnpm run build` (CI runs
+// `pnpm test` with no build step — dist/ imports collect 0 tests there).
+import { renderTextToImages } from '../../src/core/library.js';
+import { visionTokensForModel } from '../../src/core/openai.js';
 import { templatize } from './templatize.js';
 
 export interface ArmCost { imageTokens: number; pages: number }
