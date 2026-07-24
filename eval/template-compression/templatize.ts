@@ -11,6 +11,10 @@
 // cleanly for reconstruction. Grouping on a marker-less skeleton would merge
 // lines whose digits sit in different places (e.g. `a1b1c` and `ab4c4` both
 // reduce to `abc`) and corrupt reconstruction — the marker keeps layouts distinct.
+// Precondition: input text is assumed free of the U+001E record-separator
+// char (SENTINEL itself would be mistaken for a digit-run marker). Not
+// enforced here — the harness's per-sample reconstruct === text assertion
+// catches any violation.
 export const SENTINEL = '\x1E';
 export const MIN_RUN = 3;
 

@@ -2,13 +2,16 @@ import { parseArgs } from 'node:util';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { CORPUS } from './fixtures/corpus.js';
+import { CORPUS, type Sample } from './fixtures/corpus.js';
 import { measureSample } from './measure-tokens.js';
 import { readArm, type ReadOutcome } from './read-ab.js';
+
+type TaggedReadOutcome = ReadOutcome & { tier: Sample['tier'] };
 
 export interface VerdictInput {
   repetitiveReductionPct: number; templatedRecall: number; rawRecall: number;
   confabulations: number; worstReductionPct: number; worstRecallDelta: number;
+  totalReads: number;
 }
 export function verdict(v: VerdictInput): { go: boolean; reasons: string[] } {
   const reasons: string[] = [];
@@ -16,6 +19,9 @@ export function verdict(v: VerdictInput): { go: boolean; reasons: string[] } {
   if (v.templatedRecall < v.rawRecall) reasons.push(`recall regressed ${v.rawRecall}→${v.templatedRecall}`);
   if (v.confabulations > 0) reasons.push(`${v.confabulations} confabulation(s)`);
   if (v.worstRecallDelta < 0) reasons.push('worst-tier accuracy harmed');
+  if (v.worstReductionPct < -1) reasons.push('worst-tier tokens bloated');
+  if (v.totalReads === 0) reasons.push('no reads occurred — reading safety unverified');
+  if (v.rawRecall < 0.5) reasons.push(`raw-arm recall ${v.rawRecall.toFixed(2)} < 0.5 — setup/model unreliable, cannot certify`);
   return { go: reasons.length === 0, reasons };
 }
 
@@ -29,7 +35,10 @@ async function main(): Promise<void> {
     reps: { type: 'string', default: '3' },
   } });
   const model = values.model as string;
-  const reps = Number(values.reps);
+  // Math.max(1, ...) guards against a malformed --reps (e.g. "0", "abc", "-2")
+  // silently producing zero reads per arm — verdict()'s totalReads gate exists
+  // specifically to catch that case, so main() must not manufacture it.
+  const reps = Math.max(1, Math.floor(Number(values.reps)) || 1);
 
   const tokenRows = [];
   for (const s of CORPUS) tokenRows.push({ id: s.id, tier: s.tier, ...(await measureSample(s.text, model)) });
@@ -40,20 +49,26 @@ async function main(): Promise<void> {
   const result: Record<string, unknown> = { model, tokenRows, repetitiveReductionPct, worstReductionPct };
 
   if (!values['dry-run']) {
-    const reads: ReadOutcome[] = [];
+    // Tag each outcome with its sample's tier so the worst-tier recall delta
+    // (the actual harm signal verdict() gates on) can be isolated from the
+    // repetitive-tier reads that dominate the pooled recall numbers.
+    const reads: TaggedReadOutcome[] = [];
     for (const s of CORPUS) {
-      reads.push(...await readArm('raw', s.text, s.queries, model, reps));
-      reads.push(...await readArm('templated', s.text, s.queries, model, reps));
+      for (const r of await readArm('raw', s.text, s.queries, model, reps)) reads.push({ ...r, tier: s.tier });
+      for (const r of await readArm('templated', s.text, s.queries, model, reps)) reads.push({ ...r, tier: s.tier });
     }
     const templated = reads.filter((r) => r.arm === 'templated');
     const raw = reads.filter((r) => r.arm === 'raw');
+    const worstRawRecall = recallOf(raw.filter((r) => r.tier === 'worst'));
+    const worstTemplatedRecall = recallOf(templated.filter((r) => r.tier === 'worst'));
     const v = verdict({
       repetitiveReductionPct,
       templatedRecall: recallOf(templated),
       rawRecall: recallOf(raw),
       confabulations: templated.filter((r) => r.outcome === 'silent_wrong').length,
       worstReductionPct,
-      worstRecallDelta: 0,
+      worstRecallDelta: worstTemplatedRecall - worstRawRecall,
+      totalReads: reads.length,
     });
     Object.assign(result, { reads, verdict: v });
     console.log(v.go ? 'GO' : 'NO-GO', v.reasons.join('; '));

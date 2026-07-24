@@ -4,7 +4,7 @@
 // injected into readArm with the real transport as the default so production
 // callers need no wiring, while tests can pass a stub and stay $0/offline.
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renderTextToImages } from '../../dist/core/library.js';
@@ -32,22 +32,26 @@ export type AskImages = (pngs: Uint8Array[], q: Query, model: string) => Promise
  *  of contaminating the silent-wrong rate. */
 export async function askImages(pngs: Uint8Array[], q: Query, model: string): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'tc-read-'));
-  const paths = pngs.map((png, k) => {
-    const p = join(dir, `page-${k}.png`);
-    writeFileSync(p, png);
-    return p;
-  });
-  const prompt =
-    `Read the attached page image(s): ${paths.join(', ')}. ` +
-    `Answer ONLY with the exact value, no prose. If you cannot read it, answer exactly ILEGIVEL. ` +
-    `Question: ${q.q}`;
-  const res = spawnSync(
-    'claude',
-    ['-p', prompt, '--model', model, '--allowedTools', 'Read', '--disallowedTools', 'Bash'],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-  );
-  if (res.status !== 0 || !res.stdout) return '[API_ERROR]';
-  return res.stdout.trim();
+  try {
+    const paths = pngs.map((png, k) => {
+      const p = join(dir, `page-${k}.png`);
+      writeFileSync(p, png);
+      return p;
+    });
+    const prompt =
+      `Read the attached page image(s): ${paths.join(', ')}. ` +
+      `Answer ONLY with the exact value, no prose. If you cannot read it, answer exactly ILEGIVEL. ` +
+      `Question: ${q.q}`;
+    const res = spawnSync(
+      'claude',
+      ['-p', prompt, '--model', model, '--allowedTools', 'Read', '--disallowedTools', 'Bash'],
+      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+    );
+    if (res.status !== 0 || !res.stdout) return '[API_ERROR]';
+    return res.stdout.trim();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 export async function readArm(

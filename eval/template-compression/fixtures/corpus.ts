@@ -72,12 +72,12 @@ export const CORPUS: Sample[] = [
     id: 'worst-prose',
     tier: 'worst',
     text: [
-      'The migration completed in three phases over the weekend.',
+      'The migration completed in 3 phases over the weekend.',
       'First we drained the queue, then swapped the primary, then re-enabled writes.',
       'No incident was declared and the on-call engineer signed off at midnight.',
     ].join('\n'),
     queries: [
-      { id: 'q-phases', q: 'How many phases did the migration take (as the word used)?', exact: 'three' },
+      { id: 'q-phases', q: 'How many phases did the migration take?', exact: '3' },
     ],
   },
   {

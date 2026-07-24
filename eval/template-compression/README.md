@@ -18,7 +18,7 @@ Outputs token-reduction percentages for repetitive tiers ('best', 'typical') and
 pnpm exec tsx eval/template-compression/run.ts [--model <id>] [--reps <n>]
 ```
 
-Reads all corpus samples in both raw and templated arms via the `claude` CLI, scores answers, and computes a go/no-go verdict. Requires `ANTHROPIC_API_KEY` in env and the `claude` CLI installed. Default model: `claude-fable-5`; default reps: 3.
+Reads all corpus samples in both raw and templated arms via the `claude` CLI, scores answers, and computes a go/no-go verdict. Requires the `claude` CLI on `PATH` (Claude Code subscription; $0) — no API key needed. Default model: `claude-fable-5`; default reps: 3.
 
 Output: 'GO' or 'NO-GO' plus reason(s), and `results.json` with full measurements and read outcomes.
 
