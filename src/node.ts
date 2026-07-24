@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, resolveUpstreams, type ProxyConfig } from './core/proxy.js';
 import { resolveOpenAIApiKey } from './node-auth.js';
+import { skipReasonTag } from './log-tags.js';
 import {
   parseExportArgv,
   runExportCore,
@@ -995,7 +996,7 @@ async function main(): Promise<void> {
       const extraTag = extra.length > 0 ? ` (${extra.join(' ')})` : '';
       const tag = e.info?.compressed
         ? `compressed ${e.info.origChars}ch → ${e.info.imageCount}img/${e.info.imageBytes}B${extraTag}`
-        : (e.info?.reason ?? '');
+        : skipReasonTag(e.info?.reason);
       const cacheRead = e.usage?.cache_read_input_tokens ?? 0;
       const inputTokens = e.usage?.input_tokens ?? 0;
       const usageTag =

@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Changed
+
+- **fix(logs):** the console request line now tags a skipped conversion as
+  `savings:skip(<reason>)` instead of a bare reason word, so skip reasons are
+  greppable in `omniglyph` stdout and `wrangler tail`. Extracted to a pure
+  `skipReasonTag` helper shared by the Node and Worker hosts.
+
 ## [1.3.1] — 2026-07-12
 
 Docs-only. Syncs the npm package page with the corrected 1.3.0 documentation
