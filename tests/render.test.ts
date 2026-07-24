@@ -29,6 +29,7 @@ import {
   atlasRank,
   ATLAS_CELL_H,
   ATLAS_CELL_W,
+  ATLAS_OFFSETS,
   ATLAS_PIXELS,
   ATLAS_WIDE_FLAGS,
   ATLAS_NUM_GLYPHS,
@@ -2605,5 +2606,51 @@ describe('IDS block on the imaged Anthropic slab', () => {
     expect(imaged).toContain('\nIDS\n');
     expect(imaged).toContain('hex a3f9c1e0b7d2');
     expect(imaged).toContain('port 47821');
+  });
+});
+
+// Spleen 5×8 glyph-confusability guard. The stock font's 'K' is 'H' with a
+// single crossbar pixel removed (Hamming 1) — indistinguishable once the page
+// downscales, so imaged 'K' reads back as 'H'. gen-atlas.ts surgeries 'K' to a
+// diagonal-legged bitmap; this guard fails closed if that regresses. Letters
+// and digits only — the recall-critical classes (identifiers, hex). Punctuation
+// pairs that sit at d=1 by design (',;' '.:' — same 5×8 box) are out of scope.
+describe('Spleen 5×8 glyph confusability', () => {
+  const decode = (ch: string): Uint8Array => {
+    const rank = atlasRank(ch.codePointAt(0)!);
+    expect(rank).toBeGreaterThanOrEqual(0);
+    const wide = ATLAS_WIDE_FLAGS[rank] === 1;
+    const w = wide ? 2 * ATLAS_CELL_W : ATLAS_CELL_W;
+    const base = ATLAS_OFFSETS[rank]!;
+    const bits = new Uint8Array(w * ATLAS_CELL_H);
+    for (let p = 0; p < bits.length; p++) {
+      const bit = base + p;
+      bits[p] = (ATLAS_PIXELS[bit >>> 3]! >>> (7 - (bit & 7))) & 1;
+    }
+    return bits;
+  };
+  const hamming = (a: Uint8Array, b: Uint8Array): number => {
+    let d = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+    return d;
+  };
+
+  it('renders K far from H (surgery applied)', () => {
+    expect(hamming(decode('K'), decode('H'))).toBeGreaterThanOrEqual(6);
+  });
+
+  it('keeps every alphanumeric pair distinguishable (Hamming ≥ 2)', () => {
+    const chars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'.split('');
+    const glyphs = chars.map(decode);
+    let worst = { a: '', b: '', d: Infinity };
+    for (let i = 0; i < glyphs.length; i++)
+      for (let j = i + 1; j < glyphs.length; j++) {
+        const d = hamming(glyphs[i]!, glyphs[j]!);
+        if (d < worst.d) worst = { a: chars[i]!, b: chars[j]!, d };
+      }
+    // No two distinct alphanumeric glyphs may collide (d=0) or differ by a
+    // single pixel (d=1, the K/H defect the surgery removed).
+    expect(worst.d, `closest pair '${worst.a}'~'${worst.b}' d=${worst.d}`).toBeGreaterThanOrEqual(2);
   });
 });
