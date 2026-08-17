@@ -8,6 +8,12 @@ export type OmniGlyphApplicabilityReason =
   | 'empty_body'
   | 'model_unverified';
 
+export type OmniGlyphSafetyScope =
+  | 'coding-safe'
+  | 'balanced'
+  | 'aggressive'
+  | 'passthrough';
+
 export interface OmniGlyphApplicabilityInput {
   readonly model?: string | null;
   readonly method?: string | null;
@@ -45,7 +51,7 @@ let runtimeModelBases: readonly string[] | null = null;
  *  ~2pp arithmetic, 6/15 dense-hex recall vs Fable's 100/100; GPT 5.5 likewise
  *  degrades on imaged history/context) — so silently imaging them is the wrong
  *  default. Both stay opt-in via the dashboard chips or OMNIGLYPH_MODELS. */
-const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gpt-5.6'];
+export const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gpt-5.6'] as const;
 
 function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
@@ -66,9 +72,48 @@ function envOrDefaultBases(): string[] {
   return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function allowedModelBases(): string[] {
+function configuredModelBases(): string[] {
   if (runtimeModelBases !== null) return [...runtimeModelBases];
   return envOrDefaultBases();
+}
+
+function parseSafetyScope(raw: string | undefined): OmniGlyphSafetyScope {
+  const value = (raw ?? '').trim().toLowerCase();
+  if (!value || value === 'aggressive' || value === 'legacy') return 'aggressive';
+  if (value === 'safe' || value === 'coding' || value === 'coding-safe') {
+    return 'coding-safe';
+  }
+  if (value === 'balanced') return 'balanced';
+  return 'passthrough';
+}
+
+function activeSafetyScope(): OmniGlyphSafetyScope {
+  const raw = typeof process !== 'undefined' ? process.env?.OMNIGLYPH_PROFILE : undefined;
+  return parseSafetyScope(raw);
+}
+
+function modelBaseMatches(id: string, candidate: string): boolean {
+  const target = candidate.toLowerCase();
+  return id === target || id.startsWith(`${target}-`);
+}
+
+function safetyAllowsConfiguredBase(
+  candidate: string,
+  scope: OmniGlyphSafetyScope,
+): boolean {
+  if (scope === 'passthrough') return false;
+  if (scope === 'aggressive') return true;
+  const id = baseModelId(candidate).toLowerCase();
+  return DEFAULT_MODEL_BASES.some((safe) => modelBaseMatches(id, safe));
+}
+
+function allowedModelBasesForScope(scope: OmniGlyphSafetyScope): string[] {
+  return configuredModelBases().filter((candidate) =>
+    safetyAllowsConfiguredBase(candidate, scope));
+}
+
+function allowedModelBases(): string[] {
+  return allowedModelBasesForScope(activeSafetyScope());
 }
 
 /** Current effective allowed-model scope (Claude + GPT). */
@@ -89,20 +134,32 @@ export function setAllowedModelBases(list: readonly string[] | null): void {
 
 /** Membership test against the single allowed scope. Matches exact base or `-suffix`
  *  alias; [variant] tags stripped first. */
-function isAllowed(model: string | null | undefined): boolean {
+function isAllowedForScope(
+  model: string | null | undefined,
+  scope: OmniGlyphSafetyScope,
+): boolean {
   if (typeof model !== 'string') return false;
-  const base = baseModelId(model);
-  return allowedModelBases().some((b) => base === b || base.startsWith(`${b}-`));
+  const base = baseModelId(model).toLowerCase();
+  return allowedModelBasesForScope(scope).some((candidate) =>
+    modelBaseMatches(base, candidate));
+}
+
+/** Pure model gate for an explicitly selected semantic compression profile. */
+export function isOmniGlyphSupportedModelForScope(
+  model: string | null | undefined,
+  scope: OmniGlyphSafetyScope,
+): boolean {
+  return isAllowedForScope(model, scope);
 }
 
 /** True when OmniGlyph may transform this Anthropic model. */
 export function isOmniGlyphSupportedModel(model: string | null | undefined): boolean {
-  return isAllowed(model);
+  return isAllowedForScope(model, activeSafetyScope());
 }
 
 /** True when OmniGlyph may transform this GPT model. Shares the single OMNIGLYPH_MODELS scope. */
 export function isOmniGlyphSupportedGptModel(model: string | null | undefined): boolean {
-  return isAllowed(model);
+  return isAllowedForScope(model, activeSafetyScope());
 }
 
 /** Canonical set of Anthropic Messages routes OmniGlyph transforms. Shared with

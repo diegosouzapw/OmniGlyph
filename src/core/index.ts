@@ -3,10 +3,12 @@ export {
   getConfiguredModelBases,
   isOmniGlyphSupportedGptModel,
   isOmniGlyphSupportedModel,
+  isOmniGlyphSupportedModelForScope,
   setAllowedModelBases,
   shouldTransformAnthropicMessages,
   type OmniGlyphApplicabilityInput,
   type OmniGlyphApplicabilityReason,
+  type OmniGlyphSafetyScope,
 } from './applicability.js';
 export {
   buildCountTokensBodies,
@@ -18,6 +20,7 @@ export {
 export {
   transformAnthropicMessages,
   renderTextToImages,
+  type CompressionProfileName,
   type OmniGlyphOptions,
   type OmniGlyphReason,
   type OmniGlyphTransformInput,
@@ -26,6 +29,12 @@ export {
   type RenderedTextImage,
   type RenderTextToImagesResult,
 } from './library.js';
+export {
+  mergeCompressionProfileOptions,
+  resolveCompressionProfile,
+  shouldKeepToolResultSharp,
+  type CompressionProfile,
+} from './safety-policy.js';
 export {
   transformRequest,
   type TransformInfo as OmniGlyphTransformInfo,
