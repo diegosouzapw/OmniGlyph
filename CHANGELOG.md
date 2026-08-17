@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Added
 
+- **feat(accounting):** provider-neutral physical-usage normalization with
+  explicit evidence grades, fail-closed counter validation, cache-bucket
+  semantics for Anthropic and OpenAI-compatible usage, and honest negative
+  reductions. (thanks @alteixeira20)
+
 - **feat(reliability):** named `coding-safe`, `balanced`, `aggressive` and
   `passthrough` compression profiles for library callers and
   `OMNIGLYPH_PROFILE` in both proxy hosts, with non-weakenable native
