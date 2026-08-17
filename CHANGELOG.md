@@ -26,6 +26,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(anthropic):** preserve native-system provenance when session
+  configuration is rendered into user-role images. (thanks @alteixeira20)
 - **fix(transform):** keep Claude Code automode rules, permissions, severity
   and category in the per-turn dynamic tail so they cannot invalidate the
   cacheable rendered prefix. (thanks @parziva-1)
