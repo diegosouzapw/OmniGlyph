@@ -6,6 +6,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(anthropic):** preserve native-system provenance when session
+  configuration is rendered into user-role images. (thanks @alteixeira20)
 - **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
   The stock bitmap `K` was `H` with a single crossbar pixel removed (Hamming 1) —
   the worst confusable pair in the atlas, so an imaged `K` could be read back as

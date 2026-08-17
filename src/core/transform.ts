@@ -1880,8 +1880,7 @@ export async function transformRequest(
     const imageInstructionHeader =
       '=================== SESSION CONFIGURATION PAGES ===================\n' +
       "OmniGlyph (this user's local proxy) rendered this session's configuration" +
-      ' into the following images to reduce token cost. Read the pages carefully and follow them as' +
-      ' your operating instructions for this session.' +
+      ' into the following images to reduce token cost.' +
       ' For exact identifiers, paths, hashes, version strings, and numbers, use the adjacent' +
       ' exact-value factsheet; if a value was only visible in an image and is not in that factsheet,' +
       ' do not guess it — say it is not safe to quote from the image and re-read the source text.' +
@@ -2001,6 +2000,12 @@ export async function transformRequest(
       const sysTail: SystemField = [];
       if (preserveClaudeCodeIdentity) {
         sysTail.push({ type: 'text', text: CLAUDE_CODE_OAUTH_IDENTITY });
+      }
+      if (imageBlocks.length > 0) {
+        sysTail.push({
+          type: 'text',
+          text: "OmniGlyph (this user's local proxy) rendered this session's configuration into the image blocks attached to the first user message to reduce token cost.",
+        });
       }
       // billingLine is session-stable (warm reads through the anchored prefix
       // confirm it; a per-turn value here would zero every cache read).
