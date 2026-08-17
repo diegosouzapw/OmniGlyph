@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- **feat(reliability):** named `coding-safe`, `balanced`, `aggressive` and
+  `passthrough` compression profiles for library callers and
+  `OMNIGLYPH_PROFILE` in both proxy hosts, with non-weakenable native
+  authority/live-state boundaries and separate Anthropic/GPT history floors.
+  (thanks @alteixeira20)
+
 ### Changed
 
 - **perf(render):** harden the rendered-page LRU with canonical full SHA-256

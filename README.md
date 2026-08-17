@@ -189,6 +189,7 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 All off by default — the compression path above is unchanged unless you set them. `omniglyph --help` lists every flag.
 
 - `OMNIGLYPH_GUARD_SECRETS=text|redact` — keep API keys, tokens, and other credentials out of rendered images: `text` never images a block that holds one, `redact` masks it in place. Never alters what the upstream API receives.
+- `OMNIGLYPH_PROFILE=coding-safe|balanced|aggressive|passthrough` — choose a semantic compression boundary. `coding-safe` keeps authority, schemas, live tool state, and a 12-turn tail native; `balanced` protects an 8-turn tail; `aggressive` is the unchanged default; `passthrough` routes without transforming.
 - `OMNIGLYPH_KEEP_SYSTEM_TEXT=1` — never image the session config (system prompt, tool docs, reminders); tool outputs and old history still convert. Guards against Anthropic's refusal classifier on system-shaped images.
 - `OMNIGLYPH_MODELS` — comma-separated model bases to image (default `claude-fable-5,gpt-5.6`; `off` disables). **Grok** is supported opt-in on the OpenAI-compatible wire but stays fail-closed: text-only until acked via `OMNIGLYPH_UNVERIFIED_MODELS=grok-4.5`, pending its own reading receipt.
 

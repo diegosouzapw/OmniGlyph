@@ -13,6 +13,11 @@ import * as os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, resolveUpstreams, type ProxyConfig } from './core/proxy.js';
+import {
+  mergeCompressionProfileOptions,
+  resolveCompressionProfile,
+} from './core/safety-policy.js';
+import type { TransformOptions } from './core/transform.js';
 import { resolveOpenAIApiKey } from './node-auth.js';
 import {
   parseExportArgv,
@@ -66,6 +71,27 @@ export interface RuntimeConfig {
   /** Persist 4xx request bodies to disk for debugging. Off unless
    *  OMNIGLYPH_DEBUG_CAPTURE_4XX=1. */
   captureErrorReqBody: boolean;
+}
+
+export interface NodeTransformOptionsInput {
+  readonly profile?: string;
+  readonly keepSystemText: boolean;
+  readonly forcePassthrough: boolean;
+  readonly compressionEnabled: boolean;
+}
+
+/** Resolve the named policy together with the two operational kill switches. */
+export function resolveNodeTransformOptions(
+  input: NodeTransformOptionsInput,
+): TransformOptions {
+  if (input.forcePassthrough || !input.compressionEnabled) return { compress: false };
+  const overrides: TransformOptions = input.keepSystemText
+    ? { compressSystem: false, compressTools: false, compressReminders: false }
+    : {};
+  return mergeCompressionProfileOptions(
+    resolveCompressionProfile(input.profile),
+    overrides,
+  );
 }
 
 const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'omniglyph', 'config.json');
@@ -907,6 +933,7 @@ async function main(): Promise<void> {
   // rows) showed 5 mode flips ever and losses at 0.8% of wins — all
   // one-time cache-create amortization — so closing the loop would not
   // change decisions. Re-run that reconciliation before wiring one in.
+  const compressionProfile = resolveCompressionProfile(process.env.OMNIGLYPH_PROFILE);
   const tracker: Tracker = new FileTracker(opts.eventsFile);
 
   // Sidecar dir for oversized 4xx request-body samples. Lives next to the
@@ -953,18 +980,14 @@ async function main(): Promise<void> {
       // whole process, so the "normal" arm can be scripted on its own port while
       // still logging real usage + count_tokens baselines to its own OMNIGLYPH_LOG.
       // (The dashboard kill switch does the same thing at runtime.)
-      if (forcePassthrough || !dashboard.getCompressionEnabled()) return { compress: false };
-      // OMNIGLYPH_KEEP_SYSTEM_TEXT: session config (system prompt, tool docs,
-      // <system-reminder> init blocks) stays native text; only tool_results
-      // and collapsed history image. Guards against Anthropic's
-      // reasoning_extraction refusal classifier, which fires on system-
-      // prompt-shaped content rendered inside user-message images (2.6% of
-      // reminder-imaged requests vs 0% uncompressed, events.jsonl 2026-07-11).
-      if (/^(1|true|on|yes)$/i.test(process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT ?? '')) {
-        return { compressSystem: false, compressTools: false, compressReminders: false };
-      }
-      // Active path: use DEFAULTS in transform.ts for break-even gating.
-      return {};
+      return resolveNodeTransformOptions({
+        profile: compressionProfile.name,
+        keepSystemText: /^(1|true|on|yes)$/i.test(
+          process.env.OMNIGLYPH_KEEP_SYSTEM_TEXT ?? '',
+        ),
+        forcePassthrough,
+        compressionEnabled: dashboard.getCompressionEnabled(),
+      });
     },
     onRequest: async (e) => {
       // Feed the dashboard BEFORE tracker.emit — toTrackEvent strips
@@ -1091,6 +1114,9 @@ async function main(): Promise<void> {
     console.log(`[OmniGlyph] openai upstream → ${routes.openai}`);
     console.log(`[OmniGlyph] tracking events → ${opts.eventsFile}`);
     console.log(`[OmniGlyph] dashboard → http://127.0.0.1:${opts.port}/`);
+    if (compressionProfile.name !== 'aggressive') {
+      console.log(`[OmniGlyph] compression profile → ${compressionProfile.name}`);
+    }
     if (opts.captureErrorReqBody) {
       console.warn(
         `[OmniGlyph] OMNIGLYPH_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request bodies ` +
