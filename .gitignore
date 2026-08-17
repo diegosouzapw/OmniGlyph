@@ -49,3 +49,6 @@ bench/runs/
 # Local-only operational docs and reference checkouts — never published
 docs/ops/
 _references/
+
+# template-compression spike receipts (regenerate via run.ts)
+eval/template-compression/results.json

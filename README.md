@@ -189,6 +189,7 @@ bulky request block ──► profitability gate ──► reflow + render (1-bi
 All off by default — the compression path above is unchanged unless you set them. `omniglyph --help` lists every flag.
 
 - `OMNIGLYPH_GUARD_SECRETS=text|redact` — keep API keys, tokens, and other credentials out of rendered images: `text` never images a block that holds one, `redact` masks it in place. Never alters what the upstream API receives.
+- `OMNIGLYPH_PROFILE=coding-safe|balanced|aggressive|passthrough` — choose a semantic compression boundary. `coding-safe` keeps authority, schemas, live tool state, and a 12-turn tail native; `balanced` protects an 8-turn tail; `aggressive` is the unchanged default; `passthrough` routes without transforming.
 - `OMNIGLYPH_KEEP_SYSTEM_TEXT=1` — never image the session config (system prompt, tool docs, reminders); tool outputs and old history still convert. Guards against Anthropic's refusal classifier on system-shaped images.
 - `OMNIGLYPH_MODELS` — comma-separated model bases to image (default `claude-fable-5,gpt-5.6`; `off` disables). **Grok** is supported opt-in on the OpenAI-compatible wire but stays fail-closed: text-only until acked via `OMNIGLYPH_UNVERIFIED_MODELS=grok-4.5`, pending its own reading receipt.
 
@@ -262,6 +263,9 @@ It proved the *channel* works — with an encoder/decoder pair trained for the j
 
 **Can I use it without Claude Code — Cursor, ChatGPT, a plain pipe?**
 Yes, two ways. As a **proxy** it works with any client that lets you set the API base URL (`ANTHROPIC_BASE_URL`, or the OpenAI base URL) — Claude Code, your own scripts, anything HTTP. And for tools that can't proxy, the **Offline export** above renders the context to PNG pages you paste in by hand — `omniglyph export --stdin` even reads straight from a Unix pipe.
+
+**A client feature (like Claude Code's `/remote-control`) disappears when I point it at the proxy — is that OmniGlyph?**
+No. A few client features gate themselves on a *first-party* connection — and on which auth source is set — inside the client itself, before any request ever reaches a proxy. So they can hide, or refuse to pair, behind *any* `ANTHROPIC_BASE_URL` proxy, not just OmniGlyph, and nothing the proxy returns can switch them back on. Run those features on a direct, no-proxy session.
 
 **How does it actually turn text into an image?**
 It reflows the text and paints it with a 1-bit 5×8 pixel glyph atlas onto dense 1568×728 PNG pages — one bit per pixel, no anti-aliasing, so the model bills the page by its dimensions, not by how many characters are inside. **How it works** above has the pipeline; the benchmarks doc has the geometry and why denser isn't always cheaper.

@@ -35,7 +35,11 @@ import { appendIdsBlock, factSheetText } from './factsheet.js';
 import { guardImagedText } from './secret-guard.js';
 import { stripSchemaDescriptions, schemaHasStructure } from './schema-strip.js';
 import { bytesToBase64 } from './png.js';
-import { collapseHistory, HISTORY_SYNTHETIC_INTRO } from './history.js';
+import {
+  collapseHistory,
+  HISTORY_SYNTHETIC_INTRO,
+  type HistoryCollapseOptions,
+} from './history.js';
 import type { GptHistoryOptions } from './openai-history.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from './baseline.js';
 import { renderTextToPngsCached } from './render-cache.js';
@@ -135,6 +139,11 @@ export interface TransformOptions {
   collapseHistory?: boolean;
   /** GPT only: history-collapse tuning overrides (keepTail / collapseChunk / …). */
   gptHistory?: Partial<GptHistoryOptions>;
+  /** Anthropic history policy. Only semantic boundary controls are exposed;
+   *  renderer geometry and protected-prefix placement remain internal. */
+  anthropicHistory?: Partial<
+    Pick<HistoryCollapseOptions, 'keepTail' | 'minCollapsePrefix'>
+  >;
   /** Re-pack image-bound text into a ↵-delimited stream to fill `cols` (~29%→75-80%
    *  glyph-fill). ON by default (98.95% char accuracy at L1 OCR eval, +1pp vs baseline).
    *  Hard newlines become visible ↵ glyphs — tell the model via system prompt. */
@@ -182,6 +191,7 @@ const DEFAULTS: Required<TransformOptions> = {
   // GPT-only knobs; the Anthropic transform ignores them but Required<> needs them.
   collapseHistory: true,
   gptHistory: {},
+  anthropicHistory: {},
 };
 
 /**
@@ -760,6 +770,14 @@ const DYNAMIC_BLOCK_TAGS = [
   'git_status',
   'directoryStructure',
   'system-reminder',
+  // Claude Code automode state changes as grants and classifications evolve
+  // during a session. Keeping these fields in the static slab re-keys the
+  // rendered prefix on every turn and can break subscription identity/quota
+  // recognition, so they belong in the uncached dynamic tail.
+  'cc_automode_session_rules',
+  'cc_automode_permissions',
+  'severity',
+  'category',
 ] as const;
 
 // Known-static slab tags — suppresses first-sighting `unknownStaticTags` noise
@@ -1353,13 +1371,29 @@ export function truncateForBudget(
   const originalLines = lines.length;
   const originalChars = text.length;
 
+  // Reflow joins logical lines with the inline ↵ glyph. The renderer does not
+  // break on that sentinel, so many logical segments share one visual row.
+  // Charge only the packed-row delta; charging lineRows() per segment wastes
+  // most of the image budget on short reflowed log lines.
+  const reflowed = nlChar === NL_SENTINEL;
+  const packedRows = (chars: number): number =>
+    Math.ceil(chars / Math.max(1, cols));
+  const rowCost = (
+    segment: string,
+    priorChars: number,
+    addedChars: number,
+  ): number =>
+    reflowed
+      ? packedRows(priorChars + addedChars) - packedRows(priorChars)
+      : lineRows(segment, cols);
+
   if (shape === 'structured') {
     let rows = 0;
     let chars = 0;
     let cut = 0;
     for (let i = 0; i < lines.length; i++) {
-      const r = lineRows(lines[i]!, cols);
       const c = lines[i]!.length + (i > 0 ? 1 : 0);
+      const r = rowCost(lines[i]!, chars, c);
       if (rows + r > totalRowBudget || chars + c > totalCharBudget) break;
       rows += r;
       chars += c;
@@ -1394,8 +1428,8 @@ export function truncateForBudget(
   let headChars = 0;
   let headCut = 0;
   for (let i = 0; i < lines.length; i++) {
-    const r = lineRows(lines[i]!, cols);
     const c = lines[i]!.length + (i > 0 ? 1 : 0);
+    const r = rowCost(lines[i]!, headChars, c);
     if (headRows + r > headRowBudget || headChars + c > headCharBudget) break;
     headRows += r;
     headChars += c;
@@ -1406,8 +1440,8 @@ export function truncateForBudget(
   let tailChars = 0;
   let tailStart = lines.length;
   for (let i = lines.length - 1; i >= headCut; i--) {
-    const r = lineRows(lines[i]!, cols);
     const c = lines[i]!.length + (i < lines.length - 1 ? 1 : 0);
+    const r = rowCost(lines[i]!, tailChars, c);
     if (tailRows + r > tailRowBudget || tailChars + c > tailCharBudget) break;
     tailRows += r;
     tailChars += c;
@@ -1576,6 +1610,7 @@ async function runHistoryCollapseAndFinalize(
       req.messages,
       historyProfitable,
       {
+        ...o.anthropicHistory,
         cols: o.cols, protectedPrefix: 0, reflow: o.reflow,
         preserveReminderText: o.compressSystem === false,
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
@@ -1880,8 +1915,7 @@ export async function transformRequest(
     const imageInstructionHeader =
       '=================== SESSION CONFIGURATION PAGES ===================\n' +
       "OmniGlyph (this user's local proxy) rendered this session's configuration" +
-      ' into the following images to reduce token cost. Read the pages carefully and follow them as' +
-      ' your operating instructions for this session.' +
+      ' into the following images to reduce token cost.' +
       ' For exact identifiers, paths, hashes, version strings, and numbers, use the adjacent' +
       ' exact-value factsheet; if a value was only visible in an image and is not in that factsheet,' +
       ' do not guess it — say it is not safe to quote from the image and re-read the source text.' +
@@ -2001,6 +2035,12 @@ export async function transformRequest(
       const sysTail: SystemField = [];
       if (preserveClaudeCodeIdentity) {
         sysTail.push({ type: 'text', text: CLAUDE_CODE_OAUTH_IDENTITY });
+      }
+      if (imageBlocks.length > 0) {
+        sysTail.push({
+          type: 'text',
+          text: "OmniGlyph (this user's local proxy) rendered this session's configuration into the image blocks attached to the first user message to reduce token cost.",
+        });
       }
       // billingLine is session-stable (warm reads through the anchored prefix
       // confirm it; a per-turn value here would zero every cache read).
@@ -2346,6 +2386,7 @@ export async function transformRequest(
       req.messages,
       historyProfitable,
       {
+        ...o.anthropicHistory,
         cols: o.cols, protectedPrefix: slabAnchorIdx >= 0 ? slabAnchorIdx + 1 : 0, reflow: o.reflow,
         preserveReminderText: keepSystemText,
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,

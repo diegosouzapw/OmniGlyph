@@ -4,12 +4,49 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- **feat(accounting):** provider-neutral physical-usage normalization with
+  explicit evidence grades, fail-closed counter validation, cache-bucket
+  semantics for Anthropic and OpenAI-compatible usage, and honest negative
+  reductions. (thanks @alteixeira20)
+
+- **feat(reliability):** named `coding-safe`, `balanced`, `aggressive` and
+  `passthrough` compression profiles for library callers and
+  `OMNIGLYPH_PROFILE` in both proxy hosts, with non-weakenable native
+  authority/live-state boundaries and separate Anthropic/GPT history floors.
+  (thanks @alteixeira20)
+
 ### Changed
 
 - **fix(logs):** the console request line now tags a skipped conversion as
   `savings:skip(<reason>)` instead of a bare reason word, so skip reasons are
   greppable in `omniglyph` stdout and `wrangler tail`. Extracted to a pure
   `skipReasonTag` helper shared by the Node and Worker hosts.
+
+- **perf(render):** harden the rendered-page LRU with canonical full SHA-256
+  keys, race-safe byte accounting, smaller Worker defaults, runtime budget
+  control and cache-pressure counters in `/proxy-stats`. (thanks
+  @viacheslav-khvorostianyi)
+
+### Fixed
+
+- **fix(transform):** account for reflowed `↵` segments as packed inline
+  glyphs when truncating oversized tool results, so the renderer uses the
+  available page budget instead of discarding most short log lines before
+  imaging. (thanks @dex0shubham)
+- **fix(anthropic):** preserve native-system provenance when session
+  configuration is rendered into user-role images. (thanks @alteixeira20)
+- **fix(transform):** keep Claude Code automode rules, permissions, severity
+  and category in the per-turn dynamic tail so they cannot invalidate the
+  cacheable rendered prefix. (thanks @parziva-1)
+- **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
+  The stock bitmap `K` was `H` with a single crossbar pixel removed (Hamming 1) —
+  the worst confusable pair in the atlas, so an imaged `K` could be read back as
+  `H`. `gen-atlas.ts` now repaints `K` to a diagonal-legged cell (Hamming ≥ 6
+  from every other ASCII glyph), regenerating both the 1-bit and grayscale
+  atlases; a confusability guard in `tests/render.test.ts` fails closed if any
+  alphanumeric pair ever regresses to ≤ 1 px apart. (thanks @dhruvraajeev)
 
 ## [1.3.1] — 2026-07-12
 

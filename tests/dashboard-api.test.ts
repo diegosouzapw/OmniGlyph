@@ -15,6 +15,7 @@ import { getAllowedModelBases, setAllowedModelBases } from '../src/core/applicab
 import type { SessionsPaths } from '../src/sessions.js';
 import type { TrackEvent } from '../src/core/tracker.js';
 import type { StatsPayload, RecentPayload } from '../src/dashboard/types.js';
+import { clearRenderCache } from '../src/core/render-cache.js';
 
 function makeTmp(): SessionsPaths {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'OmniGlyph-dashapi-'));
@@ -85,6 +86,22 @@ describe('dashboardPath()', () => {
     // The per-session detail routes were cut — these no longer match.
     expect(dashboardPath('/api/sessions/abc12345.json')).toBeNull();
     expect(dashboardPath('/sessions/abc12345')).toBeNull();
+  });
+});
+
+describe('/proxy-stats render cache observability', () => {
+  it('reports the active budget and cache outcome counters', async () => {
+    clearRenderCache(123_456);
+    const stats = (await dash.serveStats().json()) as StatsPayload;
+    expect(stats.render_cache).toEqual({
+      entries: 0,
+      bytes: 0,
+      max_bytes: 123_456,
+      hits: 0,
+      misses: 0,
+      evictions: 0,
+      oversized: 0,
+    });
   });
 });
 
