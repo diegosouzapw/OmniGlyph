@@ -35,7 +35,11 @@ import { appendIdsBlock, factSheetText } from './factsheet.js';
 import { guardImagedText } from './secret-guard.js';
 import { stripSchemaDescriptions, schemaHasStructure } from './schema-strip.js';
 import { bytesToBase64 } from './png.js';
-import { collapseHistory, HISTORY_SYNTHETIC_INTRO } from './history.js';
+import {
+  collapseHistory,
+  HISTORY_SYNTHETIC_INTRO,
+  type HistoryCollapseOptions,
+} from './history.js';
 import type { GptHistoryOptions } from './openai-history.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from './baseline.js';
 import { renderTextToPngsCached } from './render-cache.js';
@@ -135,6 +139,11 @@ export interface TransformOptions {
   collapseHistory?: boolean;
   /** GPT only: history-collapse tuning overrides (keepTail / collapseChunk / …). */
   gptHistory?: Partial<GptHistoryOptions>;
+  /** Anthropic history policy. Only semantic boundary controls are exposed;
+   *  renderer geometry and protected-prefix placement remain internal. */
+  anthropicHistory?: Partial<
+    Pick<HistoryCollapseOptions, 'keepTail' | 'minCollapsePrefix'>
+  >;
   /** Re-pack image-bound text into a ↵-delimited stream to fill `cols` (~29%→75-80%
    *  glyph-fill). ON by default (98.95% char accuracy at L1 OCR eval, +1pp vs baseline).
    *  Hard newlines become visible ↵ glyphs — tell the model via system prompt. */
@@ -182,6 +191,7 @@ const DEFAULTS: Required<TransformOptions> = {
   // GPT-only knobs; the Anthropic transform ignores them but Required<> needs them.
   collapseHistory: true,
   gptHistory: {},
+  anthropicHistory: {},
 };
 
 /**
@@ -760,6 +770,14 @@ const DYNAMIC_BLOCK_TAGS = [
   'git_status',
   'directoryStructure',
   'system-reminder',
+  // Claude Code automode state changes as grants and classifications evolve
+  // during a session. Keeping these fields in the static slab re-keys the
+  // rendered prefix on every turn and can break subscription identity/quota
+  // recognition, so they belong in the uncached dynamic tail.
+  'cc_automode_session_rules',
+  'cc_automode_permissions',
+  'severity',
+  'category',
 ] as const;
 
 // Known-static slab tags — suppresses first-sighting `unknownStaticTags` noise
@@ -1576,6 +1594,7 @@ async function runHistoryCollapseAndFinalize(
       req.messages,
       historyProfitable,
       {
+        ...o.anthropicHistory,
         cols: o.cols, protectedPrefix: 0, reflow: o.reflow,
         preserveReminderText: o.compressSystem === false,
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
@@ -2351,6 +2370,7 @@ export async function transformRequest(
       req.messages,
       historyProfitable,
       {
+        ...o.anthropicHistory,
         cols: o.cols, protectedPrefix: slabAnchorIdx >= 0 ? slabAnchorIdx + 1 : 0, reflow: o.reflow,
         preserveReminderText: keepSystemText,
         denseCols: page.cols, denseCharsPerImage: page.charsPerImage, maxHeightPx: page.maxHeightPx,
