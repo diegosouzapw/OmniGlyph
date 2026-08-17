@@ -770,6 +770,14 @@ const DYNAMIC_BLOCK_TAGS = [
   'git_status',
   'directoryStructure',
   'system-reminder',
+  // Claude Code automode state changes as grants and classifications evolve
+  // during a session. Keeping these fields in the static slab re-keys the
+  // rendered prefix on every turn and can break subscription identity/quota
+  // recognition, so they belong in the uncached dynamic tail.
+  'cc_automode_session_rules',
+  'cc_automode_permissions',
+  'severity',
+  'category',
 ] as const;
 
 // Known-static slab tags — suppresses first-sighting `unknownStaticTags` noise

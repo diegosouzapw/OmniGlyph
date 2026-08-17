@@ -8,11 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 - **feat(reliability):** named `coding-safe`, `balanced`, `aggressive` and
   `passthrough` compression profiles for library callers and
-  `OMNIGLYPH_PROFILE` in both proxy hosts, with non-weakenable native authority/live-state
-  boundaries and separate Anthropic/GPT history floors. (thanks @alteixeira20)
+  `OMNIGLYPH_PROFILE` in both proxy hosts, with non-weakenable native
+  authority/live-state boundaries and separate Anthropic/GPT history floors.
+  (thanks @alteixeira20)
+
+### Changed
+
+- **perf(render):** harden the rendered-page LRU with canonical full SHA-256
+  keys, race-safe byte accounting, smaller Worker defaults, runtime budget
+  control and cache-pressure counters in `/proxy-stats`. (thanks
+  @viacheslav-khvorostianyi)
 
 ### Fixed
 
+- **fix(transform):** keep Claude Code automode rules, permissions, severity
+  and category in the per-turn dynamic tail so they cannot invalidate the
+  cacheable rendered prefix. (thanks @parziva-1)
 - **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
   The stock bitmap `K` was `H` with a single crossbar pixel removed (Hamming 1) —
   the worst confusable pair in the atlas, so an imaged `K` could be read back as
