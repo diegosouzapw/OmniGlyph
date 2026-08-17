@@ -4,6 +4,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-08-17
+
 ### Added
 
 - **feat(accounting):** provider-neutral physical-usage normalization with
@@ -28,6 +30,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
   keys, race-safe byte accounting, smaller Worker defaults, runtime budget
   control and cache-pressure counters in `/proxy-stats`. (thanks
   @viacheslav-khvorostianyi)
+
+### Security
+
+- **security(secret-guard):** remove the polynomial-backtracking paths from
+  PEM private-key and secret-assignment detection. The guard now scans bounded
+  PEM marker headers and assignment names linearly; adversarial-input tests
+  keep the text-to-image safety boundary responsive under repeated prefixes.
+- **security(deps):** resolve all audited vulnerable transitives, including
+  `sharp`, `undici`, `postcss`, `nanoid`, and `brace-expansion`. pnpm overrides
+  now live in `pnpm-workspace.yaml`, the configuration location pnpm 10 reads.
 
 ### Fixed
 
