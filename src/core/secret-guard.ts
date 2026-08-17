@@ -23,7 +23,10 @@ const KEY_PATTERNS: readonly RegExp[] = [
   /\bAKIA[0-9A-Z]{16}\b/g,                // AWS access key id
   /\bAIza[0-9A-Za-z_-]{35}\b/g,           // Google API key
 ];
-const PEM_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g;
+const PEM_BEGIN_PREFIX = '-----BEGIN ';
+const PEM_END_PREFIX = '-----END ';
+const PEM_PRIVATE_SUFFIX = 'PRIVATE KEY-----';
+const PEM_LABEL_MAX = 64;
 // The VALUE class is an explicit allowlist that already excludes U+21B5 (↵,
 // the reflow newline sentinel — see render.ts NL_SENTINEL), so a Bearer token
 // abutting a reflowed line break can't swallow it. Unlike ASSIGNMENT below,
@@ -35,8 +38,17 @@ const BEARER_PATTERN = /\bBearer\s+([A-Za-z0-9._~+/=-]{20,})/g;
 // and let the captured VALUE bleed across a line boundary into the next
 // line's text whenever the secret's value directly abuts a ↵ (the common
 // case — reflow joins lines with no separating whitespace).
-const ASSIGNMENT_PATTERN =
-  /\b[A-Z0-9_]*(?:API|SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|ACCESS)[A-Z0-9_]*\s*[=:]\s*([^\s↵]{8,})/g;
+const ASSIGNMENT_PATTERN = /\b([A-Z0-9_]+)[ \t]*[=:][ \t]*([^\s↵]{8,})/g;
+const SECRET_ASSIGNMENT_FRAGMENTS = [
+  'API',
+  'SECRET',
+  'TOKEN',
+  'PASSWORD',
+  'PASSWD',
+  'PRIVATE',
+  'CREDENTIAL',
+  'ACCESS',
+] as const;
 
 // Public high-entropy shapes the codebase already trusts (factsheet.ts grammar).
 // Kept as local copies: factsheet.ts does not export them, and the two modules
@@ -94,6 +106,156 @@ function isolateAssignmentValue(chunk: string): { value: string; offset: number 
   return { value: chunk, offset: 0 };
 }
 
+function isPemLabel(label: string): boolean {
+  if (label.length > PEM_LABEL_MAX) return false;
+  for (const code of label) {
+    if (code !== ' ' && (code < 'A' || code > 'Z')) return false;
+  }
+  return true;
+}
+
+function findPemMarker(
+  line: string,
+  prefix: string,
+  from: number,
+): { start: number; end: number } | undefined {
+  let markerStart = line.indexOf(prefix, from);
+  while (markerStart >= 0) {
+    const labelStart = markerStart + prefix.length;
+    // Inspect a bounded header window so repeated fake BEGIN/END prefixes can
+    // never make suffix search re-scan the rest of an attacker-controlled line.
+    const window = line.slice(
+      labelStart,
+      labelStart + PEM_LABEL_MAX + PEM_PRIVATE_SUFFIX.length,
+    );
+    const suffixOffset = window.indexOf(PEM_PRIVATE_SUFFIX);
+    if (suffixOffset >= 0) {
+      const label = window.slice(0, suffixOffset);
+      if (isPemLabel(label)) {
+        return {
+          start: markerStart,
+          end: labelStart + suffixOffset + PEM_PRIVATE_SUFFIX.length,
+        };
+      }
+    }
+    markerStart = line.indexOf(prefix, labelStart);
+  }
+  return undefined;
+}
+
+/** Locate complete PEM private-key blocks with one forward pass over the text.
+ * PEM markers are line-oriented, so no regex needs to backtrack across an
+ * attacker-controlled body. The end label intentionally need not match the
+ * begin label, preserving the previous guard's fail-safe detection behavior. */
+function scanPemLine(
+  line: string,
+  lineStart: number,
+  openStart: number | undefined,
+  spans: Array<{ start: number; end: number }>,
+): number | undefined {
+  let cursor = 0;
+  while (cursor <= line.length) {
+    const prefix = openStart === undefined ? PEM_BEGIN_PREFIX : PEM_END_PREFIX;
+    const marker = findPemMarker(line, prefix, cursor);
+    if (!marker) return openStart;
+    if (openStart === undefined) {
+      openStart = lineStart + marker.start;
+    } else {
+      spans.push({ start: openStart, end: lineStart + marker.end });
+      openStart = undefined;
+    }
+    cursor = marker.end;
+  }
+  return openStart;
+}
+
+function findPemSpans(text: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  let openStart: number | undefined;
+  let lineStart = 0;
+  for (const line of text.split('\n')) {
+    openStart = scanPemLine(line, lineStart, openStart, spans);
+    lineStart += line.length + 1;
+  }
+  return spans;
+}
+
+function findKeyHits(text: string): SecretHit[] {
+  const hits: SecretHit[] = [];
+  for (const re of KEY_PATTERNS) {
+    for (const m of text.matchAll(re)) hits.push({ start: m.index, end: m.index + m[0].length, kind: 'key' });
+  }
+  return hits;
+}
+
+function findBearerHits(text: string): SecretHit[] {
+  const hits: SecretHit[] = [];
+  for (const m of text.matchAll(BEARER_PATTERN)) {
+    const token = m[1]!;
+    if (isPublicChunk(token)) continue;
+    const start = m.index + m[0].indexOf(token);
+    hits.push({ start, end: start + token.length, kind: 'bearer' });
+  }
+  return hits;
+}
+
+function findAssignmentHits(text: string): SecretHit[] {
+  const hits: SecretHit[] = [];
+  for (const m of text.matchAll(ASSIGNMENT_PATTERN)) {
+    const name = m[1]!;
+    const value = m[2]!;
+    if (!SECRET_ASSIGNMENT_FRAGMENTS.some((fragment) => name.includes(fragment))) continue;
+    if (value.includes('[REDACTED:')) continue;
+    const start = m.index + m[0].lastIndexOf(value);
+    hits.push({ start, end: start + value.length, kind: 'assignment' });
+  }
+  return hits;
+}
+
+function findEntropyHits(text: string): SecretHit[] {
+  const hits: SecretHit[] = [];
+  for (const m of text.matchAll(/[^\s↵]+/g)) {
+    const chunk = m[0];
+    if (chunk.includes('[REDACTED:')) continue;
+    const { value, offset } = isolateAssignmentValue(chunk);
+    if (value.length < ENTROPY_MIN_LEN || value.length > ENTROPY_MAX_LEN) continue;
+    if (isPublicChunk(value) || shannonBitsPerChar(value) < ENTROPY_BITS) continue;
+    hits.push({ start: m.index + offset, end: m.index + offset + value.length, kind: 'entropy' });
+  }
+  return hits;
+}
+
+const SPECIFICITY: Record<string, number> = {
+  pem: 5,
+  key: 4,
+  bearer: 3,
+  assignment: 2,
+  entropy: 1,
+};
+
+function collapseOverlappingHits(hits: SecretHit[]): SecretHit[] {
+  hits.sort((a, b) => {
+    if (a.start !== b.start) return a.start - b.start;
+    if (a.end !== b.end) return b.end - a.end;
+    return (SPECIFICITY[b.kind] ?? 0) - (SPECIFICITY[a.kind] ?? 0);
+  });
+
+  const out: SecretHit[] = [];
+  let lastEnd = -1;
+  for (const hit of hits) {
+    if (hit.start >= lastEnd) {
+      out.push(hit);
+      lastEnd = hit.end;
+      continue;
+    }
+    const previous = out[out.length - 1]!;
+    if ((SPECIFICITY[previous.kind] ?? 0) >= (SPECIFICITY[hit.kind] ?? 0)) continue;
+    out[out.length - 1] = hit;
+    lastEnd = hit.end;
+  }
+  return out;
+}
+
 /** All secret spans in `text`, sorted by start. Overlapping hits collapse to
  *  the more specific kind first (pem/key/bearer/assignment over entropy),
  *  then earliest-start/longest-match — never the first pattern that happened
@@ -107,24 +269,6 @@ function isolateAssignmentValue(chunk: string): { value: string; offset: number 
  *  precise one so redaction never splices twice. */
 export function findSecrets(text: string): SecretHit[] {
   if (!text) return [];
-  const hits: SecretHit[] = [];
-  const push = (start: number, end: number, kind: string) => hits.push({ start, end, kind });
-
-  for (const m of text.matchAll(PEM_PATTERN)) push(m.index, m.index + m[0].length, 'pem');
-  for (const re of KEY_PATTERNS) {
-    for (const m of text.matchAll(re)) push(m.index, m.index + m[0].length, 'key');
-  }
-  for (const m of text.matchAll(BEARER_PATTERN)) {
-    const tok = m[1]!;
-    const start = m.index + m[0].indexOf(tok);
-    if (!isPublicChunk(tok)) push(start, start + tok.length, 'bearer');
-  }
-  for (const m of text.matchAll(ASSIGNMENT_PATTERN)) {
-    const val = m[1]!;
-    if (val.includes('[REDACTED:')) continue; // idempotency under re-runs
-    const start = m.index + m[0].lastIndexOf(val);
-    push(start, start + val.length, 'assignment');
-  }
   // Entropy fallback over whitespace-free chunks. A NAME=value chunk is
   // judged on its value alone (see isolateAssignmentValue) so a secret value
   // behind an innocuous name is still caught.
@@ -136,46 +280,14 @@ export function findSecrets(text: string): SecretHit[] {
   // which reads as high-entropy and false-positives as a secret. ↵ is a
   // token BOUNDARY (it marks where a line ends), never token content, so it
   // must split chunks exactly like whitespace does.
-  for (const m of text.matchAll(/[^\s↵]+/g)) {
-    const chunk = m[0];
-    if (chunk.includes('[REDACTED:')) continue;
-    const { value, offset } = isolateAssignmentValue(chunk);
-    if (value.length < ENTROPY_MIN_LEN || value.length > ENTROPY_MAX_LEN) continue;
-    if (isPublicChunk(value)) continue;
-    if (shannonBitsPerChar(value) < ENTROPY_BITS) continue;
-    push(m.index + offset, m.index + offset + value.length, 'entropy');
-  }
-
-  const SPECIFICITY: Record<string, number> = {
-    pem: 5,
-    key: 4,
-    bearer: 3,
-    assignment: 2,
-    entropy: 1,
-  };
-
-  hits.sort((a, b) => {
-    if (a.start !== b.start) return a.start - b.start;
-    if (a.end !== b.end) return b.end - a.end;
-    return (SPECIFICITY[b.kind] ?? 0) - (SPECIFICITY[a.kind] ?? 0);
-  });
-
-  const out: SecretHit[] = [];
-  let lastEnd = -1;
-  for (const h of hits) {
-    if (h.start < lastEnd) {
-      const prevHit = out[out.length - 1];
-      if ((SPECIFICITY[prevHit!.kind] ?? 0) >= (SPECIFICITY[h.kind] ?? 0)) {
-        continue;
-      }
-      out[out.length - 1] = h;
-      lastEnd = h.end;
-    } else {
-      out.push(h);
-      lastEnd = h.end;
-    }
-  }
-  return out;
+  const pemHits = findPemSpans(text).map(({ start, end }) => ({ start, end, kind: 'pem' }));
+  return collapseOverlappingHits([
+    ...pemHits,
+    ...findKeyHits(text),
+    ...findBearerHits(text),
+    ...findAssignmentHits(text),
+    ...findEntropyHits(text),
+  ]);
 }
 
 /** Prefix-preserving mask: keeps 4 chars for debuggability, kills the secret.

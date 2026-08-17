@@ -698,7 +698,7 @@ export async function collapseHistory(
         if (chunkSlot !== undefined) {
           const idsAt = withIds.lastIndexOf('\nIDS\n');
           const suffix = idsAt >= 0 ? withIds.slice(idsAt) : '';
-          chunkSlot = chunkSlot.replace(/\s+$/, '') + suffix;
+          chunkSlot = chunkSlot.trimEnd() + suffix;
         }
         chunkRender = withIds;
       }

@@ -3,6 +3,18 @@ onlyBuiltDependencies:
   - sharp
   - workerd
 
+# pnpm 10 reads workspace-wide overrides from this file (not package.json).
+# Keep vulnerable transitive ranges above their advisory fixed versions.
+overrides:
+  "brace-expansion@>=4.0.0 <5.0.9": "5.0.9"
+  "esbuild@>=0.27.3 <0.28.1": "^0.28.1"
+  "nanoid@<3.3.18": "3.3.18"
+  "postcss@<=8.5.22": "8.5.23"
+  "sharp@<0.35.0": "0.35.3"
+  "undici@>=7.0.0 <7.29.0": "7.29.0"
+  "vite@>=8.0.0 <8.0.16": "^8.0.16"
+  "ws@>=8.0.0 <8.20.1": "^8.20.1"
+
 # Supply-chain hardening: refuse to install any package version published
 # less than 3 days ago. Catches the typical malicious-package lifecycle
 # (publish → discovered → unpublished within hours/days). Legitimate

@@ -317,5 +317,5 @@ export function appendIdsBlock(text: string, maxIds = 16): string {
   }
   if (tokens.length === 0) return text;
   const lines = tokens.map((t) => `${idsBlockLabel(t)} ${t}`);
-  return `${text.replace(/\s+$/, '')}\nIDS\n${lines.join('\n')}\n`;
+  return `${text.trimEnd()}\nIDS\n${lines.join('\n')}\n`;
 }
