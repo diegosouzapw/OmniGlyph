@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- **feat(accounting):** provider-neutral physical-usage normalization with
+  explicit evidence grades, fail-closed counter validation, cache-bucket
+  semantics for Anthropic and OpenAI-compatible usage, and honest negative
+  reductions. (thanks @alteixeira20)
+
 ### Fixed
 
 - **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
