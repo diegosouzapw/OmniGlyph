@@ -4,6 +4,7 @@ import {
   getAllowedModelBases,
   isOmniGlyphSupportedGptModel,
   isOmniGlyphSupportedModel,
+  resolveCompressionProfile,
   setAllowedModelBases,
   shouldTransformAnthropicMessages,
   transformAnthropicMessages,
@@ -29,6 +30,10 @@ afterEach(() => {
 });
 
 describe('public library API', () => {
+  it('exports compression profiles from the package root', () => {
+    expect(resolveCompressionProfile('coding-safe').name).toBe('coding-safe');
+  });
+
   it('recognizes Fable 5 (with suffix aliases) as the default scope; Opus is OFF by default', () => {
     expect(isOmniGlyphSupportedModel('claude-fable-5')).toBe(true);
     expect(isOmniGlyphSupportedModel('claude-fable-5-high')).toBe(true);
@@ -297,6 +302,51 @@ describe('public library API', () => {
     // The caller sent zero markers, so the rewritten body also has zero.
     expect(transformed.cache.ownsCacheControl).toBe(false);
     expect(transformed.cache.markerCount).toBe(0);
+  });
+
+  it('keeps authority, tool schemas, and live tool output native in coding-safe mode', async () => {
+    const input = {
+      model: 'claude-fable-5',
+      system: 'Security and operating instructions. '.repeat(1_200),
+      tools: [{
+        name: 'read_file',
+        description: 'Read a file from disk. '.repeat(250),
+        input_schema: {
+          type: 'object',
+          properties: { path: { type: 'string' } },
+          required: ['path'],
+        },
+      }],
+      messages: [
+        { role: 'user', content: 'Inspect the repository.' },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'call_1', name: 'read_file', input: { path: 'src/index.ts' } }],
+        },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'call_1',
+            content: 'exact live source line\n'.repeat(1_000),
+          }],
+        },
+        { role: 'user', content: 'Continue using the exact result.' },
+      ],
+    };
+
+    const transformed = await transformAnthropicMessages({
+      body: enc.encode(JSON.stringify(input)),
+      model: input.model,
+      options: { profile: 'coding-safe' },
+    });
+    const output = JSON.parse(dec.decode(transformed.body)) as typeof input;
+
+    expect(transformed.applied).toBe(false);
+    expect(transformed.info.imageCount).toBe(0);
+    expect(output.system).toEqual(input.system);
+    expect(output.tools).toEqual(input.tools);
+    expect(output.messages).toEqual(input.messages);
   });
 
   it('preserves the exact Claude Code OAuth identity as the first system block', async () => {

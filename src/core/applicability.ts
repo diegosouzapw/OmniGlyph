@@ -1,5 +1,10 @@
 /** Applicability helpers for OmniGlyph's production-safe model scope. */
 
+import {
+  resolveCompressionProfile,
+  type CompressionProfileName,
+} from './safety-policy.js';
+
 export type OmniGlyphApplicabilityReason =
   | 'eligible'
   | 'unsupported_model'
@@ -45,7 +50,7 @@ let runtimeModelBases: readonly string[] | null = null;
  *  ~2pp arithmetic, 6/15 dense-hex recall vs Fable's 100/100; GPT 5.5 likewise
  *  degrades on imaged history/context) — so silently imaging them is the wrong
  *  default. Both stay opt-in via the dashboard chips or OMNIGLYPH_MODELS. */
-const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gpt-5.6'];
+export const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gpt-5.6'] as const;
 
 function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
@@ -66,9 +71,36 @@ function envOrDefaultBases(): string[] {
   return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function allowedModelBases(): string[] {
+function configuredModelBases(): string[] {
   if (runtimeModelBases !== null) return [...runtimeModelBases];
   return envOrDefaultBases();
+}
+
+function matchesModelBase(model: string, candidate: string): boolean {
+  return model === candidate || model.startsWith(`${candidate}-`);
+}
+
+function allowedModelBasesForScope(scope: CompressionProfileName): string[] {
+  if (scope === 'passthrough') return [];
+  const configured = configuredModelBases();
+  if (scope === 'aggressive') return configured;
+  return configured.filter((candidate) => {
+    const base = baseModelId(candidate);
+    return DEFAULT_MODEL_BASES.some((verified) => matchesModelBase(base, verified));
+  });
+}
+
+function activeCompressionScope(): CompressionProfileName {
+  const raw = typeof process !== 'undefined' ? process.env?.OMNIGLYPH_PROFILE : undefined;
+  try {
+    return resolveCompressionProfile(raw).name;
+  } catch {
+    return 'passthrough';
+  }
+}
+
+function allowedModelBases(): string[] {
+  return allowedModelBasesForScope(activeCompressionScope());
 }
 
 /** Current effective allowed-model scope (Claude + GPT). */
@@ -89,20 +121,33 @@ export function setAllowedModelBases(list: readonly string[] | null): void {
 
 /** Membership test against the single allowed scope. Matches exact base or `-suffix`
  *  alias; [variant] tags stripped first. */
-function isAllowed(model: string | null | undefined): boolean {
+function isAllowedForScope(
+  model: string | null | undefined,
+  scope: CompressionProfileName,
+): boolean {
   if (typeof model !== 'string') return false;
   const base = baseModelId(model);
-  return allowedModelBases().some((b) => base === b || base.startsWith(`${b}-`));
+  return allowedModelBasesForScope(scope).some((candidate) => matchesModelBase(base, candidate));
+}
+
+/** Pure model gate for a caller-selected compression profile. Safe profiles
+ * may narrow configured scope but never promote a model beyond the measured
+ * built-in defaults. */
+export function isOmniGlyphSupportedModelForScope(
+  model: string | null | undefined,
+  scope: CompressionProfileName,
+): boolean {
+  return isAllowedForScope(model, scope);
 }
 
 /** True when OmniGlyph may transform this Anthropic model. */
 export function isOmniGlyphSupportedModel(model: string | null | undefined): boolean {
-  return isAllowed(model);
+  return isAllowedForScope(model, activeCompressionScope());
 }
 
 /** True when OmniGlyph may transform this GPT model. Shares the single OMNIGLYPH_MODELS scope. */
 export function isOmniGlyphSupportedGptModel(model: string | null | undefined): boolean {
-  return isAllowed(model);
+  return isAllowedForScope(model, activeCompressionScope());
 }
 
 /** Canonical set of Anthropic Messages routes OmniGlyph transforms. Shared with

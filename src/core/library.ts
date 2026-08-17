@@ -1,4 +1,4 @@
-import { isOmniGlyphSupportedModel } from './applicability.js';
+import { isOmniGlyphSupportedModelForScope } from './applicability.js';
 import { countCacheControlMarkers } from './measurement.js';
 import {
   renderTextToPngsWithCharLimit,
@@ -19,8 +19,13 @@ import {
   type KeepSharpBlock,
   type RecoverableBlock,
 } from './transform.js';
+import {
+  mergeCompressionProfileOptions,
+  resolveCompressionProfile,
+  type CompressionProfileName,
+} from './safety-policy.js';
 
-export type { KeepSharpBlock, RecoverableBlock };
+export type { CompressionProfileName, KeepSharpBlock, RecoverableBlock };
 
 export type BytesLike = Uint8Array | ArrayBuffer | ArrayBufferView;
 
@@ -31,6 +36,8 @@ export interface OmniGlyphOptions
   > {
   /** Test/debug-only bypass. Product hosts should prefer their dashboard setting. */
   readonly compress?: boolean;
+  /** Semantic compression policy. Unset preserves the existing behavior. */
+  readonly profile?: CompressionProfileName;
 }
 
 export interface OmniGlyphTransformInput {
@@ -106,19 +113,23 @@ export async function transformAnthropicMessages(
   input: OmniGlyphTransformInput,
 ): Promise<OmniGlyphTransformResult> {
   const original = toUint8Array(input.body);
-  if (!isOmniGlyphSupportedModel(input.model)) {
-    return {
-      body: original,
-      applied: false,
-      reason: 'unsupported_model',
-      detail: input.model ?? undefined,
-      info: emptyInfo('unsupported_model'),
-      cache: { ownsCacheControl: false, markerCount: countCacheControlMarkers(original) },
-    };
-  }
 
   try {
-    const { body, info } = await transformRequest(original, input.options);
+    const { profile: requestedProfile, ...overrides } = input.options ?? {};
+    const profile = resolveCompressionProfile(requestedProfile);
+    if (!isOmniGlyphSupportedModelForScope(input.model, profile.name)) {
+      return {
+        body: original,
+        applied: false,
+        reason: 'unsupported_model',
+        detail: input.model ?? undefined,
+        info: emptyInfo('unsupported_model'),
+        cache: { ownsCacheControl: false, markerCount: countCacheControlMarkers(original) },
+      };
+    }
+
+    const options = mergeCompressionProfileOptions(profile, overrides);
+    const { body, info } = await transformRequest(original, options);
     const reason = classifyReason(info);
     const markerCount = countCacheControlMarkers(body);
     return {

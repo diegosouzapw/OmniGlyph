@@ -1,13 +1,21 @@
 export {
+  DEFAULT_MODEL_BASES,
   getAllowedModelBases,
   getConfiguredModelBases,
   isOmniGlyphSupportedGptModel,
   isOmniGlyphSupportedModel,
+  isOmniGlyphSupportedModelForScope,
   setAllowedModelBases,
   shouldTransformAnthropicMessages,
   type OmniGlyphApplicabilityInput,
   type OmniGlyphApplicabilityReason,
 } from './applicability.js';
+export {
+  mergeCompressionProfileOptions,
+  resolveCompressionProfile,
+  type CompressionProfile,
+  type CompressionProfileName,
+} from './safety-policy.js';
 export {
   buildCountTokensBodies,
   buildBaselineCountTokensBody,

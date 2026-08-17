@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- **feat(reliability):** named compression profiles for callers and both proxy
+  hosts. `OMNIGLYPH_PROFILE=coding-safe` keeps system authority, tool schemas,
+  reminders and live tool results as native text while allowing old closed
+  history to collapse; `balanced`, `aggressive` (the unchanged default) and
+  `passthrough` complete the policy set. Safe-profile boundaries cannot be
+  weakened by per-call or Worker overrides, and their model scope can only
+  narrow the measured default allowlist. (thanks @alteixeira20)
+
 ### Fixed
 
 - **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.

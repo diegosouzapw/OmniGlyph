@@ -12,6 +12,10 @@
  */
 
 import { createProxy, type ProxyConfig } from './core/proxy.js';
+import {
+  mergeCompressionProfileOptions,
+  resolveCompressionProfile,
+} from './core/safety-policy.js';
 import type { TransformOptions } from './core/transform.js';
 import { toTrackEvent, JsonLogTracker, noopTracker, type Tracker } from './core/tracker.js';
 
@@ -24,6 +28,7 @@ export interface Env {
   OPENAI_UPSTREAM?: string;
   /** Optional override — if set, replaces whatever Authorization the client sent. */
   OPENAI_API_KEY?: string;
+  OMNIGLYPH_PROFILE?: string;
   COMPRESS?: string;
   COMPRESS_TOOLS?: string;
   COMPRESS_REMINDERS?: string;
@@ -65,6 +70,24 @@ async function secretsMatch(a: string, b: string): Promise<boolean> {
 const truthy = (v: string | undefined, fallback: boolean): boolean =>
   v == null ? fallback : v === '1' || v.toLowerCase() === 'true';
 
+export function resolveWorkerTransformOptions(env: Env): TransformOptions {
+  const overrides: TransformOptions = {
+    compress: truthy(env.COMPRESS, true),
+    compressTools: truthy(env.COMPRESS_TOOLS, true),
+    compressReminders: truthy(env.COMPRESS_REMINDERS, true),
+    compressToolResults: truthy(env.COMPRESS_TOOL_RESULTS, true),
+    minCompressChars: env.MIN_COMPRESS_CHARS ? Number(env.MIN_COMPRESS_CHARS) : 2000,
+    minReminderChars: env.MIN_REMINDER_CHARS ? Number(env.MIN_REMINDER_CHARS) : 0,
+    minToolResultChars: env.MIN_TOOL_RESULT_CHARS ? Number(env.MIN_TOOL_RESULT_CHARS) : 0,
+    cols: env.COLS ? Number(env.COLS) : 100,
+    multiCol: env.MULTI_COL ? Math.max(1, Number(env.MULTI_COL) | 0) : 2,
+  };
+  return mergeCompressionProfileOptions(
+    resolveCompressionProfile(env.OMNIGLYPH_PROFILE),
+    overrides,
+  );
+}
+
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     // ── Caller auth ────────────────────────────────────────────────────
@@ -95,24 +118,7 @@ export default {
       req.headers.delete('x-omniglyph-secret');
     }
 
-    const transform: TransformOptions = {
-      compress: truthy(env.COMPRESS, true),
-      compressTools: truthy(env.COMPRESS_TOOLS, true),
-      compressReminders: truthy(env.COMPRESS_REMINDERS, true),
-      compressToolResults: truthy(env.COMPRESS_TOOL_RESULTS, true),
-      minCompressChars: env.MIN_COMPRESS_CHARS ? Number(env.MIN_COMPRESS_CHARS) : 2000,
-      // 500 chars — CPU/latency floor only, not a correctness guard. The
-      // No floors — the content-aware `isCompressionProfitable()` gate
-      // decides per-block based on actual pixel cost vs text cost. Host
-      // can still set a floor via env if they want observability buckets
-      // (e.g. MIN_TOOL_RESULT_CHARS=200 to skip absurdly small dumps).
-      minReminderChars: env.MIN_REMINDER_CHARS ? Number(env.MIN_REMINDER_CHARS) : 0,
-      minToolResultChars: env.MIN_TOOL_RESULT_CHARS ? Number(env.MIN_TOOL_RESULT_CHARS) : 0,
-      cols: env.COLS ? Number(env.COLS) : 100,
-      // R2 multi-column ON (2 cols) — single-col drops below break-even on
-      // real tool-doc slabs. Override via MULTI_COL=1 if OCR misreads layout.
-      multiCol: env.MULTI_COL ? Math.max(1, Number(env.MULTI_COL) | 0) : 2,
-    };
+    const transform = resolveWorkerTransformOptions(env);
     const trackingOn = truthy(env.OMNIGLYPH_TRACK, true);
     // Workers Logs ingests stdout as separate log lines. Emit one JSON line
     // per event so downstream (Logpush → R2/S3) reads the same JSONL shape
