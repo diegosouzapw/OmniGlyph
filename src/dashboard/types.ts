@@ -41,6 +41,15 @@ export interface StatsPayload {
   measured_tool_use_chars: number;
   measured_redacted_block_count: number;
   events_with_measurement: number;
+  render_cache: {
+    entries: number;
+    bytes: number;
+    max_bytes: number;
+    hits: number;
+    misses: number;
+    evictions: number;
+    oversized: number;
+  };
   uptime_sec_unused?: never; // future-proof
   compression_enabled: boolean;
 }

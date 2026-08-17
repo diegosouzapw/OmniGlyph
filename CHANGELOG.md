@@ -4,12 +4,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Added
+
+- **feat(accounting):** provider-neutral physical-usage normalization with
+  explicit evidence grades, fail-closed counter validation, cache-bucket
+  semantics for Anthropic and OpenAI-compatible usage, and honest negative
+  reductions. (thanks @alteixeira20)
+
+- **feat(reliability):** named `coding-safe`, `balanced`, `aggressive` and
+  `passthrough` compression profiles for library callers and
+  `OMNIGLYPH_PROFILE` in both proxy hosts, with non-weakenable native
+  authority/live-state boundaries and separate Anthropic/GPT history floors.
+  (thanks @alteixeira20)
+
+### Changed
+
+- **perf(render):** harden the rendered-page LRU with canonical full SHA-256
+  keys, race-safe byte accounting, smaller Worker defaults, runtime budget
+  control and cache-pressure counters in `/proxy-stats`. (thanks
+  @viacheslav-khvorostianyi)
+
 ### Fixed
 
 - **fix(transform):** account for reflowed `↵` segments as packed inline
   glyphs when truncating oversized tool results, so the renderer uses the
   available page budget instead of discarding most short log lines before
   imaging. (thanks @dex0shubham)
+- **fix(transform):** keep Claude Code automode rules, permissions, severity
+  and category in the per-turn dynamic tail so they cannot invalidate the
+  cacheable rendered prefix. (thanks @parziva-1)
 - **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
   The stock bitmap `K` was `H` with a single crossbar pixel removed (Hamming 1) —
   the worst confusable pair in the atlas, so an imaged `K` could be read back as
