@@ -1371,13 +1371,29 @@ export function truncateForBudget(
   const originalLines = lines.length;
   const originalChars = text.length;
 
+  // Reflow joins logical lines with the inline ↵ glyph. The renderer does not
+  // break on that sentinel, so many logical segments share one visual row.
+  // Charge only the packed-row delta; charging lineRows() per segment wastes
+  // most of the image budget on short reflowed log lines.
+  const reflowed = nlChar === NL_SENTINEL;
+  const packedRows = (chars: number): number =>
+    Math.ceil(chars / Math.max(1, cols));
+  const rowCost = (
+    segment: string,
+    priorChars: number,
+    addedChars: number,
+  ): number =>
+    reflowed
+      ? packedRows(priorChars + addedChars) - packedRows(priorChars)
+      : lineRows(segment, cols);
+
   if (shape === 'structured') {
     let rows = 0;
     let chars = 0;
     let cut = 0;
     for (let i = 0; i < lines.length; i++) {
-      const r = lineRows(lines[i]!, cols);
       const c = lines[i]!.length + (i > 0 ? 1 : 0);
+      const r = rowCost(lines[i]!, chars, c);
       if (rows + r > totalRowBudget || chars + c > totalCharBudget) break;
       rows += r;
       chars += c;
@@ -1412,8 +1428,8 @@ export function truncateForBudget(
   let headChars = 0;
   let headCut = 0;
   for (let i = 0; i < lines.length; i++) {
-    const r = lineRows(lines[i]!, cols);
     const c = lines[i]!.length + (i > 0 ? 1 : 0);
+    const r = rowCost(lines[i]!, headChars, c);
     if (headRows + r > headRowBudget || headChars + c > headCharBudget) break;
     headRows += r;
     headChars += c;
@@ -1424,8 +1440,8 @@ export function truncateForBudget(
   let tailChars = 0;
   let tailStart = lines.length;
   for (let i = lines.length - 1; i >= headCut; i--) {
-    const r = lineRows(lines[i]!, cols);
     const c = lines[i]!.length + (i < lines.length - 1 ? 1 : 0);
+    const r = rowCost(lines[i]!, tailChars, c);
     if (tailRows + r > tailRowBudget || tailChars + c > tailCharBudget) break;
     tailRows += r;
     tailChars += c;

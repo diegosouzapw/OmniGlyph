@@ -28,6 +28,7 @@ import {
   DENSE_CONTENT_CHARS_PER_IMAGE,
   DENSE_CONTENT_COLS,
   DENSE_RENDER_STYLE,
+  NL_SENTINEL,
   READABLE_CHARS_PER_IMAGE,
   renderTextToPngsWithCharLimit,
 } from '../src/core/render.js';
@@ -331,6 +332,27 @@ describe('truncateForBudget', () => {
     expect(reportedOmittedLines).toBeLessThan(originalLines);
   });
 
+  it('does not over-truncate reflowed text whose sentinels pack into visual rows', () => {
+    const segments: string[] = [];
+    for (let i = 0; i < 10_000; i++) {
+      segments.push(`2026-05-18T12:00:00Z entry ${i} payload content here`);
+    }
+    const reflowed = segments.join(NL_SENTINEL);
+    expect(reflowed).not.toContain('\n');
+
+    const { text: out, truncated } = truncateForBudget(
+      reflowed,
+      10,
+      DENSE_CONTENT_COLS,
+    );
+
+    expect(truncated).toBe(true);
+    expect(out.length).toBeGreaterThan(150_000);
+    expect(out).toMatch(/Showing first \d+ lines and last \d+ lines/);
+    expect(out).toContain('entry 0');
+    expect(out).toContain('entry 9999');
+  });
+
   it('always shows at least one head line even on degenerate input', () => {
     // Single huge line — bigger than budget. Should still render with marker.
     const text = 'x'.repeat(500_000);
@@ -460,10 +482,10 @@ describe('paging end-to-end (transformRequest)', () => {
     );
     const { info } = await transformRequest(req, { multiCol: 1, charsPerToken: 2 });
     expect(info.truncatedToolResults).toBe(2);
-    // Both should have been truncated → omittedChars roughly doubled. The
-    // exact bound depends on renderer config: at multiCol=1 each image
-    // packs ~19.5k chars worst-case. Threshold below covers the single-col case.
-    expect(info.omittedChars).toBeGreaterThan(600_000);
+    // Both are truncated. With packed-row accounting each result now uses the
+    // image budget it was assigned instead of discarding roughly five sixths
+    // of the content before rendering, so about 500k chars remain omitted.
+    expect(info.omittedChars).toBeGreaterThan(400_000);
   });
 
   it('handles array-shaped tool_result content', async () => {

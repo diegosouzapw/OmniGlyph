@@ -26,6 +26,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(transform):** account for reflowed `↵` segments as packed inline
+  glyphs when truncating oversized tool results, so the renderer uses the
+  available page budget instead of discarding most short log lines before
+  imaging. (thanks @dex0shubham)
 - **fix(anthropic):** preserve native-system provenance when session
   configuration is rendered into user-role images. (thanks @alteixeira20)
 - **fix(transform):** keep Claude Code automode rules, permissions, severity
