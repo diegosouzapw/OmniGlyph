@@ -6,6 +6,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Fixed
 
+- **fix(transform):** keep Claude Code automode rules, permissions, severity
+  and category in the per-turn dynamic tail so they cannot invalidate the
+  cacheable rendered prefix. (thanks @parziva-1)
 - **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
   The stock bitmap `K` was `H` with a single crossbar pixel removed (Hamming 1) —
   the worst confusable pair in the atlas, so an imaged `K` could be read back as
