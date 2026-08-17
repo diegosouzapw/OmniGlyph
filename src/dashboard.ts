@@ -33,6 +33,7 @@ import * as path from 'node:path';
 import * as readline from 'node:readline';
 import type { ProxyEvent } from './core/proxy.js';
 import type { TrackEvent } from './core/tracker.js';
+import { renderCacheStats } from './core/render-cache.js';
 import {
   computeActualInputEff,
   computeBaselineInputEff,
@@ -1276,6 +1277,7 @@ export class DashboardState {
   // (`s.passthrough ?? 0`). Pre-existing gap, out of this phase's scope —
   // annotating here would just force a cast instead of fixing it.
   private buildStatsPayload() {
+    const cache = renderCacheStats();
     // Two headline numbers, derived from the same per-event accumulators:
     //
     //   saved_pct_input_only = Σ saved / Σ baseline_input_eff × 100
@@ -1414,6 +1416,15 @@ export class DashboardState {
       measured_tool_use_chars: this.totals.toolUseCharsMeasured,
       measured_redacted_block_count: this.totals.redactedBlockCountMeasured,
       events_with_measurement: this.totals.eventsWithMeasurement,
+      render_cache: {
+        entries: cache.entries,
+        bytes: cache.totalBytes,
+        max_bytes: cache.maxBytes,
+        hits: cache.hits,
+        misses: cache.misses,
+        evictions: cache.evictions,
+        oversized: cache.oversized,
+      },
       uptime_sec: uptimeSec,
       compression_enabled: this.compressionEnabled,
     };

@@ -11,6 +11,7 @@ import {
   clearRenderCache,
   renderCacheStats,
   renderTextToPngsCached,
+  setRenderCacheMaxBytes,
 } from '../src/core/render-cache.js';
 
 const DENSE = 'dense line of page content '.repeat(200);
@@ -48,6 +49,61 @@ describe('renderTextToPngsCached', () => {
     const s = renderCacheStats();
     expect(s.hits).toBe(0); // nothing fit in the cache
     expect(s.entries).toBe(0);
+    expect(s.oversized).toBe(2);
+  });
+
+  it('uses a fixed-width full-digest key regardless of source length', async () => {
+    const short = await renderTextToPngsCached('x '.repeat(50), 312, 28080, {}, 728);
+    const shortPngBytes = short.reduce((sum, image) => sum + image.png.length, 0);
+    const shortOverhead = renderCacheStats().totalBytes - shortPngBytes;
+
+    clearRenderCache();
+    const long = await renderTextToPngsCached('x '.repeat(50_000), 312, 28080, {}, 728);
+    const longPngBytes = long.reduce((sum, image) => sum + image.png.length, 0);
+    const longOverhead = renderCacheStats().totalBytes - longPngBytes;
+
+    expect(shortOverhead).toBe(128); // 64 hex UTF-16 code units
+    expect(longOverhead).toBe(shortOverhead);
+  });
+
+  it('does not double-count bytes when concurrent misses replace the same key', async () => {
+    const [first] = await Promise.all([
+      renderTextToPngsCached(DENSE, 312, 28080, {}, 728),
+      renderTextToPngsCached(DENSE, 312, 28080, {}, 728),
+    ]);
+    const expectedBytes = first!.reduce((sum, image) => sum + image.png.length, 128);
+    const stats = renderCacheStats();
+
+    expect(stats.misses).toBe(2);
+    expect(stats.entries).toBe(1);
+    expect(stats.totalBytes).toBe(expectedBytes);
+  });
+
+  it('shrinks or disables the budget immediately while retaining counters', async () => {
+    await renderTextToPngsCached(DENSE, 312, 28080, {}, 728);
+    const populated = renderCacheStats();
+
+    setRenderCacheMaxBytes(populated.totalBytes - 1);
+    const shrunk = renderCacheStats();
+    expect(shrunk.entries).toBe(0);
+    expect(shrunk.evictions).toBe(1);
+    expect(shrunk.maxBytes).toBe(populated.totalBytes - 1);
+
+    setRenderCacheMaxBytes(0);
+    expect(renderCacheStats()).toMatchObject({
+      entries: 0,
+      hits: populated.hits,
+      misses: populated.misses,
+      evictions: 1,
+      maxBytes: 0,
+    });
+  });
+
+  it('ignores invalid runtime budgets', () => {
+    const before = renderCacheStats().maxBytes;
+    setRenderCacheMaxBytes(-1);
+    setRenderCacheMaxBytes(Number.NaN);
+    expect(renderCacheStats().maxBytes).toBe(before);
   });
 
   it('returns results byte-identical to the uncached renderer', async () => {

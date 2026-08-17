@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Changed
+
+- **perf(render):** harden the rendered-page LRU with canonical full SHA-256
+  keys, race-safe byte accounting, smaller Worker defaults, runtime budget
+  control and cache-pressure counters in `/proxy-stats`. (thanks
+  @viacheslav-khvorostianyi)
+
 ### Fixed
 
 - **fix(render):** glyph surgery so the Spleen 5×8 `K` no longer reads as `H`.
