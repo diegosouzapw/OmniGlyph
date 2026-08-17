@@ -19,6 +19,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ### Changed
 
+- **fix(logs):** the console request line now tags a skipped conversion as
+  `savings:skip(<reason>)` instead of a bare reason word, so skip reasons are
+  greppable in `omniglyph` stdout and `wrangler tail`. Extracted to a pure
+  `skipReasonTag` helper shared by the Node and Worker hosts.
+
 - **perf(render):** harden the rendered-page LRU with canonical full SHA-256
   keys, race-safe byte accounting, smaller Worker defaults, runtime budget
   control and cache-pressure counters in `/proxy-stats`. (thanks

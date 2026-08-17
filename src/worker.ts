@@ -19,6 +19,7 @@ import {
 import type { TransformOptions } from './core/transform.js';
 import { toTrackEvent, JsonLogTracker, noopTracker, type Tracker } from './core/tracker.js';
 import { setRenderCacheMaxBytes } from './core/render-cache.js';
+import { skipReasonTag } from './log-tags.js';
 
 export interface Env {
   /** Optional single upstream base for every API family. Family-specific env vars override it. */
@@ -151,7 +152,7 @@ export default {
         // shows up in `wrangler tail`).
         const tag = e.info?.compressed
           ? `compressed ${e.info.origChars}ch → ${e.info.imageCount}img/${e.info.imageBytes}B`
-          : (e.info?.reason ?? '');
+          : skipReasonTag(e.info?.reason);
         const cacheRead = e.usage?.cache_read_input_tokens ?? 0;
         console.log(`${e.method} ${e.path} → ${e.status} (${e.durationMs}ms) ${tag} cache_read=${cacheRead}`);
 
