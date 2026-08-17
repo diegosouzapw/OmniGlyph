@@ -14,6 +14,7 @@
 import { createProxy, type ProxyConfig } from './core/proxy.js';
 import type { TransformOptions } from './core/transform.js';
 import { toTrackEvent, JsonLogTracker, noopTracker, type Tracker } from './core/tracker.js';
+import { setRenderCacheMaxBytes } from './core/render-cache.js';
 
 export interface Env {
   /** Optional single upstream base for every API family. Family-specific env vars override it. */
@@ -39,6 +40,9 @@ export interface Env {
    *  Cloudflare ingests console.log as Workers Logs; pipe via Logpush to
    *  R2/S3 for the same JSONL shape Node writes to disk. */
   OMNIGLYPH_TRACK?: string;
+  /** Rendered-page cache budget. Zero disables it; unset uses the 8 MiB
+   * Worker default instead of the 64 MiB Node default. */
+  OMNIGLYPH_RENDER_CACHE_BYTES?: string;
   /** Shared secret callers must present via the `x-omniglyph-secret` header
    *  whenever an API-key override is configured. Without this gate a
    *  discovered workers.dev URL is an open key-spender: the Worker would
@@ -65,8 +69,17 @@ async function secretsMatch(a: string, b: string): Promise<boolean> {
 const truthy = (v: string | undefined, fallback: boolean): boolean =>
   v == null ? fallback : v === '1' || v.toLowerCase() === 'true';
 
+const nonNegativeInt = (value: string | undefined): number | undefined => {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
+};
+
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+    const renderCacheBytes = nonNegativeInt(env.OMNIGLYPH_RENDER_CACHE_BYTES);
+    if (renderCacheBytes !== undefined) setRenderCacheMaxBytes(renderCacheBytes);
     // ── Caller auth ────────────────────────────────────────────────────
     // If this deployment injects API keys, never serve anonymous callers:
     // workers.dev URLs are discoverable, and without this gate anyone who
