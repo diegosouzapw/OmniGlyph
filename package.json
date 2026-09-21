@@ -92,7 +92,7 @@
     "wrangler": "^4.92.0"
   },
   "dependencies": {
-    "gpt-tokenizer": "^3.4.0"
+    "gpt-tokenizer": "^4.0.0"
   },
   "repository": {
     "type": "git",
