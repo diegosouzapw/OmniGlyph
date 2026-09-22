@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · semantic ver
 
 ## [Unreleased]
 
+### Changed
+
+- **chore(deps):** refresh the development toolchain while keeping the
+  TypeScript 6.0 bridge required by `typescript-eslint`; the stricter compiler
+  pass also hardens the export and applicability typing paths. (thanks
+  @dependabot)
+
 ## [1.4.0] — 2026-08-17
 
 ### Added

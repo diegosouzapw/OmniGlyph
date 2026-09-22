@@ -69,7 +69,7 @@ function envOrDefaultBases(): string[] {
   const trimmed = raw.trim();
   if (!trimmed) return [...DEFAULT_MODEL_BASES];
   if (falsey(trimmed)) return [];
-  return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+  return trimmed.split(',').map((s: string) => s.trim()).filter(Boolean);
 }
 
 function configuredModelBases(): string[] {
@@ -196,7 +196,7 @@ function isUnverifiedBase(model: string | null | undefined): boolean {
 function unverifiedAckBases(): string[] {
   const raw = typeof process !== 'undefined' ? process.env?.OMNIGLYPH_UNVERIFIED_MODELS : undefined;
   if (!raw || !raw.trim()) return [];
-  return raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return raw.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
 }
 
 /** True when OmniGlyph may actually IMAGE this model (vs pass it through as
