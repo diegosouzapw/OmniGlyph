@@ -746,7 +746,7 @@ async function collectSource(opts: ExportParsed): Promise<[string, string[]]> {
       console.error(`[omniglyph export] git diff ${opts.diff} failed`);
       process.exit(1);
     }
-    return [diff, []];
+    return [diff ?? '', []];
   }
 
   // --git
@@ -848,11 +848,13 @@ async function runExport(argv: string[]): Promise<void> {
   if (parseResult.kind === 'help') {
     printExportHelp();
     process.exit(0);
+    return;
   }
   if (parseResult.kind === 'error') {
     console.error(`[omniglyph export] ${parseResult.message}`);
     console.error(`[omniglyph export] run \`omniglyph export --help\` for usage`);
     process.exit(2);
+    return;
   }
 
   const opts = parseResult.parsed;
