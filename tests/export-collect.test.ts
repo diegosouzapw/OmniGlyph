@@ -30,6 +30,13 @@ describe('readExportTextFile — shared export file gate', () => {
     if (r.kind === 'ok') expect(r.content).toBe('export const x = 1;\n');
   });
 
+  it('decodes UTF-8 text when the file gate returns content', () => {
+    const p = write('utf8.ts', 'export const greeting = "olá, mundo";\n');
+    const r = readExportTextFile(p, 'utf8.ts', [], []);
+    expect(r.kind).toBe('ok');
+    if (r.kind === 'ok') expect(r.content).toContain('olá, mundo');
+  });
+
   it('respects --include: a .md is excluded when include is *.ts, the .ts sibling passes', () => {
     const md = write('b.md', '# readme\n');
     const ts = write('a.ts', 'const a = 1;\n');

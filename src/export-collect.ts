@@ -69,5 +69,5 @@ export function readExportTextFile(
   }
   if (oversized) return { kind: 'oversized' };
   if (looksLikeBinary(buf)) return { kind: 'binary' };
-  return { kind: 'ok', content: buf.toString('utf8') };
+  return { kind: 'ok', content: buf.toString() };
 }
