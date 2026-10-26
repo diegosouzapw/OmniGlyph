@@ -20,7 +20,7 @@ importers:
     dependencies:
       gpt-tokenizer:
         specifier: ^4.0.0
-        version: 4.0.0
+        version: 4.1.0
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260918.1
@@ -1127,8 +1127,8 @@ packages:
     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
     engines: {node: '>=10.13.0'}
 
-  gpt-tokenizer@4.0.0:
-    resolution: {integrity: sha512-YAWIyzvuVUHEfW7tFfFAxH8qQb+Q3RU9nYOTy7skMNX5qzU6Q8jxTHZLyO56ug1vYvCR7wndzpd3jwD86/mhjQ==}
+  gpt-tokenizer@4.1.0:
+    resolution: {integrity: sha512-r7Op7S3iPy9vGpcfHmfIlLN/+/mNL2kXDy3N/ppp2xC2pm57pyYTt3fqsncMZ/yfIT+d3mTGhd7H6fcF/qiqWg==}
 
   hashery@1.5.1:
     resolution: {integrity: sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ==}
@@ -2397,7 +2397,7 @@ snapshots:
     dependencies:
       is-glob: 4.0.3
 
-  gpt-tokenizer@4.0.0: {}
+  gpt-tokenizer@4.1.0: {}
 
   hashery@1.5.1:
     dependencies:
